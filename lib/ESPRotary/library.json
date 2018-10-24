@@ -1,0 +1,17 @@
+{
+	"name": "ESPRotary",
+	"keywords": "rotary encoder, esp8266",
+	"description": "ESP8266/Arduino Library for reading rotary encoder values.",
+	"homepage": "https://github.com/LennartHennigs/ESPRotary",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/LennartHennigs/ESPRotary"
+	},
+	"version": "1.0.0",
+	"authors": {
+		"name": "Lennart Hennigs",
+		"url": "https://lennarthennigs.de"
+	},
+	"frameworks": "arduino",
+	"platforms": "*"
+}

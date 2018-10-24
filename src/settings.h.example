@@ -1,0 +1,5 @@
+const char *ssid = "";
+const char *password = "";
+
+const char SPTF_CLIENT_ID[] = "";
+const char SPTF_CLIENT_SECRET[] = "";

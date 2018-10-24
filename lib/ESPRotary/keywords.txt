@@ -1,0 +1,11 @@
+ESPRotary				KEYWORD1
+getPosition				KEYWORD2
+resetPosition			KEYWORD2
+getDirection			KEYWORD2
+directionToString		KEYWORD2
+setChangedHandler		KEYWORD2
+setRightRotationHandler	KEYWORD2
+setLeftRotationHandler	KEYWORD2
+loop					KEYWORD2
+RE_RIGHT				LITERAL1
+RE_LEFT					LITERAL1
