@@ -596,15 +596,14 @@ void eventsSendLog(const char *logData, EventsLogTypes type = log_line) {
 void eventsSendInfo(const char *msg, const char *payload = "") {
   if (!send_events) return;
 
-  DynamicJsonBuffer jsonBuffer(512);
-  JsonObject &json = jsonBuffer.createObject();
+  DynamicJsonDocument json(512);
   json["msg"] = msg;
   if (strlen(payload)) {
     json["payload"] = payload;
   }
 
   String info;
-  json.printTo(info);
+  serializeJson(json, info);
   events.send(info.c_str(), "info");
 }
 
@@ -618,8 +617,7 @@ void eventsSendInfo(const char *msg, const char *payload = "") {
 void eventsSendError(int code, const char *msg, const char *payload = "") {
   if (!send_events) return;
 
-  DynamicJsonBuffer jsonBuffer(512);
-  JsonObject &json = jsonBuffer.createObject();
+  DynamicJsonDocument json(512);
   json["code"] = code;
   json["msg"] = msg;
   if (strlen(payload)) {
@@ -627,7 +625,7 @@ void eventsSendError(int code, const char *msg, const char *payload = "") {
   }
 
   String error;
-  json.printTo(error);
+  serializeJson(json, error);
   events.send(error.c_str(), "error");
 }
 
@@ -880,10 +878,10 @@ void sptfGetToken(const String &code, GrantTypes grant_type) {
       httpRequest("accounts.spotify.com", 443, requestHeaders, requestContent);
 
   if (response.httpCode == 200) {
-    DynamicJsonBuffer jsonInBuffer(768);
-    JsonObject &json = jsonInBuffer.parseObject(response.payload);
+    DynamicJsonDocument json(768);
+    DeserializationError error = deserializeJson(json, response.payload);
 
-    if (json.success()) {
+    if (!error) {
       strcpy(access_token, json["access_token"]);
       if (access_token[0] != '\0') {
         token_lifetime = (json["expires_in"].as<uint32_t>() - 300);
@@ -930,11 +928,10 @@ void sptfCurrentlyPlaying() {
   HTTP_response_t response = sptfApiRequest("GET", "");
 
   if (response.httpCode == 200) {
-    DynamicJsonBuffer jsonBuffer(5000);
+    DynamicJsonDocument json(5000);
+    DeserializationError error = deserializeJson(json, response.payload);
 
-    JsonObject &json = jsonBuffer.parse(response.payload);
-
-    if (json.success()) {
+    if (!error) {
       last_curplay_millis = millis();
       sptf_is_playing = json["is_playing"];
       progress_ms = json["progress_ms"];
