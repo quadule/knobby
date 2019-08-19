@@ -45,7 +45,8 @@ enum SptfActions {
   Next,
   Previous,
   Toggle,
-  PlayGenre
+  PlayGenre,
+  GetDevices
 };
 
 enum GrantTypes { gt_authorization_code, gt_refresh_token };
@@ -98,13 +99,15 @@ const char *rootMenuItems[] = {"play/pause", "alphabetic", "alphabetic suffix",
                                "popularity", "modernity",  "background",
                                "tempo",      "users",      "devices"};
 const char *users[] = {"milo", "alexa"};
-SptfDevice_t d1 = {String("980a3f0b52a30b16ea3e276c1df41097cedbb75d"),
-                   String("doop")};
-SptfDevice_t d2 = {String("a5c5a50cac7fb4e2a2978e9678eb0d780131923e"),
-                   String("living room")};
-SptfDevice_t d3 = {String("a087863af82ed5ef8ecb31bb4e1de43683ec962f"),
-                   String("basement")};
-SptfDevice_t *devices[] = {&d1, &d2, &d3};
+// SptfDevice_t d1 = {String("980a3f0b52a30b16ea3e276c1df41097cedbb75d"),
+//                    String("doop")};
+// SptfDevice_t d2 = {String("a5c5a50cac7fb4e2a2978e9678eb0d780131923e"),
+//                    String("living room")};
+// SptfDevice_t d3 = {String("a087863af82ed5ef8ecb31bb4e1de43683ec962f"),
+//                    String("basement")};
+#define MAX_DEVICES 10
+SptfDevice_t devices[MAX_DEVICES] = {{}, {}, {}, {}, {}, {}, {}, {}, {}, {}};
+uint8_t devicesCount = 0;
 SptfDevice_t *activeDevice = NULL;
 uint16_t menuSize = GENRE_COUNT;
 uint16_t menuIndex = 0;
@@ -248,7 +251,6 @@ void setup() {
   // Get refresh token from EEPROM
   //-----------------------------------------------
   refresh_token = readRefreshToken();
-  Serial.printf("access_token: %s\n", access_token);
 }
 
 void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
@@ -270,7 +272,7 @@ void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
       menuSize = sizeof(users) / sizeof(users[0]);
       break;
     case DeviceList:
-      menuSize = sizeof(devices) / sizeof(devices[0]);
+      menuSize = devicesCount == 0 ? 1 : devicesCount;
       break;
     default:
       break;
@@ -289,18 +291,19 @@ void knobRotated(ESPRotary &r) {
   lastKnobPosition = newPosition;
 
   int steps = 1;
-  if (menuSize > 20 && lastInputDelta <= 36) {
+  if (menuSize > 20 && lastInputDelta <= 35) {
     double speed =
         (lastKnobSpeed + (double)positionDelta / lastInputDelta) / 2.0;
     lastKnobSpeed = speed;
-    steps = max(1, (int)(fabs(speed) * 200));
+    steps = min(100, max(1, (int)(fabs(speed) * 200)));
+    // Serial.printf("steps: %d, speed: %f", steps, speed);
   } else {
     lastKnobSpeed = 0.0;
   }
 
-  menuIndex = menuOffset + newPosition * steps;
+  menuIndex += positionDelta * steps;
   if (menuIndex < 0) menuIndex = menuSize + abs(menuIndex);
-  menuIndex = menuIndex % menuSize;
+  menuIndex %= menuSize;
 
   switch (menuMode) {
     case AlphabeticList:
@@ -345,8 +348,10 @@ void knobClicked() {
       Serial.printf("switching to user %s\n", users[menuIndex]);
       break;
     case DeviceList:
-      activeDevice = devices[menuIndex];
-      Serial.printf("switching to device %s\n", activeDevice->name.c_str());
+      if (devicesCount > 0) {
+        activeDevice = &devices[menuIndex];
+        Serial.printf("switching to device %s\n", activeDevice->name.c_str());
+      }
       break;
     case RootMenu:
       break;
@@ -403,6 +408,18 @@ void knobLongPressStopped() {
       case TempoList:
         newMenuIndex = getMenuIndexForGenre(genreIndexes_tempo, newMenuIndex);
         break;
+      case DeviceList:
+        if (devicesCount == 0) {
+          sptfAction = GetDevices;
+        } else {
+          for (uint8_t i = 1; i < devicesCount; i++) {
+            if (&devices[i] == activeDevice) {
+              newMenuIndex = i;
+              break;
+            }
+          }
+        }
+        break;
       default:
         break;
     }
@@ -455,10 +472,21 @@ void updateDisplay() {
       display.drawStringMaxWidth(63, 1, 126, number);
       display.drawStringMaxWidth(63, 18, 126, users[menuIndex]);
     } else if (menuMode == DeviceList) {
-      char number[7];
-      sprintf(number, "%d / %d", menuIndex + 1, menuSize);
-      display.drawStringMaxWidth(63, 1, 126, number);
-      display.drawStringMaxWidth(63, 18, 126, devices[menuIndex]->name);
+      if (devicesCount == 0) {
+        display.drawStringMaxWidth(63, 18, 126, "loading...");
+      } else {
+        char header[7];
+        sprintf(header, "%d / %d", menuIndex + 1, menuSize);
+        display.drawStringMaxWidth(63, 1, 126, header);
+
+        if (activeDevice == &devices[menuIndex]) {
+          display.drawStringMaxWidth(
+              63, 18, 126,
+              String("[") + activeDevice->name + String("]"));
+        } else {
+          display.drawStringMaxWidth(63, 18, 126, devices[menuIndex].name);
+        }
+      }
     } else {
       display.drawStringMaxWidth(63, 18, 126, genre);
 
@@ -569,8 +597,10 @@ void loop() {
         sptfToggle();
         break;
       case PlayGenre:
-        const char *playlistId = playlists[genreIndex];
-        sptfPlayGenre(playlistId);
+        sptfPlayGenre(playlists[genreIndex]);
+        break;
+      case GetDevices:
+        sptfGetDevices();
         break;
     }
   }
@@ -925,7 +955,7 @@ void sptfCurrentlyPlaying() {
   next_curplay_millis = 0;
   if (access_token[0] == '\0') return;
 
-  HTTP_response_t response = sptfApiRequest("GET", "");
+  HTTP_response_t response = sptfApiRequest("GET", "?market=US");
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(5000);
@@ -1016,18 +1046,19 @@ void sptfPlayGenre(const char *playlistId) {
 
   sptf_is_playing = false;
   playingGenreIndex = genreIndex;
-  char requestContent[113];
+  char requestContent[58];
+  snprintf(requestContent, sizeof(requestContent),
+           "{\"context_uri\":\"spotify:playlist:%s\"}", playlistId);
+  HTTP_response_t response;
   if (activeDevice != NULL) {
     const char *deviceId = activeDevice->id.c_str();
-    snprintf(requestContent, sizeof(requestContent),
-             "{\"context_uri\":\"spotify:playlist:%s\","
-             "\"device_id\":\"%s\"}",
-             playlistId, deviceId);
+    char path[58];
+    snprintf(path, sizeof(path), "/play?device_id=%s", deviceId);
+    response = sptfApiRequest("PUT", path, requestContent);
   } else {
-    snprintf(requestContent, sizeof(requestContent),
-             "{\"context_uri\":\"spotify:playlist:%s\"}", playlistId);
+    response = sptfApiRequest("PUT", "/play", requestContent);
   }
-  HTTP_response_t response = sptfApiRequest("PUT", "/play", requestContent);
+
   if (response.httpCode == 204) {
     sptf_is_playing = true;
     sptfResetProgress();
@@ -1043,3 +1074,33 @@ void sptfResetProgress() {
   last_curplay_millis = millis();
   next_curplay_millis = millis() + 200;
 };
+
+void sptfGetDevices() {
+  if (access_token[0] == '\0') return;
+  HTTP_response_t response = sptfApiRequest("GET", "/devices");
+  if (response.httpCode == 200) {
+    DynamicJsonDocument doc(5000);
+    DeserializationError error = deserializeJson(doc, response.payload);
+
+    if (!error) {
+      JsonArray jsonDevices = doc["devices"];
+      devicesCount = min(MAX_DEVICES, jsonDevices.size());
+      if (menuMode == DeviceList) menuSize = devicesCount;
+      for (size_t i = 0; i < devicesCount; i++) {
+        JsonObject jsonDevice = doc["devices"][i];
+        const char *id = jsonDevice["id"];
+        const char *name = jsonDevice["name"];
+        bool is_active = jsonDevice["is_active"];
+        // int volume_percent = jsonDevice["volume_percent"];
+
+        devices[i].id = String(id);
+        devices[i].name = String(name);
+        if (is_active) {
+          activeDevice = &devices[i];
+          if (menuMode == DeviceList) menuIndex = i;
+        }
+      }
+    }
+  }
+  sptfAction = CurrentlyPlaying;
+}
