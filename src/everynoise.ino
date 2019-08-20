@@ -8,6 +8,7 @@
 #include <WiFiClientSecure.h>
 #include <base64.h>
 #include <time.h>
+#include "driver/rtc_io.h"
 
 #include "ESPRotary.h"
 
@@ -99,16 +100,10 @@ const char *rootMenuItems[] = {"play/pause", "alphabetic", "alphabetic suffix",
                                "popularity", "modernity",  "background",
                                "tempo",      "users",      "devices"};
 const char *users[] = {"milo", "alexa"};
-// SptfDevice_t d1 = {String("980a3f0b52a30b16ea3e276c1df41097cedbb75d"),
-//                    String("doop")};
-// SptfDevice_t d2 = {String("a5c5a50cac7fb4e2a2978e9678eb0d780131923e"),
-//                    String("living room")};
-// SptfDevice_t d3 = {String("a087863af82ed5ef8ecb31bb4e1de43683ec962f"),
-//                    String("basement")};
 #define MAX_DEVICES 10
 SptfDevice_t devices[MAX_DEVICES] = {{}, {}, {}, {}, {}, {}, {}, {}, {}, {}};
 uint8_t devicesCount = 0;
-SptfDevice_t *activeDevice = NULL;
+RTC_DATA_ATTR char activeDeviceId[41] = "";
 uint16_t menuSize = GENRE_COUNT;
 uint16_t menuIndex = 0;
 int menuOffset = 0;
@@ -291,9 +286,9 @@ void knobRotated(ESPRotary &r) {
   lastKnobPosition = newPosition;
 
   int steps = 1;
-  if (menuSize > 20 && lastInputDelta <= 35) {
+  if (menuSize > 20 && lastInputDelta <= 34) {
     double speed =
-        (lastKnobSpeed + (double)positionDelta / lastInputDelta) / 2.0;
+        (2 * lastKnobSpeed + (double)positionDelta / lastInputDelta) / 3.0;
     lastKnobSpeed = speed;
     steps = min(100, max(1, (int)(fabs(speed) * 200)));
     // Serial.printf("steps: %d, speed: %f", steps, speed);
@@ -349,8 +344,10 @@ void knobClicked() {
       break;
     case DeviceList:
       if (devicesCount > 0) {
-        activeDevice = &devices[menuIndex];
-        Serial.printf("switching to device %s\n", activeDevice->name.c_str());
+        SptfDevice_t activeDevice = devices[menuIndex];
+        strncpy(activeDeviceId, activeDevice.id.c_str(),
+                sizeof(activeDeviceId));
+        Serial.printf("switching to device %s\n", activeDevice.name.c_str());
       }
       break;
     case RootMenu:
@@ -413,7 +410,7 @@ void knobLongPressStopped() {
           sptfAction = GetDevices;
         } else {
           for (uint8_t i = 1; i < devicesCount; i++) {
-            if (&devices[i] == activeDevice) {
+            if (strcmp(devices[i].id.c_str(), activeDeviceId) == 0) {
               newMenuIndex = i;
               break;
             }
@@ -479,10 +476,10 @@ void updateDisplay() {
         sprintf(header, "%d / %d", menuIndex + 1, menuSize);
         display.drawStringMaxWidth(63, 1, 126, header);
 
-        if (activeDevice == &devices[menuIndex]) {
+        SptfDevice_t activeDevice = devices[menuIndex];
+        if (strcmp(activeDevice.id.c_str(), activeDeviceId) == 0) {
           display.drawStringMaxWidth(
-              63, 18, 126,
-              String("[") + activeDevice->name + String("]"));
+              63, 18, 126, String("[") + activeDevice.name + String("]"));
         } else {
           display.drawStringMaxWidth(63, 18, 126, devices[menuIndex].name);
         }
@@ -547,6 +544,7 @@ void loop() {
     display.displayOff();
     displayOn = false;
     WiFi.disconnect(true);
+    rtc_gpio_isolate(GPIO_NUM_12);
     esp_deep_sleep_start();
   }
 
@@ -912,7 +910,7 @@ void sptfGetToken(const String &code, GrantTypes grant_type) {
     DeserializationError error = deserializeJson(json, response.payload);
 
     if (!error) {
-      strcpy(access_token, json["access_token"]);
+      strncpy(access_token, json["access_token"], sizeof(access_token));
       if (access_token[0] != '\0') {
         token_lifetime = (json["expires_in"].as<uint32_t>() - 300);
         struct timeval now;
@@ -1029,8 +1027,17 @@ void sptfToggle() {
 
   bool was_playing = sptf_is_playing;
   sptf_is_playing = !sptf_is_playing;
-  HTTP_response_t response =
-      sptfApiRequest("PUT", was_playing ? "/pause" : "/play");
+  HTTP_response_t response;
+  if (activeDeviceId[0] != '\0') {
+    char path[58];
+    snprintf(path, sizeof(path),
+             was_playing ? "/pause?device_id=%s" : "/play?device_id=%s",
+             activeDeviceId);
+    response = sptfApiRequest("PUT", path);
+  } else {
+    response = sptfApiRequest("PUT", was_playing ? "/pause" : "/play");
+  }
+
   if (response.httpCode == 204) {
     next_curplay_millis = millis() + 200;
   } else {
@@ -1050,10 +1057,9 @@ void sptfPlayGenre(const char *playlistId) {
   snprintf(requestContent, sizeof(requestContent),
            "{\"context_uri\":\"spotify:playlist:%s\"}", playlistId);
   HTTP_response_t response;
-  if (activeDevice != NULL) {
-    const char *deviceId = activeDevice->id.c_str();
+  if (activeDeviceId[0] != '\0') {
     char path[58];
-    snprintf(path, sizeof(path), "/play?device_id=%s", deviceId);
+    snprintf(path, sizeof(path), "/play?device_id=%s", activeDeviceId);
     response = sptfApiRequest("PUT", path, requestContent);
   } else {
     response = sptfApiRequest("PUT", "/play", requestContent);
@@ -1085,6 +1091,7 @@ void sptfGetDevices() {
     if (!error) {
       JsonArray jsonDevices = doc["devices"];
       devicesCount = min(MAX_DEVICES, jsonDevices.size());
+      if (devicesCount == 0) activeDeviceId[0] = '\0';
       if (menuMode == DeviceList) menuSize = devicesCount;
       for (size_t i = 0; i < devicesCount; i++) {
         JsonObject jsonDevice = doc["devices"][i];
@@ -1096,7 +1103,7 @@ void sptfGetDevices() {
         devices[i].id = String(id);
         devices[i].name = String(name);
         if (is_active) {
-          activeDevice = &devices[i];
+          strncpy(activeDeviceId, devices[i].id.c_str(), sizeof(activeDeviceId));
           if (menuMode == DeviceList) menuIndex = i;
         }
       }
