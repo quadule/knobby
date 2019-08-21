@@ -1,16 +1,14 @@
-#include <ArduinoJson.h>
-#include <ESPAsyncWebServer.h>
-#include <ESPmDNS.h>
-#include <HTTPClient.h>
-#include <OneButton.h>
-#include <SPIFFS.h>
-#include <SSD1306Wire.h>
-#include <WiFiClientSecure.h>
-#include <base64.h>
-#include <time.h>
+#include "ArduinoJson.h"
+#include "base64.h"
 #include "driver/rtc_io.h"
-
+#include "ESPAsyncWebServer.h"
+#include "ESPmDNS.h"
 #include "ESPRotary.h"
+#include "OneButton.h"
+#include "SPIFFS.h"
+#include "SSD1306Wire.h"
+#include "time.h"
+#include "WiFiClientSecure.h"
 
 SSD1306Wire display(0x3c, 5, 4);
 
@@ -84,21 +82,29 @@ bool displayOn = true;
 
 enum MenuModes {
   RootMenu,
+  UserList,
+  DeviceList,
   AlphabeticList,
   AlphabeticSuffixList,
   PopularityList,
   ModernityList,
   BackgroundList,
-  TempoList,
-  UserList,
-  DeviceList
+  TempoList
 };
 MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
 uint16_t lastMenuIndex = 0;
-const char *rootMenuItems[] = {"play/pause", "alphabetic", "alphabetic suffix",
-                               "popularity", "modernity",  "background",
-                               "tempo",      "users",      "devices"};
+const char *rootMenuItems[] = {
+  "play/pause",
+  "users",
+  "devices",
+  "alphabetic",
+  "alphabetic suffix",
+  "popularity",
+  "modernity",
+  "background",
+  "tempo"
+};
 const char *users[] = {"milo", "alexa"};
 #define MAX_DEVICES 10
 SptfDevice_t devices[MAX_DEVICES] = {{}, {}, {}, {}, {}, {}, {}, {}, {}, {}};
@@ -255,6 +261,12 @@ void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
     case RootMenu:
       menuSize = sizeof(rootMenuItems) / sizeof(rootMenuItems[0]);
       break;
+    case UserList:
+      menuSize = sizeof(users) / sizeof(users[0]);
+      break;
+    case DeviceList:
+      menuSize = devicesCount == 0 ? 1 : devicesCount;
+      break;
     case AlphabeticList:
     case AlphabeticSuffixList:
     case PopularityList:
@@ -262,12 +274,6 @@ void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
     case BackgroundList:
     case TempoList:
       menuSize = GENRE_COUNT;
-      break;
-    case UserList:
-      menuSize = sizeof(users) / sizeof(users[0]);
-      break;
-    case DeviceList:
-      menuSize = devicesCount == 0 ? 1 : devicesCount;
       break;
     default:
       break;
@@ -296,9 +302,9 @@ void knobRotated(ESPRotary &r) {
     lastKnobSpeed = 0.0;
   }
 
-  menuIndex += positionDelta * steps;
-  if (menuIndex < 0) menuIndex = menuSize + abs(menuIndex);
-  menuIndex %= menuSize;
+  int newMenuIndex = (menuIndex + (positionDelta * steps)) % menuSize;
+  if(newMenuIndex < 0) newMenuIndex += menuSize;
+  menuIndex = newMenuIndex;
 
   switch (menuMode) {
     case AlphabeticList:
@@ -330,15 +336,6 @@ void knobClicked() {
   lastInputMillis = millis();
 
   switch (menuMode) {
-    case AlphabeticList:
-    case AlphabeticSuffixList:
-    case PopularityList:
-    case ModernityList:
-    case BackgroundList:
-    case TempoList:
-      Serial.printf("play genre %s\n", genres[genreIndex]);
-      sptfAction = PlayGenre;
-      break;
     case UserList:
       Serial.printf("switching to user %s\n", users[menuIndex]);
       break;
@@ -349,6 +346,15 @@ void knobClicked() {
                 sizeof(activeDeviceId));
         Serial.printf("switching to device %s\n", activeDevice.name.c_str());
       }
+      break;
+    case AlphabeticList:
+    case AlphabeticSuffixList:
+    case PopularityList:
+    case ModernityList:
+    case BackgroundList:
+    case TempoList:
+      Serial.printf("play genre %s\n", genres[genreIndex]);
+      sptfAction = PlayGenre;
       break;
     case RootMenu:
       break;
@@ -384,6 +390,18 @@ void knobLongPressStopped() {
     uint16_t newMenuIndex = lastMenuIndex;
 
     switch (menuIndex) {
+      case DeviceList:
+        if (devicesCount == 0) {
+          sptfAction = GetDevices;
+        } else {
+          for (uint8_t i = 1; i < devicesCount; i++) {
+            if (strcmp(devices[i].id.c_str(), activeDeviceId) == 0) {
+              newMenuIndex = i;
+              break;
+            }
+          }
+        }
+        break;
       case AlphabeticList:
         newMenuIndex = genreIndex;
         break;
@@ -404,18 +422,6 @@ void knobLongPressStopped() {
         break;
       case TempoList:
         newMenuIndex = getMenuIndexForGenre(genreIndexes_tempo, newMenuIndex);
-        break;
-      case DeviceList:
-        if (devicesCount == 0) {
-          sptfAction = GetDevices;
-        } else {
-          for (uint8_t i = 1; i < devicesCount; i++) {
-            if (strcmp(devices[i].id.c_str(), activeDeviceId) == 0) {
-              newMenuIndex = i;
-              break;
-            }
-          }
-        }
         break;
       default:
         break;
