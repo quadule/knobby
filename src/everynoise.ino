@@ -1,14 +1,14 @@
 #include "ArduinoJson.h"
-#include "base64.h"
-#include "driver/rtc_io.h"
 #include "ESPAsyncWebServer.h"
-#include "ESPmDNS.h"
 #include "ESPRotary.h"
+#include "ESPmDNS.h"
 #include "OneButton.h"
 #include "SPIFFS.h"
 #include "SSD1306Wire.h"
-#include "time.h"
 #include "WiFiClientSecure.h"
+#include "base64.h"
+#include "driver/rtc_io.h"
+#include "time.h"
 
 SSD1306Wire display(0x3c, 5, 4);
 
@@ -33,14 +33,22 @@ typedef struct {
 } HTTP_response_t;
 
 typedef struct {
+  String name;
+  String refreshToken;
+  String country;
+} SptfUser_t;
+
+typedef struct {
   String id;
   String name;
+  uint8_t volumePercent;
 } SptfDevice_t;
 
 enum SptfActions {
   Idle,
   GetToken,
   CurrentlyPlaying,
+  CurrentProfile,
   Next,
   Previous,
   Toggle,
@@ -58,7 +66,6 @@ AsyncEventSource events("/events");
 String nodeName = "everynoisebox";
 String auth_code;
 RTC_DATA_ATTR char access_token[300] = {'\0'};
-String refresh_token;
 
 RTC_DATA_ATTR time_t token_lifetime = 0;
 RTC_DATA_ATTR time_t token_time = 0;
@@ -74,7 +81,7 @@ SptfActions sptfAction = Idle;
 
 #define INACTIVITY_MILLIS 45000
 short playingGenreIndex = -1;
-uint16_t genreIndex = 0;
+uint32_t genreIndex = 0;
 unsigned long lastInputMillis = 0;
 unsigned long lastDisplayMillis = 0;
 unsigned long lastReconnectAttemptMillis = 0;
@@ -93,25 +100,23 @@ enum MenuModes {
 };
 MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
-uint16_t lastMenuIndex = 0;
+uint32_t lastMenuIndex = 0;
 const char *rootMenuItems[] = {
-  "play/pause",
-  "users",
-  "devices",
-  "alphabetic",
-  "alphabetic suffix",
-  "popularity",
-  "modernity",
-  "background",
-  "tempo"
-};
-const char *users[] = {"milo", "alexa"};
+    "play/pause", "users",     "devices",    "alphabetic", "alphabetic suffix",
+    "popularity", "modernity", "background", "tempo"};
+// const char *users[] = {"milo", "alexa"};
+#define MAX_USERS 10
+SptfUser_t users[MAX_USERS] = {};
+uint8_t usersCount = 0;
+SptfUser_t *activeUser = NULL;
+RTC_DATA_ATTR char activeRefreshToken[150] = {'\0'};
 #define MAX_DEVICES 10
-SptfDevice_t devices[MAX_DEVICES] = {{}, {}, {}, {}, {}, {}, {}, {}, {}, {}};
+SptfDevice_t devices[MAX_DEVICES] = {};
 uint8_t devicesCount = 0;
-RTC_DATA_ATTR char activeDeviceId[41] = "";
-uint16_t menuSize = GENRE_COUNT;
-uint16_t menuIndex = 0;
+SptfDevice_t *activeDevice = NULL;
+RTC_DATA_ATTR char activeDeviceId[41] = {'\0'};
+uint32_t menuSize = GENRE_COUNT;
+uint32_t menuIndex = 0;
 int menuOffset = 0;
 int lastKnobPosition = 0;
 double lastKnobSpeed = 0.0;
@@ -154,9 +159,7 @@ void setup() {
     Serial.println("Error setting up MDNS responder!");
   }
 
-  //-----------------------------------------------
   // Initialize HTTP server handlers
-  //-----------------------------------------------
   events.onConnect([](AsyncEventSourceClient *client) {
     Serial.printf("\n> [%d] events.onConnect\n", (int)millis());
   });
@@ -167,24 +170,30 @@ void setup() {
     uint32_t ts = millis();
     Serial.printf("\n> [%d] server.on /\n", ts);
     if (access_token[0] == '\0' && !getting_token) {
-      getting_token = true;
-      char auth_url[300] = "";
-      snprintf(auth_url, sizeof(auth_url),
-               ("https://accounts.spotify.com/authorize/"
-                "?response_type=code"
-                "&scope=user-read-private+user-read-currently-playing+user-"
-                "read-playback-state+user-modify-playback-state"
-                "&redirect_uri=http%%3A%%2F%%2F" +
-                nodeName +
-                ".local%%2Fcallback%%2F"
-                "&client_id=%s")
-                   .c_str(),
-               SPTF_CLIENT_ID);
-      Serial.printf("  [%d] Redirect to: %s\n", ts, auth_url);
-      request->redirect(auth_url);
+      request->redirect("http://" + nodeName + ".local/authorize");
     } else {
       request->send(SPIFFS, "/index.html");
     }
+  });
+
+  server.on("/authorize", HTTP_GET, [](AsyncWebServerRequest *request) {
+    uint32_t ts = millis();
+    Serial.printf("\n> [%d] server.on /\n", ts);
+    getting_token = true;
+    char auth_url[300] = "";
+    snprintf(auth_url, sizeof(auth_url),
+             ("https://accounts.spotify.com/authorize/"
+              "?response_type=code"
+              "&scope=user-read-private+user-read-currently-playing+user-"
+              "read-playback-state+user-modify-playback-state"
+              "&redirect_uri=http%%3A%%2F%%2F" +
+              nodeName +
+              ".local%%2Fcallback%%2F"
+              "&client_id=%s")
+                 .c_str(),
+             SPTF_CLIENT_ID);
+    Serial.printf("  [%d] Redirect to: %s\n", ts, auth_url);
+    request->redirect(auth_url);
   });
 
   server.on("/callback", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -224,17 +233,15 @@ void setup() {
     request->send(200, "text/plain", String(ESP.getFreeHeap()));
   });
 
-  server.on("/resettoken", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/resetusers", HTTP_GET, [](AsyncWebServerRequest *request) {
     access_token[0] = '\0';
-    refresh_token = "";
-    deleteRefreshToken();
+    activeRefreshToken[0] = '\0';
+    SPIFFS.remove("/users.json");
     sptfAction = Idle;
     request->send(200, "text/plain", "Tokens deleted, restarting");
     uint32_t start = millis();
     while (true) {
-      if (millis() - start > 5000) {
-        ESP.restart();
-      }
+      if (millis() - start > 500) ESP.restart();
       yield();
     }
   });
@@ -248,13 +255,10 @@ void setup() {
 
   server.begin();
 
-  //-----------------------------------------------
-  // Get refresh token from EEPROM
-  //-----------------------------------------------
-  refresh_token = readRefreshToken();
+  readUsersJson();
 }
 
-void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
+void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
   menuMode = newMode;
   knob.resetPosition();
   switch (menuMode) {
@@ -262,7 +266,7 @@ void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
       menuSize = sizeof(rootMenuItems) / sizeof(rootMenuItems[0]);
       break;
     case UserList:
-      menuSize = sizeof(users) / sizeof(users[0]);
+      menuSize = usersCount;
       break;
     case DeviceList:
       menuSize = devicesCount == 0 ? 1 : devicesCount;
@@ -303,7 +307,7 @@ void knobRotated(ESPRotary &r) {
   }
 
   int newMenuIndex = (menuIndex + (positionDelta * steps)) % menuSize;
-  if(newMenuIndex < 0) newMenuIndex += menuSize;
+  if (newMenuIndex < 0) newMenuIndex += menuSize;
   menuIndex = newMenuIndex;
 
   switch (menuMode) {
@@ -337,14 +341,22 @@ void knobClicked() {
 
   switch (menuMode) {
     case UserList:
-      Serial.printf("switching to user %s\n", users[menuIndex]);
+      Serial.printf("switching to user %s\n", users[menuIndex].name.c_str());
+      strncpy(activeRefreshToken, users[menuIndex].refreshToken.c_str(),
+              sizeof(activeRefreshToken));
+      token_lifetime = 0;
+      token_time = 0;
+      access_token[0] = '\0';
+      activeDeviceId[0] = '\0';
+      activeDevice = NULL;
+      devicesCount = 0;
       break;
     case DeviceList:
       if (devicesCount > 0) {
-        SptfDevice_t activeDevice = devices[menuIndex];
-        strncpy(activeDeviceId, activeDevice.id.c_str(),
+        activeDevice = &devices[menuIndex];
+        strncpy(activeDeviceId, activeDevice->id.c_str(),
                 sizeof(activeDeviceId));
-        Serial.printf("switching to device %s\n", activeDevice.name.c_str());
+        Serial.printf("switching to device %s\n", activeDevice->name.c_str());
       }
       break;
     case AlphabeticList:
@@ -363,6 +375,7 @@ void knobClicked() {
 
 void knobDoubleClicked() {
   lastInputMillis = millis();
+  if (access_token[0] == '\0') return;
   Serial.println("next");
   sptfAction = Next;
 }
@@ -387,15 +400,29 @@ void knobLongPressStopped() {
     sptfAction = Toggle;
     setMenuMode(lastMenuMode, lastMenuIndex);
   } else if (menuIndex != lastMenuIndex) {
-    uint16_t newMenuIndex = lastMenuIndex;
+    uint32_t newMenuIndex = lastMenuIndex;
 
     switch (menuIndex) {
+      case UserList:
+        if (usersCount == 0) {
+          Serial.println("No token found, visit http://" + nodeName +
+                         ".local to authenticate");
+          setMenuMode(lastMenuMode, lastMenuIndex);
+        } else {
+          for (uint8_t i = 1; i < usersCount; i++) {
+            if (users[i].refreshToken.equals(activeRefreshToken)) {
+              newMenuIndex = i;
+              break;
+            }
+          }
+        }
+        break;
       case DeviceList:
         if (devicesCount == 0) {
           sptfAction = GetDevices;
         } else {
           for (uint8_t i = 1; i < devicesCount; i++) {
-            if (strcmp(devices[i].id.c_str(), activeDeviceId) == 0) {
+            if (devices[i].id.equals(activeDeviceId)) {
               newMenuIndex = i;
               break;
             }
@@ -406,22 +433,19 @@ void knobLongPressStopped() {
         newMenuIndex = genreIndex;
         break;
       case AlphabeticSuffixList:
-        newMenuIndex = getMenuIndexForGenre(genreIndexes_suffix, newMenuIndex);
+        newMenuIndex = getGenreMenuIndex(genreIndexes_suffix, newMenuIndex);
         break;
       case PopularityList:
-        newMenuIndex =
-            getMenuIndexForGenre(genreIndexes_popularity, newMenuIndex);
+        newMenuIndex = getGenreMenuIndex(genreIndexes_popularity, newMenuIndex);
         break;
       case ModernityList:
-        newMenuIndex =
-            getMenuIndexForGenre(genreIndexes_modernity, newMenuIndex);
+        newMenuIndex = getGenreMenuIndex(genreIndexes_modernity, newMenuIndex);
         break;
       case BackgroundList:
-        newMenuIndex =
-            getMenuIndexForGenre(genreIndexes_background, newMenuIndex);
+        newMenuIndex = getGenreMenuIndex(genreIndexes_background, newMenuIndex);
         break;
       case TempoList:
-        newMenuIndex = getMenuIndexForGenre(genreIndexes_tempo, newMenuIndex);
+        newMenuIndex = getGenreMenuIndex(genreIndexes_tempo, newMenuIndex);
         break;
       default:
         break;
@@ -433,8 +457,8 @@ void knobLongPressStopped() {
   }
 }
 
-uint16_t getMenuIndexForGenre(const uint16_t indexes[], uint16_t defaultIndex) {
-  for (uint16_t i = 1; i < GENRE_COUNT; i++) {
+uint32_t getGenreMenuIndex(const uint16_t indexes[], uint32_t defaultIndex) {
+  for (uint32_t i = 1; i < GENRE_COUNT; i++) {
     if (indexes[i] == genreIndex) return i;
   }
   return defaultIndex;
@@ -461,7 +485,10 @@ void updateDisplay() {
     display.setTextAlignment(TEXT_ALIGN_CENTER);
     display.setFont(Dialog_plain_12);
 
-    if (menuMode == RootMenu) {
+    if (usersCount == 0) {
+      display.drawStringMaxWidth(63, 16, 126, "setup at http://");
+      display.drawStringMaxWidth(63, 32, 126, nodeName + ".local");
+    } else if (menuMode == RootMenu) {
       display.drawRect(7, 10, 114, 32);
       if (menuIndex == 0) {
         display.drawStringMaxWidth(63, 18, 126,
@@ -470,10 +497,17 @@ void updateDisplay() {
         display.drawStringMaxWidth(63, 18, 126, rootMenuItems[menuIndex]);
       }
     } else if (menuMode == UserList) {
-      char number[7];
-      sprintf(number, "%d / %d", menuIndex + 1, menuSize);
-      display.drawStringMaxWidth(63, 1, 126, number);
-      display.drawStringMaxWidth(63, 18, 126, users[menuIndex]);
+      char header[7];
+      sprintf(header, "%d / %d", menuIndex + 1, menuSize);
+      display.drawStringMaxWidth(63, 1, 126, header);
+      display.drawStringMaxWidth(63, 18, 126, users[menuIndex].name);
+
+      SptfUser_t activeUser = users[menuIndex];
+      if (activeUser.refreshToken.equals(activeRefreshToken)) {
+        display.drawStringMaxWidth(63, 18, 126, "[" + activeUser.name + "]");
+      } else {
+        display.drawStringMaxWidth(63, 18, 126, users[menuIndex].name);
+      }
     } else if (menuMode == DeviceList) {
       if (devicesCount == 0) {
         display.drawStringMaxWidth(63, 18, 126, "loading...");
@@ -484,8 +518,8 @@ void updateDisplay() {
 
         SptfDevice_t activeDevice = devices[menuIndex];
         if (strcmp(activeDevice.id.c_str(), activeDeviceId) == 0) {
-          display.drawStringMaxWidth(
-              63, 18, 126, String("[") + activeDevice.name + String("]"));
+          display.drawStringMaxWidth(63, 18, 126,
+                                     "[" + activeDevice.name + "]");
         } else {
           display.drawStringMaxWidth(63, 18, 126, devices[menuIndex].name);
         }
@@ -560,7 +594,7 @@ void loop() {
     lastReconnectAttemptMillis = cur_millis;
   }
 
-  if (connected && !getting_token && refresh_token != "" &&
+  if (connected && !getting_token && activeRefreshToken[0] != '\0' &&
       (access_token[0] == '\0' || token_age >= token_lifetime)) {
     getting_token = true;
     sptfAction = GetToken;
@@ -575,9 +609,9 @@ void loop() {
         break;
       case GetToken:
         if (auth_code != "") {
-          sptfGetToken(auth_code, gt_authorization_code);
-        } else if (refresh_token != "") {
-          sptfGetToken(refresh_token, gt_refresh_token);
+          sptfGetToken(auth_code.c_str(), gt_authorization_code);
+        } else if (activeRefreshToken[0] != '\0') {
+          sptfGetToken(activeRefreshToken, gt_refresh_token);
         } else {
           Serial.println("No token found, visit http://" + nodeName +
                          ".local to authenticate");
@@ -590,6 +624,9 @@ void loop() {
         } else if (cur_millis - last_curplay_millis >= SPTF_MAX_POLLING_DELAY) {
           sptfCurrentlyPlaying();
         }
+        break;
+      case CurrentProfile:
+        sptfCurrentProfile();
         break;
       case Next:
         sptfNext();
@@ -681,36 +718,58 @@ String b64Encode(String str) {
   return encodedStr;
 }
 
-void writeRefreshToken(String refresh_token) {
-  Serial.printf("Saving refresh token: %s\n", refresh_token.c_str());
-  File f = SPIFFS.open("/refreshToken.txt", "w+");
-  if (!f) {
-    Serial.println("Failed to open config file");
-    return;
-  }
-  f.println(refresh_token);
+bool readUsersJson() {
+  File f = SPIFFS.open("/users.json", "r");
+  DynamicJsonDocument doc(2130);
+  DeserializationError error = deserializeJson(doc, f);
   f.close();
+
+  if (error) {
+    Serial.printf("Failed to read users.json: %s\n", error.c_str());
+    writeUsersJson();
+    return false;
+  }
+
+  usersCount = min(MAX_USERS, doc.size());
+
+  for (uint8_t i = 0; i < usersCount; i++) {
+    JsonObject jsonUser = doc[i];
+
+    users[i].name = jsonUser["name"].as<String>();
+    users[i].refreshToken = jsonUser["token"].as<String>();
+    users[i].country = jsonUser["country"] | "US";
+
+    Serial.println("Found user " + users[i].name);
+    if (!activeUser) {
+      activeUser = &users[i];
+      strncpy(activeRefreshToken, users[i].refreshToken.c_str(),
+              sizeof(activeRefreshToken));
+    }
+  }
+
+  return true;
 }
 
-String readRefreshToken() {
-  File f = SPIFFS.open("/refreshToken.txt", "r");
-  if (!f) {
-    Serial.println("Failed to open config file");
-    return "";
-  }
-  while (f.available()) {
-    String token = f.readStringUntil('\r');
-    Serial.printf("Refresh Token: %s\n", token.c_str());
-    f.close();
-    return token;
-  }
-  return "";
-}
+bool writeUsersJson() {
+  File f = SPIFFS.open("/users.json", "w+");
+  DynamicJsonDocument doc(2130);
 
-/**
- * Delete refresh token from EEPROM
- */
-void deleteRefreshToken() { SPIFFS.remove("/refreshToken.txt"); }
+  for (uint8_t i = 0; i < usersCount; i++) {
+    SptfUser_t user = users[i];
+    JsonObject obj = doc.createNestedObject();
+    obj["name"] = user.name;
+    obj["token"] = user.refreshToken;
+    obj["country"] = user.country;
+  }
+
+  size_t bytes = serializeJson(doc, f);
+  f.close();
+  if (bytes <= 0) {
+    Serial.printf("Failed to write users.json: %d\n", bytes);
+    return false;
+  }
+  return true;
+}
 
 /**
  * HTTP request
@@ -846,7 +905,7 @@ HTTP_response_t sptfApiRequest(const char *method, const char *endpoint,
 
   char headers[512];
   snprintf(headers, sizeof(headers),
-           "%s /v1/me/player%s HTTP/1.1\r\n"
+           "%s /v1/me%s HTTP/1.1\r\n"
            "Host: api.spotify.com\r\n"
            "Authorization: Bearer %s\r\n"
            "Content-Length: %d\r\n"
@@ -870,10 +929,10 @@ HTTP_response_t sptfApiRequest(const char *method, const char *endpoint,
  * @param code          Either an authorization code or a refresh token
  * @param grant_type    [gt_authorization_code|gt_refresh_token]
  */
-void sptfGetToken(const String &code, GrantTypes grant_type) {
+void sptfGetToken(const char *code, GrantTypes grant_type) {
   uint32_t ts = millis();
   Serial.printf(
-      "\n> [%d] sptfGetToken(%s, %s)\n", ts, code.c_str(),
+      "\n> [%d] sptfGetToken(%s, %s)\n", ts, code,
       grant_type == gt_authorization_code ? "authorization" : "refresh");
 
   bool success = false;
@@ -887,10 +946,10 @@ void sptfGetToken(const String &code, GrantTypes grant_type) {
               ".local%%2Fcallback%%2F"
               "&code=%s")
                  .c_str(),
-             code.c_str());
+             code);
   } else {
     snprintf(requestContent, sizeof(requestContent),
-             "grant_type=refresh_token&refresh_token=%s", code.c_str());
+             "grant_type=refresh_token&refresh_token=%s", code);
   }
 
   uint8_t basicAuthSize = sizeof(SPTF_CLIENT_ID) + sizeof(SPTF_CLIENT_SECRET);
@@ -924,10 +983,22 @@ void sptfGetToken(const String &code, GrantTypes grant_type) {
         token_time = now.tv_sec;
         success = true;
         if (json.containsKey("refresh_token")) {
-          String new_refresh_token = json["refresh_token"].as<String>();
-          if (refresh_token != new_refresh_token) {
-            refresh_token = new_refresh_token;
-            writeRefreshToken(refresh_token);
+          const char *newRefreshToken = json["refresh_token"];
+          if (strcmp(newRefreshToken, activeRefreshToken) != 0) {
+            strncpy(activeRefreshToken, newRefreshToken,
+                    sizeof(activeRefreshToken));
+            bool found = false;
+            for (uint8_t i = 0; i < usersCount; i++) {
+              SptfUser_t user = users[i];
+              if (user.refreshToken.equals(activeRefreshToken)) {
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              users[usersCount++] = {"", String(activeRefreshToken)};
+              if (!activeUser) activeUser = &users[usersCount - 1];
+            };
           }
         }
       }
@@ -944,7 +1015,9 @@ void sptfGetToken(const String &code, GrantTypes grant_type) {
                     response.payload.c_str());
   }
 
-  if (success) sptfAction = CurrentlyPlaying;
+  if (success)
+    sptfAction =
+        grant_type == gt_authorization_code ? CurrentProfile : CurrentlyPlaying;
 
   getting_token = false;
 }
@@ -957,9 +1030,9 @@ void sptfCurrentlyPlaying() {
   Serial.printf("\n> [%d] sptfCurrentlyPlaying()\n", ts);
 
   next_curplay_millis = 0;
-  if (access_token[0] == '\0') return;
+  if (access_token[0] == '\0' || !activeUser) return;
 
-  HTTP_response_t response = sptfApiRequest("GET", "?market=US");
+  HTTP_response_t response = sptfApiRequest("GET", ("/player?market=" + activeUser->country).c_str());
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(5000);
@@ -998,10 +1071,67 @@ void sptfCurrentlyPlaying() {
 }
 
 /**
+ * Get information about the current Spotify user
+ */
+void sptfCurrentProfile() {
+  uint32_t ts = millis();
+  Serial.printf("\n> [%d] sptfCurrentProfile()\n", ts);
+
+  if (access_token[0] == '\0') return;
+
+  HTTP_response_t response = sptfApiRequest("GET", "");
+
+  if (response.httpCode == 200) {
+    DynamicJsonDocument json(2000);
+    DeserializationError error = deserializeJson(json, response.payload);
+
+    if (!error) {
+      String display_name = json["display_name"];
+      String country = json["country"];
+
+      uint8_t userIndex = 0;
+      bool found = false;
+      for (userIndex = 0; userIndex < usersCount; userIndex++) {
+        SptfUser_t user = users[userIndex];
+        if (user.name.equals(display_name) ||
+            user.refreshToken.equals(activeRefreshToken)) {
+          found = true;
+          break;
+        }
+      }
+      if(!found) {
+        userIndex = usersCount % MAX_USERS;
+        if(usersCount < 10) usersCount++;
+      }
+
+      Serial.printf("Signed in as %s, index %d, count %d\n", display_name.c_str(), userIndex, usersCount);
+
+      SptfUser_t user = users[userIndex];
+      user.name = display_name;
+      user.country = country;
+      activeUser = &user;
+      writeUsersJson();
+    } else {
+      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts,
+                    response.payload.c_str());
+      eventsSendError(500, "Unable to parse response payload",
+                      response.payload.c_str());
+    }
+  } else {
+    Serial.printf("  [%d] %d - %s\n", ts, response.httpCode,
+                  response.payload.c_str());
+    eventsSendError(response.httpCode, "Spotify error",
+                    response.payload.c_str());
+  }
+
+  sptfAction = CurrentlyPlaying;
+}
+
+/**
  * Spotify next track
  */
 void sptfNext() {
-  HTTP_response_t response = sptfApiRequest("POST", "/next");
+  HTTP_response_t response = sptfApiRequest("POST", "/player/next");
   if (response.httpCode == 204) {
     sptfResetProgress();
   } else {
@@ -1015,7 +1145,7 @@ void sptfNext() {
  * Spotify previous track
  */
 void sptfPrevious() {
-  HTTP_response_t response = sptfApiRequest("POST", "/previous");
+  HTTP_response_t response = sptfApiRequest("POST", "/player/previous");
   if (response.httpCode == 204) {
     sptfResetProgress();
   } else {
@@ -1037,11 +1167,12 @@ void sptfToggle() {
   if (activeDeviceId[0] != '\0') {
     char path[58];
     snprintf(path, sizeof(path),
-             was_playing ? "/pause?device_id=%s" : "/play?device_id=%s",
+             was_playing ? "/pause?device_id=%s" : "/player/play?device_id=%s",
              activeDeviceId);
     response = sptfApiRequest("PUT", path);
   } else {
-    response = sptfApiRequest("PUT", was_playing ? "/pause" : "/play");
+    response =
+        sptfApiRequest("PUT", was_playing ? "/player/pause" : "/player/play");
   }
 
   if (response.httpCode == 204) {
@@ -1065,10 +1196,10 @@ void sptfPlayGenre(const char *playlistId) {
   HTTP_response_t response;
   if (activeDeviceId[0] != '\0') {
     char path[58];
-    snprintf(path, sizeof(path), "/play?device_id=%s", activeDeviceId);
+    snprintf(path, sizeof(path), "/player/play?device_id=%s", activeDeviceId);
     response = sptfApiRequest("PUT", path, requestContent);
   } else {
-    response = sptfApiRequest("PUT", "/play", requestContent);
+    response = sptfApiRequest("PUT", "/player/play", requestContent);
   }
 
   if (response.httpCode == 204) {
@@ -1089,9 +1220,9 @@ void sptfResetProgress() {
 
 void sptfGetDevices() {
   if (access_token[0] == '\0') return;
-  HTTP_response_t response = sptfApiRequest("GET", "/devices");
+  HTTP_response_t response = sptfApiRequest("GET", "/player/devices");
   if (response.httpCode == 200) {
-    DynamicJsonDocument doc(5000);
+    DynamicJsonDocument doc(4000);
     DeserializationError error = deserializeJson(doc, response.payload);
 
     if (!error) {
@@ -1099,17 +1230,19 @@ void sptfGetDevices() {
       devicesCount = min(MAX_DEVICES, jsonDevices.size());
       if (devicesCount == 0) activeDeviceId[0] = '\0';
       if (menuMode == DeviceList) menuSize = devicesCount;
-      for (size_t i = 0; i < devicesCount; i++) {
+      for (uint8_t i = 0; i < devicesCount; i++) {
         JsonObject jsonDevice = doc["devices"][i];
         const char *id = jsonDevice["id"];
         const char *name = jsonDevice["name"];
         bool is_active = jsonDevice["is_active"];
-        // int volume_percent = jsonDevice["volume_percent"];
+        uint8_t volume_percent = jsonDevice["volume_percent"];
 
         devices[i].id = String(id);
         devices[i].name = String(name);
+        devices[i].volumePercent = volume_percent;
         if (is_active) {
-          strncpy(activeDeviceId, devices[i].id.c_str(), sizeof(activeDeviceId));
+          strncpy(activeDeviceId, devices[i].id.c_str(),
+                  sizeof(activeDeviceId));
           if (menuMode == DeviceList) menuIndex = i;
         }
       }
