@@ -33,28 +33,20 @@ typedef struct {
 } HTTP_response_t;
 
 typedef struct {
-  String name;
-  String refreshToken;
-  String country;
+  char name[64] = {'\0'};
+  char refreshToken[150] = {'\0'};
+  char country[3] = {'\0'};
+  bool selected = false;
+  char selectedDeviceId[41] = {'\0'};
 } SptfUser_t;
 
 typedef struct {
-  String id;
-  String name;
+  char id[41] = {'\0'};
+  char name[64] = {'\0'};
   uint8_t volumePercent;
 } SptfDevice_t;
 
-enum SptfActions {
-  Idle,
-  GetToken,
-  CurrentlyPlaying,
-  CurrentProfile,
-  Next,
-  Previous,
-  Toggle,
-  PlayGenre,
-  GetDevices
-};
+enum SptfActions { Idle, GetToken, CurrentlyPlaying, CurrentProfile, Next, Previous, Toggle, PlayGenre, GetDevices };
 
 enum GrantTypes { gt_authorization_code, gt_refresh_token };
 
@@ -79,13 +71,12 @@ uint32_t progress_ms = 0;
 
 SptfActions sptfAction = Idle;
 
-#define INACTIVITY_MILLIS 45000
 short playingGenreIndex = -1;
 uint32_t genreIndex = 0;
+unsigned long inactivityMillis = 45000;
 unsigned long lastInputMillis = 0;
 unsigned long lastDisplayMillis = 0;
 unsigned long lastReconnectAttemptMillis = 0;
-bool displayOn = true;
 
 enum MenuModes {
   RootMenu,
@@ -101,10 +92,8 @@ enum MenuModes {
 MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
 uint32_t lastMenuIndex = 0;
-const char *rootMenuItems[] = {
-    "play/pause", "users",     "devices",    "alphabetic", "alphabetic suffix",
-    "popularity", "modernity", "background", "tempo"};
-// const char *users[] = {"milo", "alexa"};
+const char *rootMenuItems[] = {"play/pause", "users",     "devices",    "name prefix", "name suffix",
+                               "popularity", "modernity", "background", "tempo"};
 #define MAX_USERS 10
 SptfUser_t users[MAX_USERS] = {};
 uint8_t usersCount = 0;
@@ -142,6 +131,7 @@ void setup() {
   button.attachLongPressStop(knobLongPressStopped);
 
   display.init();
+  display.displayOn();
 
   lastInputMillis = lastDisplayMillis = millis();
   menuIndex = genreIndex = menuOffset = random(GENRE_COUNT);
@@ -153,20 +143,19 @@ void setup() {
   WiFi.setHostname(nodeName.c_str());
 
   if (MDNS.begin(nodeName.c_str())) {
-    Serial.println("mDNS responder started");
     MDNS.addService("http", "tcp", 80);
+    Serial.printf("mDNS responder started, visit http://%s.local\n", nodeName.c_str());
   } else {
     Serial.println("Error setting up MDNS responder!");
   }
 
   // Initialize HTTP server handlers
-  events.onConnect([](AsyncEventSourceClient *client) {
-    Serial.printf("\n> [%d] events.onConnect\n", (int)millis());
-  });
+  events.onConnect([](AsyncEventSourceClient *client) { Serial.printf("\n> [%d] events.onConnect\n", (int)millis()); });
   server.addHandler(&events);
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     send_events = true;
+    inactivityMillis = 90000;
     uint32_t ts = millis();
     Serial.printf("\n> [%d] server.on /\n", ts);
     if (access_token[0] == '\0' && !getting_token) {
@@ -282,13 +271,12 @@ void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
     default:
       break;
   }
-  menuOffset = menuIndex = abs(newMenuIndex % menuSize);
+  menuOffset = menuIndex = newMenuIndex % menuSize;
 }
 
 void knobRotated(ESPRotary &r) {
   unsigned long now = millis();
-  unsigned long lastInputDelta =
-      (now == lastInputMillis) ? 1 : now - lastInputMillis;
+  unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
   lastInputMillis = now;
 
   int newPosition = r.getPosition();
@@ -296,18 +284,17 @@ void knobRotated(ESPRotary &r) {
   lastKnobPosition = newPosition;
 
   int steps = 1;
-  if (menuSize > 20 && lastInputDelta <= 34) {
-    double speed =
-        (2 * lastKnobSpeed + (double)positionDelta / lastInputDelta) / 3.0;
+  if (menuSize > 20 && lastInputDelta > 1 && lastInputDelta <= 30) {
+    double speed = (3 * lastKnobSpeed + (double)positionDelta / lastInputDelta) / 4.0;
     lastKnobSpeed = speed;
-    steps = min(100, max(1, (int)(fabs(speed) * 200)));
-    // Serial.printf("steps: %d, speed: %f", steps, speed);
+    steps = min(50, max(1, (int)(fabs(speed) * 200)));
   } else {
     lastKnobSpeed = 0.0;
   }
 
-  int newMenuIndex = (menuIndex + (positionDelta * steps)) % menuSize;
+  int newMenuIndex = ((int)menuIndex + (positionDelta * steps)) % (int)menuSize;
   if (newMenuIndex < 0) newMenuIndex += menuSize;
+  // Serial.printf("newIndex=%d from old=%d pos=%d delta=%d steps=%d size=%d\n", newMenuIndex, menuIndex, newPosition, positionDelta, steps, menuSize);
   menuIndex = newMenuIndex;
 
   switch (menuMode) {
@@ -341,22 +328,19 @@ void knobClicked() {
 
   switch (menuMode) {
     case UserList:
-      Serial.printf("switching to user %s\n", users[menuIndex].name.c_str());
-      strncpy(activeRefreshToken, users[menuIndex].refreshToken.c_str(),
-              sizeof(activeRefreshToken));
-      token_lifetime = 0;
-      token_time = 0;
-      access_token[0] = '\0';
-      activeDeviceId[0] = '\0';
-      activeDevice = NULL;
-      devicesCount = 0;
+      if (usersCount > 0) {
+        setActiveUser(&users[menuIndex]);
+        token_lifetime = 0;
+        token_time = 0;
+        access_token[0] = '\0';
+        updateDisplay();
+        writeUsersJson();
+      }
       break;
     case DeviceList:
       if (devicesCount > 0) {
-        activeDevice = &devices[menuIndex];
-        strncpy(activeDeviceId, activeDevice->id.c_str(),
-                sizeof(activeDeviceId));
-        Serial.printf("switching to device %s\n", activeDevice->name.c_str());
+        setActiveDevice(&devices[menuIndex]);
+        writeUsersJson();
       }
       break;
     case AlphabeticList:
@@ -365,7 +349,6 @@ void knobClicked() {
     case ModernityList:
     case BackgroundList:
     case TempoList:
-      Serial.printf("play genre %s\n", genres[genreIndex]);
       sptfAction = PlayGenre;
       break;
     case RootMenu:
@@ -376,7 +359,6 @@ void knobClicked() {
 void knobDoubleClicked() {
   lastInputMillis = millis();
   if (access_token[0] == '\0') return;
-  Serial.println("next");
   sptfAction = Next;
 }
 
@@ -396,8 +378,7 @@ void knobLongPressStarted() {
 void knobLongPressStopped() {
   lastInputMillis = millis();
   if (menuIndex == 0) {
-    Serial.println("toggle");
-    sptfAction = Toggle;
+    if (access_token[0] != '\0') sptfAction = Toggle;
     setMenuMode(lastMenuMode, lastMenuIndex);
   } else if (menuIndex != lastMenuIndex) {
     uint32_t newMenuIndex = lastMenuIndex;
@@ -405,24 +386,26 @@ void knobLongPressStopped() {
     switch (menuIndex) {
       case UserList:
         if (usersCount == 0) {
-          Serial.println("No token found, visit http://" + nodeName +
-                         ".local to authenticate");
+          Serial.printf("No users found! Visit http://%s.local to sign in.\n", nodeName.c_str());
           setMenuMode(lastMenuMode, lastMenuIndex);
         } else {
+          newMenuIndex = 0;
           for (uint8_t i = 1; i < usersCount; i++) {
-            if (users[i].refreshToken.equals(activeRefreshToken)) {
+            if (strcmp(users[i].refreshToken, activeRefreshToken) == 0) {
               newMenuIndex = i;
               break;
             }
           }
+          if (users[newMenuIndex].name[0] == '\0') sptfAction = CurrentProfile;
         }
         break;
       case DeviceList:
-        if (devicesCount == 0) {
+        if (devicesCount == 0 || activeDevice == NULL) {
           sptfAction = GetDevices;
         } else {
-          for (uint8_t i = 1; i < devicesCount; i++) {
-            if (devices[i].id.equals(activeDeviceId)) {
+          newMenuIndex = 0;
+          for (uint8_t i = 0; i < devicesCount; i++) {
+            if (strcmp(devices[i].id, activeDeviceId) == 0) {
               newMenuIndex = i;
               break;
             }
@@ -465,73 +448,88 @@ uint32_t getGenreMenuIndex(const uint16_t indexes[], uint32_t defaultIndex) {
 }
 
 void updateDisplay() {
+  const int centerX = 63;
+  const int maxWidth = 126;
+  const int lineOne = 0;
+  const int lineTwo = 16;
+  const int lineThree = 32;
   unsigned long current_millis = millis();
+  int8_t t = current_millis / 10 % 6;
+  bool connected = WiFi.isConnected();
   if (current_millis < 500) {
-    display.clear();
     display.setTextAlignment(TEXT_ALIGN_CENTER);
     display.setFont(Dialog_plain_12);
-    display.drawString(63, 16, "every noise");
-    display.drawString(63, 32, "in a box");
+    display.drawString(centerX, lineTwo, "every noise");
+    display.drawString(centerX, lineThree, "at once");
+    display.drawRect(t, t, 127 - (t * 2), 63 - (t * 2));
     display.display();
     lastDisplayMillis = millis();
-  } else if (lastInputMillis > lastDisplayMillis ||
-             (current_millis - lastDisplayMillis) > 10) {
+    delay(random(50));
+  } else if (lastInputMillis > lastDisplayMillis || (current_millis - lastDisplayMillis) > 10) {
     const char *genre = genres[genreIndex];
-    if (!displayOn) {
-      display.displayOn();
-      displayOn = true;
-    }
     display.clear();
     display.setTextAlignment(TEXT_ALIGN_CENTER);
     display.setFont(Dialog_plain_12);
 
-    if (usersCount == 0) {
-      display.drawStringMaxWidth(63, 16, 126, "setup at http://");
-      display.drawStringMaxWidth(63, 32, 126, nodeName + ".local");
+    if (!connected) {
+      if (t == 0) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, ".");
+      if (t == 1) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "|");
+      if (t == 2) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "|'|");
+      if (t == 3) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "'|'");
+      if (t == 4) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, ".:.");
+      if (t == 5) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "_");
+      delay(50);
+    } else if (usersCount == 0) {
+      display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "setup at http://");
+      display.drawStringMaxWidth(centerX, lineThree, maxWidth, nodeName + ".local");
+    } else if (getting_token) {
+      display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "spotify...");
     } else if (menuMode == RootMenu) {
-      display.drawRect(7, 10, 114, 32);
+      display.drawRect(7, 9, 114, 32);
       if (menuIndex == 0) {
-        display.drawStringMaxWidth(63, 18, 126,
-                                   sptf_is_playing ? "pause" : "play");
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, sptf_is_playing ? "pause" : "play");
       } else {
-        display.drawStringMaxWidth(63, 18, 126, rootMenuItems[menuIndex]);
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, rootMenuItems[menuIndex]);
       }
     } else if (menuMode == UserList) {
       char header[7];
       sprintf(header, "%d / %d", menuIndex + 1, menuSize);
-      display.drawStringMaxWidth(63, 1, 126, header);
-      display.drawStringMaxWidth(63, 18, 126, users[menuIndex].name);
+      display.drawStringMaxWidth(centerX, lineOne, maxWidth, header);
+      display.drawStringMaxWidth(centerX, lineTwo, maxWidth, users[menuIndex].name);
 
-      SptfUser_t activeUser = users[menuIndex];
-      if (activeUser.refreshToken.equals(activeRefreshToken)) {
-        display.drawStringMaxWidth(63, 18, 126, "[" + activeUser.name + "]");
+      SptfUser_t *user = &users[menuIndex];
+      if (user->name[0] == '\0') {
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "loading...");
+      } else if (strcmp(user->refreshToken, activeRefreshToken) == 0) {
+        char selectedName[66];
+        sprintf(selectedName, "[%s]", user->name);
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, selectedName);
       } else {
-        display.drawStringMaxWidth(63, 18, 126, users[menuIndex].name);
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, users[menuIndex].name);
       }
     } else if (menuMode == DeviceList) {
       if (devicesCount == 0) {
-        display.drawStringMaxWidth(63, 18, 126, "loading...");
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "loading...");
       } else {
         char header[7];
         sprintf(header, "%d / %d", menuIndex + 1, menuSize);
-        display.drawStringMaxWidth(63, 1, 126, header);
+        display.drawStringMaxWidth(centerX, lineOne, maxWidth, header);
 
-        SptfDevice_t activeDevice = devices[menuIndex];
-        if (strcmp(activeDevice.id.c_str(), activeDeviceId) == 0) {
-          display.drawStringMaxWidth(63, 18, 126,
-                                     "[" + activeDevice.name + "]");
+        SptfDevice_t *device = &devices[menuIndex];
+        if (strcmp(device->id, activeDeviceId) == 0) {
+          char selectedName[66];
+          sprintf(selectedName, "[%s]", device->name);
+          display.drawStringMaxWidth(centerX, lineTwo, maxWidth, selectedName);
         } else {
-          display.drawStringMaxWidth(63, 18, 126, devices[menuIndex].name);
+          display.drawStringMaxWidth(centerX, lineTwo, maxWidth, device->name);
         }
       }
     } else {
-      display.drawStringMaxWidth(63, 18, 126, genre);
+      display.drawStringMaxWidth(centerX, lineTwo, maxWidth, genre);
 
-      if (sptf_is_playing &&
-          (sptfAction == Idle || sptfAction == CurrentlyPlaying) &&
+      if (sptf_is_playing && (sptfAction == Idle || sptfAction == CurrentlyPlaying) &&
           playingGenreIndex == genreIndex) {
-        uint32_t estimated_millis =
-            progress_ms + (current_millis - last_curplay_millis);
+        uint32_t estimated_millis = progress_ms + (current_millis - last_curplay_millis);
         uint8_t seconds = estimated_millis / 1000 % 60;
         uint8_t minutes = estimated_millis / (1000 * 60) % 60;
         uint8_t hours = estimated_millis / (1000 * 60 * 60);
@@ -541,30 +539,63 @@ void updateDisplay() {
         } else {
           sprintf(elapsed, "%d:%02d:%02d", hours, minutes, seconds);
         }
-        display.drawString(63, 1, elapsed);
-      } else if (sptfAction == PlayGenre ||
-                 (sptfAction == Toggle && !sptf_is_playing)) {
-        display.drawString(63, 1, "play");
+        display.drawString(centerX, lineOne, elapsed);
+      } else if (sptfAction == PlayGenre || (sptfAction == Toggle && !sptf_is_playing)) {
+        display.drawString(centerX, lineOne, "play");
       } else if (sptfAction == Toggle && sptf_is_playing) {
-        display.drawString(63, 1, "pause");
+        display.drawString(centerX, lineOne, "pause");
       } else if (sptfAction == Previous) {
-        display.drawString(63, 1, "previous");
+        display.drawString(centerX, lineOne, "previous");
       } else if (sptfAction == Next) {
-        display.drawString(63, 1, "next");
+        display.drawString(centerX, lineOne, "next");
       } else {
-        char label[16];
+        char label[13];
         if (menuMode == TempoList) {
-          sprintf(label, "%s avg bpm", genreLabels_tempo[menuIndex]);
+          sprintf(label, "~%s bpm", genreLabels_tempo[menuIndex]);
         } else {
           sprintf(label, "%d / %d", menuIndex + 1, menuSize);
         }
-        display.drawString(63, 1, label);
+        display.drawString(centerX, lineOne, label);
       }
     }
 
     display.display();
     lastDisplayMillis = millis();
   }
+}
+
+void eventsSendLog(const char *logData, EventsLogTypes type = log_line) {
+  if (!send_events) return;
+  events.send(logData, type == log_line ? "line" : "raw");
+}
+
+void eventsSendInfo(const char *msg, const char *payload = "") {
+  if (!send_events) return;
+
+  DynamicJsonDocument json(512);
+  json["msg"] = msg;
+  if (strlen(payload)) {
+    json["payload"] = payload;
+  }
+
+  String info;
+  serializeJson(json, info);
+  events.send(info.c_str(), "info");
+}
+
+void eventsSendError(int code, const char *msg, const char *payload = "") {
+  if (!send_events) return;
+
+  DynamicJsonDocument json(512);
+  json["code"] = code;
+  json["msg"] = msg;
+  if (strlen(payload)) {
+    json["payload"] = payload;
+  }
+
+  String error;
+  serializeJson(json, error);
+  events.send(error.c_str(), "error");
 }
 
 void loop() {
@@ -578,18 +609,18 @@ void loop() {
   int token_age = cur_secs - token_time;
   bool connected = WiFi.isConnected();
 
-  if (cur_millis - lastInputMillis > INACTIVITY_MILLIS) {
-    Serial.println("entering deep sleep");
+  if (cur_millis - lastInputMillis > inactivityMillis) {
+    Serial.printf("\n> [%d] Entering deep sleep.\n", cur_millis);
+    eventsSendLog("Entering deep sleep.");
     display.clear();
     display.displayOff();
-    displayOn = false;
     WiFi.disconnect(true);
     rtc_gpio_isolate(GPIO_NUM_12);
     esp_deep_sleep_start();
   }
 
   if (!connected && cur_millis - lastReconnectAttemptMillis > 3000) {
-    Serial.println("not connected, retrying");
+    Serial.printf("> [%d] Trying to connect to network %s...\n", cur_millis, ssid);
     WiFi.begin();
     lastReconnectAttemptMillis = cur_millis;
   }
@@ -612,9 +643,6 @@ void loop() {
           sptfGetToken(auth_code.c_str(), gt_authorization_code);
         } else if (activeRefreshToken[0] != '\0') {
           sptfGetToken(activeRefreshToken, gt_refresh_token);
-        } else {
-          Serial.println("No token found, visit http://" + nodeName +
-                         ".local to authenticate");
         }
         break;
       case CurrentlyPlaying:
@@ -647,65 +675,6 @@ void loop() {
   }
 }
 
-/**
- * Send log to browser
- *
- * @param logData
- * @param event_type
- */
-void eventsSendLog(const char *logData, EventsLogTypes type = log_line) {
-  if (!send_events) return;
-  events.send(logData, type == log_line ? "line" : "raw");
-}
-
-/**
- * Send infos to browser
- *
- * @param msg
- * @param payload
- */
-void eventsSendInfo(const char *msg, const char *payload = "") {
-  if (!send_events) return;
-
-  DynamicJsonDocument json(512);
-  json["msg"] = msg;
-  if (strlen(payload)) {
-    json["payload"] = payload;
-  }
-
-  String info;
-  serializeJson(json, info);
-  events.send(info.c_str(), "info");
-}
-
-/**
- * Send errors to browser
- *
- * @param errCode
- * @param errMsg
- * @param payload
- */
-void eventsSendError(int code, const char *msg, const char *payload = "") {
-  if (!send_events) return;
-
-  DynamicJsonDocument json(512);
-  json["code"] = code;
-  json["msg"] = msg;
-  if (strlen(payload)) {
-    json["payload"] = payload;
-  }
-
-  String error;
-  serializeJson(json, error);
-  events.send(error.c_str(), "error");
-}
-
-/**
- * Base 64 encode
- *
- * @param str
- * @return
- */
 String b64Encode(String str) {
   String encodedStr = base64::encode(str);
 
@@ -718,48 +687,80 @@ String b64Encode(String str) {
   return encodedStr;
 }
 
+void setActiveUser(SptfUser_t *user) {
+  activeUser = user;
+  strncpy(activeRefreshToken, activeUser->refreshToken, sizeof(activeRefreshToken));
+  if (user->selectedDeviceId[0] != '\0') strncpy(activeDeviceId, user->selectedDeviceId, sizeof(activeDeviceId));
+
+  SptfDevice_t *device = NULL;
+  for (uint8_t i = 0; i < devicesCount; i++) {
+    if (strcmp(devices[i].id, activeDeviceId) == 0) {
+      device = &devices[i];
+      break;
+    }
+  }
+  setActiveDevice(device);
+}
+
+void setActiveDevice(SptfDevice_t *device) {
+  activeDevice = device;
+  if (activeDevice == NULL) {
+    devicesCount = 0;
+  } else {
+    strncpy(activeDeviceId, activeDevice->id, sizeof(activeDeviceId));
+    strncpy(activeUser->selectedDeviceId, activeDevice->id, sizeof(activeUser->selectedDeviceId));
+  }
+}
+
 bool readUsersJson() {
   File f = SPIFFS.open("/users.json", "r");
-  DynamicJsonDocument doc(2130);
+  DynamicJsonDocument doc(3000);
   DeserializationError error = deserializeJson(doc, f);
   f.close();
 
   if (error) {
     Serial.printf("Failed to read users.json: %s\n", error.c_str());
-    writeUsersJson();
     return false;
+  } else {
+    serializeJson(doc, Serial);
+    Serial.println();
   }
 
   usersCount = min(MAX_USERS, doc.size());
 
   for (uint8_t i = 0; i < usersCount; i++) {
     JsonObject jsonUser = doc[i];
+    const char *name = jsonUser["name"];
+    const char *token = jsonUser["token"];
+    const char *country = jsonUser["country"];
+    const char *selectedDeviceId = jsonUser["selectedDeviceId"];
 
-    users[i].name = jsonUser["name"].as<String>();
-    users[i].refreshToken = jsonUser["token"].as<String>();
-    users[i].country = jsonUser["country"] | "US";
+    SptfUser_t *user = &users[i];
+    strncpy(user->name, name, sizeof(user->name));
+    strncpy(user->refreshToken, token, sizeof(user->refreshToken));
+    strncpy(user->country, country, sizeof(user->country));
+    strncpy(user->selectedDeviceId, selectedDeviceId, sizeof(user->selectedDeviceId));
 
-    Serial.println("Found user " + users[i].name);
-    if (!activeUser) {
-      activeUser = &users[i];
-      strncpy(activeRefreshToken, users[i].refreshToken.c_str(),
-              sizeof(activeRefreshToken));
-    }
+    if (jsonUser["selected"].as<bool>() == true) setActiveUser(user);
   }
+
+  if (usersCount > 0 && activeUser == NULL) setActiveUser(&users[0]);
 
   return true;
 }
 
 bool writeUsersJson() {
   File f = SPIFFS.open("/users.json", "w+");
-  DynamicJsonDocument doc(2130);
+  DynamicJsonDocument doc(3000);
 
   for (uint8_t i = 0; i < usersCount; i++) {
-    SptfUser_t user = users[i];
+    SptfUser_t *user = &users[i];
     JsonObject obj = doc.createNestedObject();
-    obj["name"] = user.name;
-    obj["token"] = user.refreshToken;
-    obj["country"] = user.country;
+    obj["name"] = user->name;
+    obj["token"] = user->refreshToken;
+    obj["country"] = user->country;
+    obj["selectedDeviceId"] = user->selectedDeviceId;
+    obj["selected"] = (bool)(strcmp(user->refreshToken, activeRefreshToken) == 0);
   }
 
   size_t bytes = serializeJson(doc, f);
@@ -768,20 +769,12 @@ bool writeUsersJson() {
     Serial.printf("Failed to write users.json: %d\n", bytes);
     return false;
   }
+  serializeJson(doc, Serial);
+  Serial.println();
   return true;
 }
 
-/**
- * HTTP request
- *
- * @param host
- * @param port
- * @param headers
- * @param content
- * @return
- */
-HTTP_response_t httpRequest(const char *host, uint16_t port,
-                            const char *headers, const char *content = "") {
+HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers, const char *content = "") {
   uint32_t ts = millis();
   Serial.printf("\n> [%d] httpRequest(%s, %d, ...)\n", ts, host, port);
 
@@ -830,9 +823,6 @@ HTTP_response_t httpRequest(const char *host, uint16_t port,
   uint32_t lastAvailableMillis = millis();
   char buff[buffSize];
 
-  // !HERE
-  // client.setNoDelay(false);
-
   while (client.connected()) {
     int availableSize = client.available();
     if (availableSize) {
@@ -841,8 +831,7 @@ HTTP_response_t httpRequest(const char *host, uint16_t port,
       if (!EOH) {
         // Read response headers
         readSize = client.readBytesUntil('\n', buff, buffSize);
-        buff[readSize - 1] = '\0';  // replace /r by \0
-        // Serial.printf("%s\n", buff);
+        buff[readSize - 1] = '\0';  // replace \r with \0
         eventsSendLog(buff);
         if (startsWith(buff, "HTTP/1.")) {
           buff[12] = '\0';
@@ -868,11 +857,7 @@ HTTP_response_t httpRequest(const char *host, uint16_t port,
         eventsSendLog(buff, log_raw);
         response.payload += buff;
         totalReadSize += readSize;
-        if (contentLength != 0 && totalReadSize >= contentLength) {
-          if (totalReadSize > contentLength)
-            Serial.printf("read %d of length %d", totalReadSize, contentLength);
-          break;
-        }
+        if (contentLength != 0 && totalReadSize >= contentLength) break;
       }
     } else {
       if ((millis() - lastAvailableMillis) > 5000) {
@@ -890,18 +875,9 @@ HTTP_response_t httpRequest(const char *host, uint16_t port,
   return response;
 }
 
-/**
- * Call Spotify API
- *
- * @param method
- * @param endpoint
- * @return
- */
-HTTP_response_t sptfApiRequest(const char *method, const char *endpoint,
-                               const char *content = "") {
+HTTP_response_t sptfApiRequest(const char *method, const char *endpoint, const char *content = "") {
   uint32_t ts = millis();
-  Serial.printf("\n> [%d] sptfApiRequest(%s, %s, %s)\n", ts, method, endpoint,
-                content);
+  Serial.printf("\n> [%d] sptfApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
 
   char headers[512];
   snprintf(headers, sizeof(headers),
@@ -912,8 +888,7 @@ HTTP_response_t sptfApiRequest(const char *method, const char *endpoint,
            "Connection: close\r\n\r\n",
            method, endpoint, access_token, strlen(content));
 
-  HTTP_response_t response =
-      httpRequest("api.spotify.com", 443, headers, content);
+  HTTP_response_t response = httpRequest("api.spotify.com", 443, headers, content);
 
   if (response.httpCode == 401) {
     Serial.println("401 Unauthorized, clearing access_token");
@@ -931,9 +906,8 @@ HTTP_response_t sptfApiRequest(const char *method, const char *endpoint,
  */
 void sptfGetToken(const char *code, GrantTypes grant_type) {
   uint32_t ts = millis();
-  Serial.printf(
-      "\n> [%d] sptfGetToken(%s, %s)\n", ts, code,
-      grant_type == gt_authorization_code ? "authorization" : "refresh");
+  Serial.printf("\n> [%d] sptfGetToken(%s, %s)\n", ts, code,
+                grant_type == gt_authorization_code ? "authorization" : "refresh");
 
   bool success = false;
 
@@ -948,14 +922,12 @@ void sptfGetToken(const char *code, GrantTypes grant_type) {
                  .c_str(),
              code);
   } else {
-    snprintf(requestContent, sizeof(requestContent),
-             "grant_type=refresh_token&refresh_token=%s", code);
+    snprintf(requestContent, sizeof(requestContent), "grant_type=refresh_token&refresh_token=%s", code);
   }
 
   uint8_t basicAuthSize = sizeof(SPTF_CLIENT_ID) + sizeof(SPTF_CLIENT_SECRET);
   char basicAuth[basicAuthSize];
-  snprintf(basicAuth, basicAuthSize, "%s:%s", SPTF_CLIENT_ID,
-           SPTF_CLIENT_SECRET);
+  snprintf(basicAuth, basicAuthSize, "%s:%s", SPTF_CLIENT_ID, SPTF_CLIENT_SECRET);
 
   char requestHeaders[768];
   snprintf(requestHeaders, sizeof(requestHeaders),
@@ -967,8 +939,7 @@ void sptfGetToken(const char *code, GrantTypes grant_type) {
            "Connection: close\r\n\r\n",
            b64Encode(basicAuth).c_str(), strlen(requestContent));
 
-  HTTP_response_t response =
-      httpRequest("accounts.spotify.com", 443, requestHeaders, requestContent);
+  HTTP_response_t response = httpRequest("accounts.spotify.com", 443, requestHeaders, requestContent);
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(768);
@@ -985,54 +956,49 @@ void sptfGetToken(const char *code, GrantTypes grant_type) {
         if (json.containsKey("refresh_token")) {
           const char *newRefreshToken = json["refresh_token"];
           if (strcmp(newRefreshToken, activeRefreshToken) != 0) {
-            strncpy(activeRefreshToken, newRefreshToken,
-                    sizeof(activeRefreshToken));
+            strncpy(activeRefreshToken, newRefreshToken, sizeof(activeRefreshToken));
             bool found = false;
             for (uint8_t i = 0; i < usersCount; i++) {
-              SptfUser_t user = users[i];
-              if (user.refreshToken.equals(activeRefreshToken)) {
+              SptfUser_t *user = &users[i];
+              if (strcmp(user->refreshToken, activeRefreshToken) == 0) {
                 found = true;
                 break;
               }
             }
-            if (!found) {
-              users[usersCount++] = {"", String(activeRefreshToken)};
-              if (!activeUser) activeUser = &users[usersCount - 1];
+            if (!found && usersCount < MAX_USERS) {
+              SptfUser_t *user = &users[usersCount++];
+              strncpy(user->refreshToken, activeRefreshToken, sizeof(user->refreshToken));
+              user->selected = true;
+              setActiveUser(user);
+              writeUsersJson();
+              sptfAction = CurrentProfile;
             };
           }
         }
       }
     } else {
-      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts,
-                    response.payload.c_str());
-      eventsSendError(500, "Unable to parse response payload",
-                      response.payload.c_str());
+      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
+      eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
     }
   } else {
-    Serial.printf("  [%d] %d - %s\n", ts, response.httpCode,
-                  response.payload.c_str());
-    eventsSendError(response.httpCode, "Spotify error",
-                    response.payload.c_str());
+    Serial.printf("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
+    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
 
-  if (success)
-    sptfAction =
-        grant_type == gt_authorization_code ? CurrentProfile : CurrentlyPlaying;
+  if (success) sptfAction = grant_type == gt_authorization_code ? CurrentProfile : CurrentlyPlaying;
 
   getting_token = false;
 }
 
-/**
- * Get information about the Spotify user's current playback
- */
 void sptfCurrentlyPlaying() {
+  if (access_token[0] == '\0' || !activeUser) return;
   uint32_t ts = millis();
   Serial.printf("\n> [%d] sptfCurrentlyPlaying()\n", ts);
-
   next_curplay_millis = 0;
-  if (access_token[0] == '\0' || !activeUser) return;
 
-  HTTP_response_t response = sptfApiRequest("GET", ("/player?market=" + activeUser->country).c_str());
+  char url[18];
+  sprintf(url, "/player?market=%s", activeUser->country);
+  HTTP_response_t response = sptfApiRequest("GET", url);
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(5000);
@@ -1054,19 +1020,15 @@ void sptfCurrentlyPlaying() {
         }
       }
     } else {
-      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts,
-                    response.payload.c_str());
-      eventsSendError(500, "Unable to parse response payload",
-                      response.payload.c_str());
+      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
+      eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
     }
   } else if (response.httpCode == 204) {
     sptf_is_playing = false;
     sptfResetProgress();
   } else {
-    Serial.printf("  [%d] %d - %s\n", ts, response.httpCode,
-                  response.payload.c_str());
-    eventsSendError(response.httpCode, "Spotify error",
-                    response.payload.c_str());
+    Serial.printf("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
+    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
 }
 
@@ -1074,10 +1036,9 @@ void sptfCurrentlyPlaying() {
  * Get information about the current Spotify user
  */
 void sptfCurrentProfile() {
+  if (access_token[0] == '\0') return;
   uint32_t ts = millis();
   Serial.printf("\n> [%d] sptfCurrentProfile()\n", ts);
-
-  if (access_token[0] == '\0') return;
 
   HTTP_response_t response = sptfApiRequest("GET", "");
 
@@ -1086,78 +1047,43 @@ void sptfCurrentProfile() {
     DeserializationError error = deserializeJson(json, response.payload);
 
     if (!error) {
-      String display_name = json["display_name"];
-      String country = json["country"];
-
-      uint8_t userIndex = 0;
-      bool found = false;
-      for (userIndex = 0; userIndex < usersCount; userIndex++) {
-        SptfUser_t user = users[userIndex];
-        if (user.name.equals(display_name) ||
-            user.refreshToken.equals(activeRefreshToken)) {
-          found = true;
-          break;
-        }
-      }
-      if(!found) {
-        userIndex = usersCount % MAX_USERS;
-        if(usersCount < 10) usersCount++;
-      }
-
-      Serial.printf("Signed in as %s, index %d, count %d\n", display_name.c_str(), userIndex, usersCount);
-
-      SptfUser_t user = users[userIndex];
-      user.name = display_name;
-      user.country = country;
-      activeUser = &user;
+      const char *display_name = json["display_name"];
+      const char *country = json["country"];
+      strncpy(activeUser->name, display_name, sizeof(activeUser->name));
+      strncpy(activeUser->country, country, sizeof(activeUser->country));
       writeUsersJson();
     } else {
-      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts,
-                    response.payload.c_str());
-      eventsSendError(500, "Unable to parse response payload",
-                      response.payload.c_str());
+      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
+      eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
     }
   } else {
-    Serial.printf("  [%d] %d - %s\n", ts, response.httpCode,
-                  response.payload.c_str());
-    eventsSendError(response.httpCode, "Spotify error",
-                    response.payload.c_str());
+    Serial.printf("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
+    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
 
   sptfAction = CurrentlyPlaying;
 }
 
-/**
- * Spotify next track
- */
 void sptfNext() {
   HTTP_response_t response = sptfApiRequest("POST", "/player/next");
   if (response.httpCode == 204) {
     sptfResetProgress();
   } else {
-    eventsSendError(response.httpCode, "Spotify error",
-                    response.payload.c_str());
+    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
   sptfAction = CurrentlyPlaying;
 };
 
-/**
- * Spotify previous track
- */
 void sptfPrevious() {
   HTTP_response_t response = sptfApiRequest("POST", "/player/previous");
   if (response.httpCode == 204) {
     sptfResetProgress();
   } else {
-    eventsSendError(response.httpCode, "Spotify error",
-                    response.payload.c_str());
+    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
   sptfAction = CurrentlyPlaying;
 };
 
-/**
- * Spotify toggle pause/play
- */
 void sptfToggle() {
   if (access_token[0] == '\0') return;
 
@@ -1165,22 +1091,19 @@ void sptfToggle() {
   sptf_is_playing = !sptf_is_playing;
   HTTP_response_t response;
   if (activeDeviceId[0] != '\0') {
-    char path[58];
-    snprintf(path, sizeof(path),
-             was_playing ? "/pause?device_id=%s" : "/player/play?device_id=%s",
+    char path[65];
+    snprintf(path, sizeof(path), was_playing ? "/player/pause?device_id=%s" : "/player/play?device_id=%s",
              activeDeviceId);
     response = sptfApiRequest("PUT", path);
   } else {
-    response =
-        sptfApiRequest("PUT", was_playing ? "/player/pause" : "/player/play");
+    response = sptfApiRequest("PUT", was_playing ? "/player/pause" : "/player/play");
   }
 
   if (response.httpCode == 204) {
     next_curplay_millis = millis() + 200;
   } else {
     sptf_is_playing = !sptf_is_playing;
-    eventsSendError(response.httpCode, "Spotify error",
-                    response.payload.c_str());
+    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
   sptfAction = CurrentlyPlaying;
 };
@@ -1190,12 +1113,11 @@ void sptfPlayGenre(const char *playlistId) {
 
   sptf_is_playing = false;
   playingGenreIndex = genreIndex;
-  char requestContent[58];
-  snprintf(requestContent, sizeof(requestContent),
-           "{\"context_uri\":\"spotify:playlist:%s\"}", playlistId);
+  char requestContent[59];
+  snprintf(requestContent, sizeof(requestContent), "{\"context_uri\":\"spotify:playlist:%s\"}", playlistId);
   HTTP_response_t response;
   if (activeDeviceId[0] != '\0') {
-    char path[58];
+    char path[64];
     snprintf(path, sizeof(path), "/player/play?device_id=%s", activeDeviceId);
     response = sptfApiRequest("PUT", path, requestContent);
   } else {
@@ -1206,8 +1128,7 @@ void sptfPlayGenre(const char *playlistId) {
     sptf_is_playing = true;
     sptfResetProgress();
   } else {
-    eventsSendError(response.httpCode, "Spotify error",
-                    response.payload.c_str());
+    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
   sptfAction = CurrentlyPlaying;
 };
@@ -1237,13 +1158,18 @@ void sptfGetDevices() {
         bool is_active = jsonDevice["is_active"];
         uint8_t volume_percent = jsonDevice["volume_percent"];
 
-        devices[i].id = String(id);
-        devices[i].name = String(name);
-        devices[i].volumePercent = volume_percent;
+        SptfDevice_t *device = &devices[i];
+        strncpy(device->id, id, sizeof(device->id));
+        strncpy(device->name, name, sizeof(device->name));
+        device->volumePercent = volume_percent;
         if (is_active) {
-          strncpy(activeDeviceId, devices[i].id.c_str(),
-                  sizeof(activeDeviceId));
-          if (menuMode == DeviceList) menuIndex = i;
+          activeDevice = device;
+          strncpy(activeDeviceId, id, sizeof(activeDeviceId));
+          if (menuMode == DeviceList) {
+            setMenuMode(DeviceList, i);
+            lastInputMillis = millis();
+            updateDisplay();
+          }
         }
       }
     }
