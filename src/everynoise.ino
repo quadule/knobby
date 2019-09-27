@@ -79,34 +79,139 @@ unsigned long lastDisplayMillis = 0;
 unsigned long lastReconnectAttemptMillis = 0;
 
 enum MenuModes {
-  RootMenu,
-  UserList,
-  DeviceList,
-  AlphabeticList,
-  AlphabeticSuffixList,
-  PopularityList,
-  ModernityList,
-  BackgroundList,
-  TempoList
+  RootMenu = 0,
+  UserList = 1,
+  DeviceList = 2,
+  BookmarksList = 3,
+  AlphabeticList = 4,
+  AlphabeticSuffixList = 5,
+  PopularityList = 6,
+  ModernityList = 7,
+  BackgroundList = 8,
+  TempoList = 9
 };
 MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
 uint32_t lastMenuIndex = 0;
-const char *rootMenuItems[] = {"play/pause", "users",     "devices",    "name prefix", "name suffix",
-                               "popularity", "modernity", "background", "tempo"};
+const char *rootMenuItems[] = {"play/pause",  "users",      "devices",   "bookmarks",  "name prefix",
+                               "name suffix", "popularity", "modernity", "background", "tempo"};
 #define MAX_USERS 10
 SptfUser_t users[MAX_USERS] = {};
 uint8_t usersCount = 0;
 SptfUser_t *activeUser = NULL;
 RTC_DATA_ATTR char activeRefreshToken[150] = {'\0'};
+
 #define MAX_DEVICES 10
 SptfDevice_t devices[MAX_DEVICES] = {};
 uint8_t devicesCount = 0;
 SptfDevice_t *activeDevice = NULL;
 RTC_DATA_ATTR char activeDeviceId[41] = {'\0'};
+
+#define MAX_BOOKMARKS 1024
+uint16_t bookmarksCount = 100;
+const char *bookmarkedGenres[MAX_BOOKMARKS] = {"indie rock",
+                                               "indie punk",
+                                               "nu gaze",
+                                               "alternative rock",
+                                               "garage psych",
+                                               "indie pop",
+                                               "chamber pop",
+                                               "indietronica",
+                                               "modern rock",
+                                               "lo-fi",
+                                               "freak folk",
+                                               "dream pop",
+                                               "new rave",
+                                               "stomp and holler",
+                                               "garage rock",
+                                               "electropop",
+                                               "post-rock",
+                                               "noise pop",
+                                               "indie folk",
+                                               "shimmer pop",
+                                               "american shoegaze",
+                                               "anti-folk",
+                                               "folk-pop",
+                                               "alternative emo",
+                                               "dance-punk",
+                                               "slow core",
+                                               "philly indie",
+                                               "shoegaze",
+                                               "alternative metal",
+                                               "post-hardcore",
+                                               "la indie",
+                                               "chillwave",
+                                               "art pop",
+                                               "metropopolis",
+                                               "modern blues rock",
+                                               "escape room",
+                                               "indie shoegaze",
+                                               "noise rock",
+                                               "compositional ambient",
+                                               "gbvfi",
+                                               "indie surf",
+                                               "american post-rock",
+                                               "emo",
+                                               "dreamgaze",
+                                               "post-metal",
+                                               "alternative pop",
+                                               "alternative dance",
+                                               "canadian indie",
+                                               "permanent wave",
+                                               "small room",
+                                               "neo-psychedelic",
+                                               "punk blues",
+                                               "seattle indie",
+                                               "austindie",
+                                               "rock",
+                                               "math rock",
+                                               "experimental pop",
+                                               "indie garage rock",
+                                               "chamber psych",
+                                               "australian garage punk",
+                                               "baltimore indie",
+                                               "grave wave",
+                                               "dark post-punk",
+                                               "midwest emo",
+                                               "boston rock",
+                                               "blues-rock",
+                                               "instrumental post-rock",
+                                               "baroque pop",
+                                               "indie soul",
+                                               "quebec indie",
+                                               "bay area indie",
+                                               "australian indie",
+                                               "vancouver indie",
+                                               "chicago indie",
+                                               "brooklyn indie",
+                                               "toronto indie",
+                                               "new jersey indie",
+                                               "power pop",
+                                               "experimental rock",
+                                               "popgaze",
+                                               "post-doom metal",
+                                               "ok indie",
+                                               "electronic rock",
+                                               "scottish indie",
+                                               "big beat",
+                                               "etherpop",
+                                               "folk punk",
+                                               "funk rock",
+                                               "trip hop",
+                                               "downtempo",
+                                               "melbourne indie",
+                                               "portland indie",
+                                               "neo-synthpop",
+                                               "melancholia",
+                                               "progressive post-hardcore",
+                                               "swedish indie rock",
+                                               "grunge",
+                                               "melodic hardcore",
+                                               "ninja",
+                                               "stoner rock"};
+
 uint32_t menuSize = GENRE_COUNT;
 uint32_t menuIndex = 0;
-int menuOffset = 0;
 int lastKnobPosition = 0;
 double lastKnobSpeed = 0.0;
 
@@ -134,7 +239,7 @@ void setup() {
   display.displayOn();
 
   lastInputMillis = lastDisplayMillis = millis();
-  menuIndex = genreIndex = menuOffset = random(GENRE_COUNT);
+  menuIndex = genreIndex = random(GENRE_COUNT);
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoConnect(true);
@@ -218,9 +323,8 @@ void setup() {
     request->send(204);
   });
 
-  server.on("/heap", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/plain", String(ESP.getFreeHeap()));
-  });
+  server.on("/heap", HTTP_GET,
+            [](AsyncWebServerRequest *request) { request->send(200, "text/plain", String(ESP.getFreeHeap())); });
 
   server.on("/resetusers", HTTP_GET, [](AsyncWebServerRequest *request) {
     access_token[0] = '\0';
@@ -247,9 +351,22 @@ void setup() {
   readUsersJson();
 }
 
+int getGenreIndex(const char *genreName) {
+  for (size_t i = 0; i < GENRE_COUNT; i++) {
+    if (strcmp(genreName, genres[i]) == 0) return i;
+  }
+  return -1;
+}
+
+const char *genrePtr(const char *genreName) {
+  for (size_t i = 0; i < GENRE_COUNT; i++) {
+    if (strcmp(genreName, genres[i]) == 0) return genres[i];
+  }
+  return NULL;
+}
+
 void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
   menuMode = newMode;
-  knob.resetPosition();
   switch (menuMode) {
     case RootMenu:
       menuSize = sizeof(rootMenuItems) / sizeof(rootMenuItems[0]);
@@ -259,6 +376,9 @@ void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
       break;
     case DeviceList:
       menuSize = devicesCount == 0 ? 1 : devicesCount;
+      break;
+    case BookmarksList:
+      menuSize = bookmarksCount == 0 ? 1 : bookmarksCount;
       break;
     case AlphabeticList:
     case AlphabeticSuffixList:
@@ -271,7 +391,7 @@ void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
     default:
       break;
   }
-  menuOffset = menuIndex = newMenuIndex % menuSize;
+  menuIndex = newMenuIndex % menuSize;
 }
 
 void knobRotated(ESPRotary &r) {
@@ -284,10 +404,10 @@ void knobRotated(ESPRotary &r) {
   lastKnobPosition = newPosition;
 
   int steps = 1;
-  if (menuSize > 20 && lastInputDelta > 1 && lastInputDelta <= 30) {
+  if (menuSize > 20 && lastInputDelta > 1 && lastInputDelta <= 25) {
     double speed = (3 * lastKnobSpeed + (double)positionDelta / lastInputDelta) / 4.0;
     lastKnobSpeed = speed;
-    steps = min(50, max(1, (int)(fabs(speed) * 200)));
+    steps = min(50, max(1, (int)(fabs(speed) * 180)));
   } else {
     lastKnobSpeed = 0.0;
   }
@@ -316,6 +436,9 @@ void knobRotated(ESPRotary &r) {
     case TempoList:
       genreIndex = genreIndexes_tempo[menuIndex];
       break;
+    case BookmarksList:
+      genreIndex = max(0, getGenreIndex(bookmarkedGenres[menuIndex]));
+      break;
     default:
       break;
   }
@@ -343,6 +466,7 @@ void knobClicked() {
         writeUsersJson();
       }
       break;
+    case BookmarksList:
     case AlphabeticList:
     case AlphabeticSuffixList:
     case PopularityList:
@@ -371,7 +495,7 @@ void knobLongPressStarted() {
   if (sptf_is_playing) {
     setMenuMode(RootMenu, 0);
   } else {
-    setMenuMode(RootMenu, menuMode);
+    setMenuMode(RootMenu, (uint32_t)menuMode);
   }
 }
 
@@ -409,6 +533,15 @@ void knobLongPressStopped() {
               newMenuIndex = i;
               break;
             }
+          }
+        }
+        break;
+      case BookmarksList:
+        newMenuIndex = 0;
+        for (uint16_t i = 0; i < bookmarksCount; i++) {
+          if (strcmp(bookmarkedGenres[i], genres[genreIndex]) == 0) {
+            newMenuIndex = i;
+            break;
           }
         }
         break;
@@ -454,7 +587,7 @@ void updateDisplay() {
   const int lineTwo = 16;
   const int lineThree = 32;
   unsigned long current_millis = millis();
-  int8_t t = current_millis / 10 % 6;
+  int8_t t = current_millis % 6;
   bool connected = WiFi.isConnected();
   if (current_millis < 500) {
     display.setTextAlignment(TEXT_ALIGN_CENTER);
@@ -463,8 +596,8 @@ void updateDisplay() {
     display.drawString(centerX, lineThree, "at once");
     display.drawRect(t, t, 127 - (t * 2), 63 - (t * 2));
     display.display();
-    lastDisplayMillis = millis();
-    delay(random(50));
+    lastDisplayMillis = current_millis;
+    delay(15 + random(15));
   } else if (lastInputMillis > lastDisplayMillis || (current_millis - lastDisplayMillis) > 10) {
     const char *genre = genres[genreIndex];
     display.clear();
@@ -473,12 +606,12 @@ void updateDisplay() {
 
     if (!connected) {
       if (t == 0) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, ".");
-      if (t == 1) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "|");
-      if (t == 2) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "|'|");
-      if (t == 3) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "'|'");
-      if (t == 4) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, ".:.");
+      if (t == 1) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "...");
+      if (t == 2) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, ".:.");
+      if (t == 3) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "-:-");
+      if (t == 4) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "_-_");
       if (t == 5) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "_");
-      delay(50);
+      delay(15 + random(15));
     } else if (usersCount == 0) {
       display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "setup at http://");
       display.drawStringMaxWidth(centerX, lineThree, maxWidth, nodeName + ".local");
@@ -495,7 +628,6 @@ void updateDisplay() {
       char header[7];
       sprintf(header, "%d / %d", menuIndex + 1, menuSize);
       display.drawStringMaxWidth(centerX, lineOne, maxWidth, header);
-      display.drawStringMaxWidth(centerX, lineTwo, maxWidth, users[menuIndex].name);
 
       SptfUser_t *user = &users[menuIndex];
       if (user->name[0] == '\0') {
@@ -505,7 +637,7 @@ void updateDisplay() {
         sprintf(selectedName, "[%s]", user->name);
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, selectedName);
       } else {
-        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, users[menuIndex].name);
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, user->name);
       }
     } else if (menuMode == DeviceList) {
       if (devicesCount == 0) {
@@ -523,6 +655,17 @@ void updateDisplay() {
         } else {
           display.drawStringMaxWidth(centerX, lineTwo, maxWidth, device->name);
         }
+      }
+    } else if (menuMode == BookmarksList) {
+      if (bookmarksCount == 0) {
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "no bookmarks yet");
+      } else {
+        char header[7];
+        sprintf(header, "%d / %d", menuIndex + 1, menuSize);
+        display.drawStringMaxWidth(centerX, lineOne, maxWidth, header);
+
+        const char *genre = bookmarkedGenres[menuIndex];
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, genre);
       }
     } else {
       display.drawStringMaxWidth(centerX, lineTwo, maxWidth, genre);
@@ -1162,7 +1305,7 @@ void sptfGetDevices() {
         strncpy(device->id, id, sizeof(device->id));
         strncpy(device->name, name, sizeof(device->name));
         device->volumePercent = volume_percent;
-        if (is_active) {
+        if (is_active || strcmp(activeDeviceId, id) == 0) {
           activeDevice = device;
           strncpy(activeDeviceId, id, sizeof(activeDeviceId));
           if (menuMode == DeviceList) {
