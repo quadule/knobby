@@ -24,8 +24,8 @@ OneButton button(ROTARY_ENCODER_BUTTON_PIN, true, true);
 
 #define min(X, Y) (((X) < (Y)) ? (X) : (Y))
 #define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
-const uint16_t SPTF_MAX_POLLING_DELAY = 30000;
-const uint16_t SPTF_MIN_POLLING_INTERVAL = 10000;
+const uint16_t SPOTIFY_MAX_POLLING_DELAY = 30000;
+const uint16_t SPOTIFY_MIN_POLLING_INTERVAL = 10000;
 
 typedef struct {
   int httpCode;
@@ -46,7 +46,7 @@ typedef struct {
   uint8_t volumePercent;
 } SptfDevice_t;
 
-enum SptfActions { Idle, GetToken, CurrentlyPlaying, CurrentProfile, Next, Previous, Toggle, PlayGenre, GetDevices };
+enum SpotifyActions { Idle, GetToken, CurrentlyPlaying, CurrentProfile, Next, Previous, Toggle, PlayGenre, GetDevices };
 
 enum GrantTypes { gt_authorization_code, gt_refresh_token };
 
@@ -56,22 +56,22 @@ AsyncWebServer server(80);
 AsyncEventSource events("/events");
 
 String nodeName = "everynoisebox";
-String auth_code;
-RTC_DATA_ATTR char access_token[300] = {'\0'};
+String spotifyAuthCode;
+RTC_DATA_ATTR char spotifyAccessToken[300] = {'\0'};
 
 RTC_DATA_ATTR time_t token_lifetime = 0;
 RTC_DATA_ATTR time_t token_time = 0;
 uint32_t last_curplay_millis = 0;
 uint32_t next_curplay_millis = 0;
 
-bool getting_token = false;
-bool sptf_is_playing = false;
+bool spotifyGettingToken = false;
+bool spotifyIsPlaying = false;
 bool send_events = false;
 uint32_t progress_ms = 0;
 
-SptfActions sptfAction = Idle;
+SpotifyActions spotifyAction = Idle;
 
-short playingGenreIndex = -1;
+int playingGenreIndex = -1;
 uint32_t genreIndex = 0;
 unsigned long inactivityMillis = 45000;
 unsigned long lastInputMillis = 0;
@@ -99,7 +99,7 @@ const char *rootMenuItems[] = {"play/pause",  "users",      "devices",   "bookma
 SptfUser_t users[MAX_USERS] = {};
 uint8_t usersCount = 0;
 SptfUser_t *activeUser = NULL;
-RTC_DATA_ATTR char activeRefreshToken[150] = {'\0'};
+RTC_DATA_ATTR char spotifyRefreshToken[150] = {'\0'};
 
 #define MAX_DEVICES 10
 SptfDevice_t devices[MAX_DEVICES] = {};
@@ -215,6 +215,8 @@ uint32_t menuIndex = 0;
 int lastKnobPosition = 0;
 double lastKnobSpeed = 0.0;
 
+TaskHandle_t spotifyApiTask;
+
 void setup() {
   // turn off onboard led
   pinMode(9, OUTPUT);
@@ -263,7 +265,7 @@ void setup() {
     inactivityMillis = 90000;
     uint32_t ts = millis();
     Serial.printf("\n> [%d] server.on /\n", ts);
-    if (access_token[0] == '\0' && !getting_token) {
+    if (spotifyAccessToken[0] == '\0' && !spotifyGettingToken) {
       request->redirect("http://" + nodeName + ".local/authorize");
     } else {
       request->send(SPIFFS, "/index.html");
@@ -273,7 +275,7 @@ void setup() {
   server.on("/authorize", HTTP_GET, [](AsyncWebServerRequest *request) {
     uint32_t ts = millis();
     Serial.printf("\n> [%d] server.on /\n", ts);
-    getting_token = true;
+    spotifyGettingToken = true;
     char auth_url[300] = "";
     snprintf(auth_url, sizeof(auth_url),
              ("https://accounts.spotify.com/authorize/"
@@ -285,23 +287,23 @@ void setup() {
               ".local%%2Fcallback%%2F"
               "&client_id=%s")
                  .c_str(),
-             SPTF_CLIENT_ID);
+             SPOTIFY_CLIENT_ID);
     Serial.printf("  [%d] Redirect to: %s\n", ts, auth_url);
     request->redirect(auth_url);
   });
 
   server.on("/callback", HTTP_GET, [](AsyncWebServerRequest *request) {
-    auth_code = "";
+    spotifyAuthCode = "";
     uint8_t paramsNr = request->params();
     for (uint8_t i = 0; i < paramsNr; i++) {
       AsyncWebParameter *p = request->getParam(i);
       if (p->name() == "code") {
-        auth_code = p->value();
-        sptfAction = GetToken;
+        spotifyAuthCode = p->value();
+        spotifyAction = GetToken;
         break;
       }
     }
-    if (sptfAction == GetToken) {
+    if (spotifyAction == GetToken) {
       request->redirect("/");
     } else {
       request->send(204);
@@ -309,17 +311,17 @@ void setup() {
   });
 
   server.on("/next", HTTP_GET, [](AsyncWebServerRequest *request) {
-    sptfAction = Next;
+    spotifyAction = Next;
     request->send(204);
   });
 
   server.on("/previous", HTTP_GET, [](AsyncWebServerRequest *request) {
-    sptfAction = Previous;
+    spotifyAction = Previous;
     request->send(204);
   });
 
   server.on("/toggle", HTTP_GET, [](AsyncWebServerRequest *request) {
-    sptfAction = Toggle;
+    spotifyAction = Toggle;
     request->send(204);
   });
 
@@ -327,10 +329,10 @@ void setup() {
             [](AsyncWebServerRequest *request) { request->send(200, "text/plain", String(ESP.getFreeHeap())); });
 
   server.on("/resetusers", HTTP_GET, [](AsyncWebServerRequest *request) {
-    access_token[0] = '\0';
-    activeRefreshToken[0] = '\0';
+    spotifyAccessToken[0] = '\0';
+    spotifyRefreshToken[0] = '\0';
     SPIFFS.remove("/users.json");
-    sptfAction = Idle;
+    spotifyAction = Idle;
     request->send(200, "text/plain", "Tokens deleted, restarting");
     uint32_t start = millis();
     while (true) {
@@ -349,6 +351,13 @@ void setup() {
   server.begin();
 
   readUsersJson();
+
+  xTaskCreate(spotifyApiLoop,   /* Function to implement the task */
+              "spotifyApiLoop", /* Name of the task */
+              10000,            /* Stack size in words */
+              NULL,             /* Task input parameter */
+              1,                /* Priority of the task */
+              &spotifyApiTask); /* Task handle. */
 }
 
 int getGenreIndex(const char *genreName) {
@@ -443,7 +452,7 @@ void knobRotated(ESPRotary &r) {
       break;
   }
 
-  sptfAction = Idle;
+  spotifyAction = Idle;
 }
 
 void knobClicked() {
@@ -455,7 +464,7 @@ void knobClicked() {
         setActiveUser(&users[menuIndex]);
         token_lifetime = 0;
         token_time = 0;
-        access_token[0] = '\0';
+        spotifyAccessToken[0] = '\0';
         updateDisplay();
         writeUsersJson();
       }
@@ -473,7 +482,7 @@ void knobClicked() {
     case ModernityList:
     case BackgroundList:
     case TempoList:
-      sptfAction = PlayGenre;
+      spotifyAction = PlayGenre;
       break;
     case RootMenu:
       break;
@@ -482,8 +491,8 @@ void knobClicked() {
 
 void knobDoubleClicked() {
   lastInputMillis = millis();
-  if (access_token[0] == '\0') return;
-  sptfAction = Next;
+  if (spotifyAccessToken[0] == '\0') return;
+  spotifyAction = Next;
 }
 
 void knobLongPressStarted() {
@@ -492,7 +501,7 @@ void knobLongPressStarted() {
     lastMenuMode = menuMode;
     lastMenuIndex = menuIndex;
   }
-  if (sptf_is_playing) {
+  if (spotifyIsPlaying) {
     setMenuMode(RootMenu, 0);
   } else {
     setMenuMode(RootMenu, (uint32_t)menuMode);
@@ -502,7 +511,7 @@ void knobLongPressStarted() {
 void knobLongPressStopped() {
   lastInputMillis = millis();
   if (menuIndex == 0) {
-    if (access_token[0] != '\0') sptfAction = Toggle;
+    if (spotifyAccessToken[0] != '\0') spotifyAction = Toggle;
     setMenuMode(lastMenuMode, lastMenuIndex);
   } else if (menuIndex != lastMenuIndex) {
     uint32_t newMenuIndex = lastMenuIndex;
@@ -515,17 +524,17 @@ void knobLongPressStopped() {
         } else {
           newMenuIndex = 0;
           for (uint8_t i = 1; i < usersCount; i++) {
-            if (strcmp(users[i].refreshToken, activeRefreshToken) == 0) {
+            if (strcmp(users[i].refreshToken, spotifyRefreshToken) == 0) {
               newMenuIndex = i;
               break;
             }
           }
-          if (users[newMenuIndex].name[0] == '\0') sptfAction = CurrentProfile;
+          if (users[newMenuIndex].name[0] == '\0') spotifyAction = CurrentProfile;
         }
         break;
       case DeviceList:
         if (devicesCount == 0 || activeDevice == NULL) {
-          sptfAction = GetDevices;
+          spotifyAction = GetDevices;
         } else {
           newMenuIndex = 0;
           for (uint8_t i = 0; i < devicesCount; i++) {
@@ -597,7 +606,7 @@ void updateDisplay() {
     display.drawRect(t, t, 127 - (t * 2), 63 - (t * 2));
     display.display();
     lastDisplayMillis = current_millis;
-    delay(15 + random(15));
+    delay(80);
   } else if (lastInputMillis > lastDisplayMillis || (current_millis - lastDisplayMillis) > 10) {
     const char *genre = genres[genreIndex];
     display.clear();
@@ -611,16 +620,16 @@ void updateDisplay() {
       if (t == 3) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "-:-");
       if (t == 4) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "_-_");
       if (t == 5) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "_");
-      delay(15 + random(15));
+      delay(80);
     } else if (usersCount == 0) {
       display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "setup at http://");
       display.drawStringMaxWidth(centerX, lineThree, maxWidth, nodeName + ".local");
-    } else if (getting_token) {
+    } else if (spotifyGettingToken) {
       display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "spotify...");
     } else if (menuMode == RootMenu) {
       display.drawRect(7, 9, 114, 32);
       if (menuIndex == 0) {
-        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, sptf_is_playing ? "pause" : "play");
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, spotifyIsPlaying ? "pause" : "play");
       } else {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, rootMenuItems[menuIndex]);
       }
@@ -632,7 +641,7 @@ void updateDisplay() {
       SptfUser_t *user = &users[menuIndex];
       if (user->name[0] == '\0') {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "loading...");
-      } else if (strcmp(user->refreshToken, activeRefreshToken) == 0) {
+      } else if (strcmp(user->refreshToken, spotifyRefreshToken) == 0) {
         char selectedName[66];
         sprintf(selectedName, "[%s]", user->name);
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, selectedName);
@@ -670,7 +679,7 @@ void updateDisplay() {
     } else {
       display.drawStringMaxWidth(centerX, lineTwo, maxWidth, genre);
 
-      if (sptf_is_playing && (sptfAction == Idle || sptfAction == CurrentlyPlaying) &&
+      if (spotifyIsPlaying && (spotifyAction == Idle || spotifyAction == CurrentlyPlaying) &&
           playingGenreIndex == genreIndex) {
         uint32_t estimated_millis = progress_ms + (current_millis - last_curplay_millis);
         uint8_t seconds = estimated_millis / 1000 % 60;
@@ -683,13 +692,13 @@ void updateDisplay() {
           sprintf(elapsed, "%d:%02d:%02d", hours, minutes, seconds);
         }
         display.drawString(centerX, lineOne, elapsed);
-      } else if (sptfAction == PlayGenre || (sptfAction == Toggle && !sptf_is_playing)) {
+      } else if (spotifyAction == PlayGenre || (spotifyAction == Toggle && !spotifyIsPlaying)) {
         display.drawString(centerX, lineOne, "play");
-      } else if (sptfAction == Toggle && sptf_is_playing) {
+      } else if (spotifyAction == Toggle && spotifyIsPlaying) {
         display.drawString(centerX, lineOne, "pause");
-      } else if (sptfAction == Previous) {
+      } else if (spotifyAction == Previous) {
         display.drawString(centerX, lineOne, "previous");
-      } else if (sptfAction == Next) {
+      } else if (spotifyAction == Next) {
         display.drawString(centerX, lineOne, "next");
       } else {
         char label[13];
@@ -768,53 +777,59 @@ void loop() {
     lastReconnectAttemptMillis = cur_millis;
   }
 
-  if (connected && !getting_token && activeRefreshToken[0] != '\0' &&
-      (access_token[0] == '\0' || token_age >= token_lifetime)) {
-    getting_token = true;
-    sptfAction = GetToken;
+  if (connected && !spotifyGettingToken && (spotifyAccessToken[0] == '\0' || token_age >= token_lifetime)) {
+    spotifyGettingToken = true;
+    spotifyAction = GetToken;
   } else {
     updateDisplay();
   }
+}
 
-  // Spotify action handler
-  if (WiFi.status() == WL_CONNECTED) {
-    switch (sptfAction) {
-      case Idle:
-        break;
-      case GetToken:
-        if (auth_code != "") {
-          sptfGetToken(auth_code.c_str(), gt_authorization_code);
-        } else if (activeRefreshToken[0] != '\0') {
-          sptfGetToken(activeRefreshToken, gt_refresh_token);
-        }
-        break;
-      case CurrentlyPlaying:
-        if (next_curplay_millis && (cur_millis >= next_curplay_millis) &&
-            (cur_millis - last_curplay_millis >= SPTF_MIN_POLLING_INTERVAL)) {
-          sptfCurrentlyPlaying();
-        } else if (cur_millis - last_curplay_millis >= SPTF_MAX_POLLING_DELAY) {
-          sptfCurrentlyPlaying();
-        }
-        break;
-      case CurrentProfile:
-        sptfCurrentProfile();
-        break;
-      case Next:
-        sptfNext();
-        break;
-      case Previous:
-        sptfPrevious();
-        break;
-      case Toggle:
-        sptfToggle();
-        break;
-      case PlayGenre:
-        sptfPlayGenre(playlists[genreIndex]);
-        break;
-      case GetDevices:
-        sptfGetDevices();
-        break;
+void spotifyApiLoop(void *params) {
+  for (;;) {
+    if (WiFi.status() == WL_CONNECTED) {
+      uint32_t cur_millis = millis();
+
+      switch (spotifyAction) {
+        case Idle:
+          break;
+        case GetToken:
+          if (spotifyAuthCode != "") {
+            spotifyGetToken(spotifyAuthCode.c_str(), gt_authorization_code);
+          } else if (spotifyRefreshToken[0] != '\0') {
+            spotifyGetToken(spotifyRefreshToken, gt_refresh_token);
+          }
+          break;
+        case CurrentlyPlaying:
+          if (next_curplay_millis && (cur_millis >= next_curplay_millis) &&
+              (cur_millis - last_curplay_millis >= SPOTIFY_MIN_POLLING_INTERVAL)) {
+            spotifyCurrentlyPlaying();
+          } else if (cur_millis - last_curplay_millis >= SPOTIFY_MAX_POLLING_DELAY) {
+            spotifyCurrentlyPlaying();
+          }
+          break;
+        case CurrentProfile:
+          spotifyCurrentProfile();
+          break;
+        case Next:
+          spotifyNext();
+          break;
+        case Previous:
+          spotifyPrevious();
+          break;
+        case Toggle:
+          spotifyToggle();
+          break;
+        case PlayGenre:
+          playingGenreIndex = genreIndex;
+          spotifyPlayPlaylist(playlists[genreIndex]);
+          break;
+        case GetDevices:
+          spotifyGetDevices();
+          break;
+      }
     }
+    delay(10);
   }
 }
 
@@ -832,7 +847,7 @@ String b64Encode(String str) {
 
 void setActiveUser(SptfUser_t *user) {
   activeUser = user;
-  strncpy(activeRefreshToken, activeUser->refreshToken, sizeof(activeRefreshToken));
+  strncpy(spotifyRefreshToken, activeUser->refreshToken, sizeof(spotifyRefreshToken));
   if (user->selectedDeviceId[0] != '\0') strncpy(activeDeviceId, user->selectedDeviceId, sizeof(activeDeviceId));
 
   SptfDevice_t *device = NULL;
@@ -903,7 +918,7 @@ bool writeUsersJson() {
     obj["token"] = user->refreshToken;
     obj["country"] = user->country;
     obj["selectedDeviceId"] = user->selectedDeviceId;
-    obj["selected"] = (bool)(strcmp(user->refreshToken, activeRefreshToken) == 0);
+    obj["selected"] = (bool)(strcmp(user->refreshToken, spotifyRefreshToken) == 0);
   }
 
   size_t bytes = serializeJson(doc, f);
@@ -1018,9 +1033,9 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
   return response;
 }
 
-HTTP_response_t sptfApiRequest(const char *method, const char *endpoint, const char *content = "") {
+HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {
   uint32_t ts = millis();
-  Serial.printf("\n> [%d] sptfApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
+  Serial.printf("\n> [%d] spotifyApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
 
   char headers[512];
   snprintf(headers, sizeof(headers),
@@ -1029,13 +1044,13 @@ HTTP_response_t sptfApiRequest(const char *method, const char *endpoint, const c
            "Authorization: Bearer %s\r\n"
            "Content-Length: %d\r\n"
            "Connection: close\r\n\r\n",
-           method, endpoint, access_token, strlen(content));
+           method, endpoint, spotifyAccessToken, strlen(content));
 
   HTTP_response_t response = httpRequest("api.spotify.com", 443, headers, content);
 
   if (response.httpCode == 401) {
-    Serial.println("401 Unauthorized, clearing access_token");
-    access_token[0] = '\0';
+    Serial.println("401 Unauthorized, clearing spotifyAccessToken");
+    spotifyAccessToken[0] = '\0';
   }
 
   return response;
@@ -1047,9 +1062,9 @@ HTTP_response_t sptfApiRequest(const char *method, const char *endpoint, const c
  * @param code          Either an authorization code or a refresh token
  * @param grant_type    [gt_authorization_code|gt_refresh_token]
  */
-void sptfGetToken(const char *code, GrantTypes grant_type) {
+void spotifyGetToken(const char *code, GrantTypes grant_type) {
   uint32_t ts = millis();
-  Serial.printf("\n> [%d] sptfGetToken(%s, %s)\n", ts, code,
+  Serial.printf("\n> [%d] spotifyGetToken(%s, %s)\n", ts, code,
                 grant_type == gt_authorization_code ? "authorization" : "refresh");
 
   bool success = false;
@@ -1068,9 +1083,9 @@ void sptfGetToken(const char *code, GrantTypes grant_type) {
     snprintf(requestContent, sizeof(requestContent), "grant_type=refresh_token&refresh_token=%s", code);
   }
 
-  uint8_t basicAuthSize = sizeof(SPTF_CLIENT_ID) + sizeof(SPTF_CLIENT_SECRET);
+  uint8_t basicAuthSize = sizeof(SPOTIFY_CLIENT_ID) + sizeof(SPOTIFY_CLIENT_SECRET);
   char basicAuth[basicAuthSize];
-  snprintf(basicAuth, basicAuthSize, "%s:%s", SPTF_CLIENT_ID, SPTF_CLIENT_SECRET);
+  snprintf(basicAuth, basicAuthSize, "%s:%s", SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET);
 
   char requestHeaders[768];
   snprintf(requestHeaders, sizeof(requestHeaders),
@@ -1089,8 +1104,8 @@ void sptfGetToken(const char *code, GrantTypes grant_type) {
     DeserializationError error = deserializeJson(json, response.payload);
 
     if (!error) {
-      strncpy(access_token, json["access_token"], sizeof(access_token));
-      if (access_token[0] != '\0') {
+      strncpy(spotifyAccessToken, json["access_token"], sizeof(spotifyAccessToken));
+      if (spotifyAccessToken[0] != '\0') {
         token_lifetime = (json["expires_in"].as<uint32_t>() - 300);
         struct timeval now;
         gettimeofday(&now, NULL);
@@ -1098,23 +1113,23 @@ void sptfGetToken(const char *code, GrantTypes grant_type) {
         success = true;
         if (json.containsKey("refresh_token")) {
           const char *newRefreshToken = json["refresh_token"];
-          if (strcmp(newRefreshToken, activeRefreshToken) != 0) {
-            strncpy(activeRefreshToken, newRefreshToken, sizeof(activeRefreshToken));
+          if (strcmp(newRefreshToken, spotifyRefreshToken) != 0) {
+            strncpy(spotifyRefreshToken, newRefreshToken, sizeof(spotifyRefreshToken));
             bool found = false;
             for (uint8_t i = 0; i < usersCount; i++) {
               SptfUser_t *user = &users[i];
-              if (strcmp(user->refreshToken, activeRefreshToken) == 0) {
+              if (strcmp(user->refreshToken, spotifyRefreshToken) == 0) {
                 found = true;
                 break;
               }
             }
             if (!found && usersCount < MAX_USERS) {
               SptfUser_t *user = &users[usersCount++];
-              strncpy(user->refreshToken, activeRefreshToken, sizeof(user->refreshToken));
+              strncpy(user->refreshToken, spotifyRefreshToken, sizeof(user->refreshToken));
               user->selected = true;
               setActiveUser(user);
               writeUsersJson();
-              sptfAction = CurrentProfile;
+              spotifyAction = CurrentProfile;
             };
           }
         }
@@ -1128,20 +1143,20 @@ void sptfGetToken(const char *code, GrantTypes grant_type) {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
 
-  if (success) sptfAction = grant_type == gt_authorization_code ? CurrentProfile : CurrentlyPlaying;
+  if (success) spotifyAction = grant_type == gt_authorization_code ? CurrentProfile : CurrentlyPlaying;
 
-  getting_token = false;
+  spotifyGettingToken = false;
 }
 
-void sptfCurrentlyPlaying() {
-  if (access_token[0] == '\0' || !activeUser) return;
+void spotifyCurrentlyPlaying() {
+  if (spotifyAccessToken[0] == '\0' || !activeUser) return;
   uint32_t ts = millis();
-  Serial.printf("\n> [%d] sptfCurrentlyPlaying()\n", ts);
+  Serial.printf("\n> [%d] spotifyCurrentlyPlaying()\n", ts);
   next_curplay_millis = 0;
 
   char url[18];
   sprintf(url, "/player?market=%s", activeUser->country);
-  HTTP_response_t response = sptfApiRequest("GET", url);
+  HTTP_response_t response = spotifyApiRequest("GET", url);
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(5000);
@@ -1149,14 +1164,14 @@ void sptfCurrentlyPlaying() {
 
     if (!error) {
       last_curplay_millis = millis();
-      sptf_is_playing = json["is_playing"];
+      spotifyIsPlaying = json["is_playing"];
       progress_ms = json["progress_ms"];
       uint32_t duration_ms = json["item"]["duration_ms"];
 
       // Check if current song is about to end
-      if (sptf_is_playing) {
+      if (spotifyIsPlaying) {
         uint32_t remaining_ms = duration_ms - progress_ms;
-        if (remaining_ms < SPTF_MAX_POLLING_DELAY) {
+        if (remaining_ms < SPOTIFY_MAX_POLLING_DELAY) {
           // Refresh at the end of current song,
           // without considering remaining polling delay
           next_curplay_millis = millis() + remaining_ms + 200;
@@ -1167,8 +1182,8 @@ void sptfCurrentlyPlaying() {
       eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
     }
   } else if (response.httpCode == 204) {
-    sptf_is_playing = false;
-    sptfResetProgress();
+    spotifyIsPlaying = false;
+    spotifyResetProgress();
   } else {
     Serial.printf("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
@@ -1178,12 +1193,12 @@ void sptfCurrentlyPlaying() {
 /**
  * Get information about the current Spotify user
  */
-void sptfCurrentProfile() {
-  if (access_token[0] == '\0') return;
+void spotifyCurrentProfile() {
+  if (spotifyAccessToken[0] == '\0') return;
   uint32_t ts = millis();
-  Serial.printf("\n> [%d] sptfCurrentProfile()\n", ts);
+  Serial.printf("\n> [%d] spotifyCurrentProfile()\n", ts);
 
-  HTTP_response_t response = sptfApiRequest("GET", "");
+  HTTP_response_t response = spotifyApiRequest("GET", "");
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(2000);
@@ -1204,87 +1219,86 @@ void sptfCurrentProfile() {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
 
-  sptfAction = CurrentlyPlaying;
+  spotifyAction = CurrentlyPlaying;
 }
 
-void sptfNext() {
-  HTTP_response_t response = sptfApiRequest("POST", "/player/next");
+void spotifyNext() {
+  HTTP_response_t response = spotifyApiRequest("POST", "/player/next");
   if (response.httpCode == 204) {
-    sptfResetProgress();
+    spotifyResetProgress();
   } else {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
-  sptfAction = CurrentlyPlaying;
+  spotifyAction = CurrentlyPlaying;
 };
 
-void sptfPrevious() {
-  HTTP_response_t response = sptfApiRequest("POST", "/player/previous");
+void spotifyPrevious() {
+  HTTP_response_t response = spotifyApiRequest("POST", "/player/previous");
   if (response.httpCode == 204) {
-    sptfResetProgress();
+    spotifyResetProgress();
   } else {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
-  sptfAction = CurrentlyPlaying;
+  spotifyAction = CurrentlyPlaying;
 };
 
-void sptfToggle() {
-  if (access_token[0] == '\0') return;
+void spotifyToggle() {
+  if (spotifyAccessToken[0] == '\0') return;
 
-  bool was_playing = sptf_is_playing;
-  sptf_is_playing = !sptf_is_playing;
+  bool was_playing = spotifyIsPlaying;
+  spotifyIsPlaying = !spotifyIsPlaying;
   HTTP_response_t response;
   if (activeDeviceId[0] != '\0') {
     char path[65];
     snprintf(path, sizeof(path), was_playing ? "/player/pause?device_id=%s" : "/player/play?device_id=%s",
              activeDeviceId);
-    response = sptfApiRequest("PUT", path);
+    response = spotifyApiRequest("PUT", path);
   } else {
-    response = sptfApiRequest("PUT", was_playing ? "/player/pause" : "/player/play");
+    response = spotifyApiRequest("PUT", was_playing ? "/player/pause" : "/player/play");
   }
 
   if (response.httpCode == 204) {
     next_curplay_millis = millis() + 200;
   } else {
-    sptf_is_playing = !sptf_is_playing;
+    spotifyIsPlaying = !spotifyIsPlaying;
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
-  sptfAction = CurrentlyPlaying;
+  spotifyAction = CurrentlyPlaying;
 };
 
-void sptfPlayGenre(const char *playlistId) {
-  if (access_token[0] == '\0') return;
+void spotifyPlayPlaylist(const char *playlistId) {
+  if (spotifyAccessToken[0] == '\0') return;
 
-  sptf_is_playing = false;
-  playingGenreIndex = genreIndex;
+  spotifyIsPlaying = false;
   char requestContent[59];
   snprintf(requestContent, sizeof(requestContent), "{\"context_uri\":\"spotify:playlist:%s\"}", playlistId);
   HTTP_response_t response;
   if (activeDeviceId[0] != '\0') {
     char path[64];
     snprintf(path, sizeof(path), "/player/play?device_id=%s", activeDeviceId);
-    response = sptfApiRequest("PUT", path, requestContent);
+    response = spotifyApiRequest("PUT", path, requestContent);
   } else {
-    response = sptfApiRequest("PUT", "/player/play", requestContent);
+    response = spotifyApiRequest("PUT", "/player/play", requestContent);
   }
 
   if (response.httpCode == 204) {
-    sptf_is_playing = true;
-    sptfResetProgress();
+    spotifyIsPlaying = true;
+    spotifyResetProgress();
   } else {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
-  sptfAction = CurrentlyPlaying;
+  spotifyAction = CurrentlyPlaying;
 };
 
-void sptfResetProgress() {
+void spotifyResetProgress() {
   progress_ms = 0;
   last_curplay_millis = millis();
   next_curplay_millis = millis() + 200;
 };
 
-void sptfGetDevices() {
-  if (access_token[0] == '\0') return;
-  HTTP_response_t response = sptfApiRequest("GET", "/player/devices");
+void spotifyGetDevices() {
+  if (spotifyAccessToken[0] == '\0') return;
+  HTTP_response_t response = spotifyApiRequest("GET", "/player/devices");
   if (response.httpCode == 200) {
     DynamicJsonDocument doc(4000);
     DeserializationError error = deserializeJson(doc, response.payload);
@@ -1308,14 +1322,10 @@ void sptfGetDevices() {
         if (is_active || strcmp(activeDeviceId, id) == 0) {
           activeDevice = device;
           strncpy(activeDeviceId, id, sizeof(activeDeviceId));
-          if (menuMode == DeviceList) {
-            setMenuMode(DeviceList, i);
-            lastInputMillis = millis();
-            updateDisplay();
-          }
+          if (menuMode == DeviceList) menuIndex = i;
         }
       }
     }
   }
-  sptfAction = CurrentlyPlaying;
+  spotifyAction = CurrentlyPlaying;
 }
