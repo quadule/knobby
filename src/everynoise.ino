@@ -33,16 +33,16 @@ typedef struct {
 } HTTP_response_t;
 
 typedef struct {
-  char name[64] = {'\0'};
-  char refreshToken[150] = {'\0'};
-  char country[3] = {'\0'};
+  char name[64] = "";
+  char refreshToken[150] = "";
+  char country[3] = "";
   bool selected = false;
-  char selectedDeviceId[41] = {'\0'};
+  char selectedDeviceId[41] = "";
 } SptfUser_t;
 
 typedef struct {
-  char id[41] = {'\0'};
-  char name[64] = {'\0'};
+  char id[41] = "";
+  char name[64] = "";
   uint8_t volumePercent;
 } SptfDevice_t;
 
@@ -57,7 +57,7 @@ AsyncEventSource events("/events");
 
 String nodeName = "everynoisebox";
 String spotifyAuthCode;
-RTC_DATA_ATTR char spotifyAccessToken[300] = {'\0'};
+RTC_DATA_ATTR char spotifyAccessToken[300] = "";
 
 RTC_DATA_ATTR time_t token_lifetime = 0;
 RTC_DATA_ATTR time_t token_time = 0;
@@ -78,6 +78,9 @@ unsigned long lastInputMillis = 0;
 unsigned long lastDisplayMillis = 0;
 unsigned long lastReconnectAttemptMillis = 0;
 
+char statusMessage[20] = "";
+unsigned long statusMessageUntilMillis = 0;
+
 enum MenuModes {
   RootMenu = 0,
   UserList = 1,
@@ -88,27 +91,29 @@ enum MenuModes {
   PopularityList = 6,
   ModernityList = 7,
   BackgroundList = 8,
-  TempoList = 9
+  TempoList = 9,
+  ToggleBookmark = 10
 };
 MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
 uint32_t lastMenuIndex = 0;
-const char *rootMenuItems[] = {"play/pause",  "users",      "devices",   "bookmarks",  "name prefix",
-                               "name suffix", "popularity", "modernity", "background", "tempo"};
+const char *rootMenuItems[] = {"play/pause",         "users",      "devices",   "bookmarks",  "name prefix",
+                               "name suffix",        "popularity", "modernity", "background", "tempo",
+                               "add/remove bookmark"};
 #define MAX_USERS 10
 SptfUser_t users[MAX_USERS] = {};
 uint8_t usersCount = 0;
 SptfUser_t *activeUser = NULL;
-RTC_DATA_ATTR char spotifyRefreshToken[150] = {'\0'};
+RTC_DATA_ATTR char spotifyRefreshToken[150] = "";
 
 #define MAX_DEVICES 10
 SptfDevice_t devices[MAX_DEVICES] = {};
 uint8_t devicesCount = 0;
 SptfDevice_t *activeDevice = NULL;
-RTC_DATA_ATTR char activeDeviceId[41] = {'\0'};
+RTC_DATA_ATTR char activeDeviceId[41] = "";
 
 #define MAX_BOOKMARKS 1024
-uint16_t bookmarksCount = 100;
+uint16_t bookmarksCount = 95;
 const char *bookmarkedGenres[MAX_BOOKMARKS] = {"indie rock",
                                                "indie punk",
                                                "nu gaze",
@@ -122,7 +127,6 @@ const char *bookmarkedGenres[MAX_BOOKMARKS] = {"indie rock",
                                                "freak folk",
                                                "dream pop",
                                                "new rave",
-                                               "stomp and holler",
                                                "garage rock",
                                                "electropop",
                                                "post-rock",
@@ -151,7 +155,6 @@ const char *bookmarkedGenres[MAX_BOOKMARKS] = {"indie rock",
                                                "gbvfi",
                                                "indie surf",
                                                "american post-rock",
-                                               "emo",
                                                "dreamgaze",
                                                "post-metal",
                                                "alternative pop",
@@ -196,18 +199,15 @@ const char *bookmarkedGenres[MAX_BOOKMARKS] = {"indie rock",
                                                "big beat",
                                                "etherpop",
                                                "folk punk",
-                                               "funk rock",
                                                "trip hop",
                                                "downtempo",
                                                "melbourne indie",
                                                "portland indie",
                                                "neo-synthpop",
-                                               "melancholia",
                                                "progressive post-hardcore",
                                                "swedish indie rock",
                                                "grunge",
                                                "melodic hardcore",
-                                               "ninja",
                                                "stoner rock"};
 
 uint32_t menuSize = GENRE_COUNT;
@@ -350,7 +350,7 @@ void setup() {
 
   server.begin();
 
-  readUsersJson();
+  readDataJson();
 
   xTaskCreate(spotifyApiLoop,   /* Function to implement the task */
               "spotifyApiLoop", /* Name of the task */
@@ -379,6 +379,9 @@ void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
   switch (menuMode) {
     case RootMenu:
       menuSize = sizeof(rootMenuItems) / sizeof(rootMenuItems[0]);
+
+      // toggle bookmark menu item
+      if (lastMenuMode == RootMenu || lastMenuMode == UserList || lastMenuMode == DeviceList) menuSize--;
       break;
     case UserList:
       menuSize = usersCount;
@@ -396,8 +399,6 @@ void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
     case BackgroundList:
     case TempoList:
       menuSize = GENRE_COUNT;
-      break;
-    default:
       break;
   }
   menuIndex = newMenuIndex % menuSize;
@@ -423,7 +424,8 @@ void knobRotated(ESPRotary &r) {
 
   int newMenuIndex = ((int)menuIndex + (positionDelta * steps)) % (int)menuSize;
   if (newMenuIndex < 0) newMenuIndex += menuSize;
-  // Serial.printf("newIndex=%d from old=%d pos=%d delta=%d steps=%d size=%d\n", newMenuIndex, menuIndex, newPosition, positionDelta, steps, menuSize);
+  // Serial.printf("newIndex=%d from old=%d pos=%d delta=%d steps=%d size=%d\n", newMenuIndex, menuIndex, newPosition,
+  // positionDelta, steps, menuSize);
   menuIndex = newMenuIndex;
 
   switch (menuMode) {
@@ -466,13 +468,13 @@ void knobClicked() {
         token_time = 0;
         spotifyAccessToken[0] = '\0';
         updateDisplay();
-        writeUsersJson();
+        writeDataJson();
       }
       break;
     case DeviceList:
       if (devicesCount > 0) {
         setActiveDevice(&devices[menuIndex]);
-        writeUsersJson();
+        writeDataJson();
       }
       break;
     case BookmarksList:
@@ -484,7 +486,7 @@ void knobClicked() {
     case TempoList:
       spotifyAction = PlayGenre;
       break;
-    case RootMenu:
+    default:
       break;
   }
 }
@@ -512,6 +514,19 @@ void knobLongPressStopped() {
   lastInputMillis = millis();
   if (menuIndex == 0) {
     if (spotifyAccessToken[0] != '\0') spotifyAction = Toggle;
+    setMenuMode(lastMenuMode, lastMenuIndex);
+  } else if (menuIndex == ToggleBookmark) {
+    if (!isBookmarked(genreIndex)) {
+      addBookmark(genreIndex);
+      strcpy(statusMessage, "added");
+    } else {
+      removeBookmark(genreIndex);
+      if (lastMenuMode == BookmarksList) {
+        lastMenuIndex = (lastMenuIndex == 0) ? 0 : min(lastMenuIndex, bookmarksCount - 1);
+      }
+      strcpy(statusMessage, "removed");
+    }
+    statusMessageUntilMillis = millis() + 1000;
     setMenuMode(lastMenuMode, lastMenuIndex);
   } else if (menuIndex != lastMenuIndex) {
     uint32_t newMenuIndex = lastMenuIndex;
@@ -608,7 +623,6 @@ void updateDisplay() {
     lastDisplayMillis = current_millis;
     delay(80);
   } else if (lastInputMillis > lastDisplayMillis || (current_millis - lastDisplayMillis) > 10) {
-    const char *genre = genres[genreIndex];
     display.clear();
     display.setTextAlignment(TEXT_ALIGN_CENTER);
     display.setFont(Dialog_plain_12);
@@ -630,6 +644,8 @@ void updateDisplay() {
       display.drawRect(7, 9, 114, 32);
       if (menuIndex == 0) {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, spotifyIsPlaying ? "pause" : "play");
+      } else if (menuIndex == ToggleBookmark) {
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, isBookmarked(genreIndex) ? "- bookmark" : "+ bookmark");
       } else {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, rootMenuItems[menuIndex]);
       }
@@ -665,22 +681,35 @@ void updateDisplay() {
           display.drawStringMaxWidth(centerX, lineTwo, maxWidth, device->name);
         }
       }
-    } else if (menuMode == BookmarksList) {
-      if (bookmarksCount == 0) {
-        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "no bookmarks yet");
-      } else {
-        char header[7];
-        sprintf(header, "%d / %d", menuIndex + 1, menuSize);
-        display.drawStringMaxWidth(centerX, lineOne, maxWidth, header);
+      // } else if (menuMode == BookmarksList) {
+      //   if (bookmarksCount == 0) {
+      //     display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "no bookmarks yet");
+      //   } else {
+      //     char header[7];
+      //     sprintf(header, "%d / %d", menuIndex + 1, menuSize);
+      //     display.drawStringMaxWidth(centerX, lineOne, maxWidth, header);
 
-        const char *genre = bookmarkedGenres[menuIndex];
-        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, genre);
-      }
+      //     const char *genre = bookmarkedGenres[menuIndex];
+      //     display.drawStringMaxWidth(centerX, lineTwo, maxWidth, genre);
+      //   }
     } else {
-      display.drawStringMaxWidth(centerX, lineTwo, maxWidth, genre);
+      const char *text;
+      if (menuMode == BookmarksList) {
+        if (bookmarksCount == 0) {
+          text = "no bookmarks yet";
+        } else {
+          text = bookmarkedGenres[menuIndex];
+        }
+      } else {
+        text = genres[genreIndex];
+      }
 
-      if (spotifyIsPlaying && (spotifyAction == Idle || spotifyAction == CurrentlyPlaying) &&
-          playingGenreIndex == genreIndex) {
+      display.drawStringMaxWidth(centerX, lineTwo, maxWidth, text);
+
+      if (current_millis < statusMessageUntilMillis && statusMessage[0] != '\0') {
+        display.drawString(centerX, lineOne, statusMessage);
+      } else if (spotifyIsPlaying && (spotifyAction == Idle || spotifyAction == CurrentlyPlaying) &&
+                 playingGenreIndex == genreIndex) {
         uint32_t estimated_millis = progress_ms + (current_millis - last_curplay_millis);
         uint8_t seconds = estimated_millis / 1000 % 60;
         uint8_t minutes = estimated_millis / (1000 * 60) % 60;
@@ -870,7 +899,7 @@ void setActiveDevice(SptfDevice_t *device) {
   }
 }
 
-bool readUsersJson() {
+bool readDataJson() {
   File f = SPIFFS.open("/users.json", "r");
   DynamicJsonDocument doc(3000);
   DeserializationError error = deserializeJson(doc, f);
@@ -907,7 +936,7 @@ bool readUsersJson() {
   return true;
 }
 
-bool writeUsersJson() {
+bool writeDataJson() {
   File f = SPIFFS.open("/users.json", "w+");
   DynamicJsonDocument doc(3000);
 
@@ -930,6 +959,31 @@ bool writeUsersJson() {
   serializeJson(doc, Serial);
   Serial.println();
   return true;
+}
+
+bool isBookmarked(uint32_t genreIndex) {
+  for (int i = 0; i < bookmarksCount; i++) {
+    if (strcmp(bookmarkedGenres[i], genres[genreIndex]) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void addBookmark(uint32_t genreIndex) {
+  if (bookmarksCount < MAX_BOOKMARKS) {
+    bookmarkedGenres[bookmarksCount++] = genres[genreIndex];
+  }
+}
+
+void removeBookmark(uint32_t genreIndex) {
+  for (int i = 0; i < bookmarksCount; i++) {
+    if (strcmp(bookmarkedGenres[i], genres[genreIndex]) == 0) {
+      bookmarksCount--;
+      for (int j = i; j < bookmarksCount - 1; j++) bookmarkedGenres[j] = bookmarkedGenres[j + 1];
+      break;
+    }
+  }
 }
 
 HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers, const char *content = "") {
@@ -1128,7 +1182,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
               strncpy(user->refreshToken, spotifyRefreshToken, sizeof(user->refreshToken));
               user->selected = true;
               setActiveUser(user);
-              writeUsersJson();
+              writeDataJson();
               spotifyAction = CurrentProfile;
             };
           }
@@ -1209,7 +1263,7 @@ void spotifyCurrentProfile() {
       const char *country = json["country"];
       strncpy(activeUser->name, display_name, sizeof(activeUser->name));
       strncpy(activeUser->country, country, sizeof(activeUser->country));
-      writeUsersJson();
+      writeDataJson();
     } else {
       Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
       eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
