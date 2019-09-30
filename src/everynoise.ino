@@ -97,9 +97,9 @@ enum MenuModes {
 MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
 uint32_t lastMenuIndex = 0;
-const char *rootMenuItems[] = {"play/pause",         "users",      "devices",   "bookmarks",  "name prefix",
-                               "name suffix",        "popularity", "modernity", "background", "tempo",
-                               "add/remove bookmark"};
+const char *rootMenuItems[] = {"play/pause", "users",       "devices",         "bookmarks",
+                               "name",       "name ending", "popularity",      "modernity",
+                               "background", "tempo",       "add/del bookmark"};
 #define MAX_USERS 10
 SptfUser_t users[MAX_USERS] = {};
 uint8_t usersCount = 0;
@@ -113,102 +113,8 @@ SptfDevice_t *activeDevice = NULL;
 RTC_DATA_ATTR char activeDeviceId[41] = "";
 
 #define MAX_BOOKMARKS 1024
-uint16_t bookmarksCount = 95;
-const char *bookmarkedGenres[MAX_BOOKMARKS] = {"indie rock",
-                                               "indie punk",
-                                               "nu gaze",
-                                               "alternative rock",
-                                               "garage psych",
-                                               "indie pop",
-                                               "chamber pop",
-                                               "indietronica",
-                                               "modern rock",
-                                               "lo-fi",
-                                               "freak folk",
-                                               "dream pop",
-                                               "new rave",
-                                               "garage rock",
-                                               "electropop",
-                                               "post-rock",
-                                               "noise pop",
-                                               "indie folk",
-                                               "shimmer pop",
-                                               "american shoegaze",
-                                               "anti-folk",
-                                               "folk-pop",
-                                               "alternative emo",
-                                               "dance-punk",
-                                               "slow core",
-                                               "philly indie",
-                                               "shoegaze",
-                                               "alternative metal",
-                                               "post-hardcore",
-                                               "la indie",
-                                               "chillwave",
-                                               "art pop",
-                                               "metropopolis",
-                                               "modern blues rock",
-                                               "escape room",
-                                               "indie shoegaze",
-                                               "noise rock",
-                                               "compositional ambient",
-                                               "gbvfi",
-                                               "indie surf",
-                                               "american post-rock",
-                                               "dreamgaze",
-                                               "post-metal",
-                                               "alternative pop",
-                                               "alternative dance",
-                                               "canadian indie",
-                                               "permanent wave",
-                                               "small room",
-                                               "neo-psychedelic",
-                                               "punk blues",
-                                               "seattle indie",
-                                               "austindie",
-                                               "rock",
-                                               "math rock",
-                                               "experimental pop",
-                                               "indie garage rock",
-                                               "chamber psych",
-                                               "australian garage punk",
-                                               "baltimore indie",
-                                               "grave wave",
-                                               "dark post-punk",
-                                               "midwest emo",
-                                               "boston rock",
-                                               "blues-rock",
-                                               "instrumental post-rock",
-                                               "baroque pop",
-                                               "indie soul",
-                                               "quebec indie",
-                                               "bay area indie",
-                                               "australian indie",
-                                               "vancouver indie",
-                                               "chicago indie",
-                                               "brooklyn indie",
-                                               "toronto indie",
-                                               "new jersey indie",
-                                               "power pop",
-                                               "experimental rock",
-                                               "popgaze",
-                                               "post-doom metal",
-                                               "ok indie",
-                                               "electronic rock",
-                                               "scottish indie",
-                                               "big beat",
-                                               "etherpop",
-                                               "folk punk",
-                                               "trip hop",
-                                               "downtempo",
-                                               "melbourne indie",
-                                               "portland indie",
-                                               "neo-synthpop",
-                                               "progressive post-hardcore",
-                                               "swedish indie rock",
-                                               "grunge",
-                                               "melodic hardcore",
-                                               "stoner rock"};
+uint16_t bookmarksCount = 0;
+const char *bookmarkedGenres[MAX_BOOKMARKS];
 
 uint32_t menuSize = GENRE_COUNT;
 uint32_t menuIndex = 0;
@@ -331,7 +237,7 @@ void setup() {
   server.on("/resetusers", HTTP_GET, [](AsyncWebServerRequest *request) {
     spotifyAccessToken[0] = '\0';
     spotifyRefreshToken[0] = '\0';
-    SPIFFS.remove("/users.json");
+    SPIFFS.remove("/data.json");
     spotifyAction = Idle;
     request->send(200, "text/plain", "Tokens deleted, restarting");
     uint32_t start = millis();
@@ -402,6 +308,11 @@ void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
       break;
   }
   menuIndex = newMenuIndex % menuSize;
+}
+
+void setStatusMessage(const char *message, unsigned long durationMs = 1300) {
+  strncpy(statusMessage, message, sizeof(statusMessage));
+  statusMessageUntilMillis = millis() + durationMs;
 }
 
 void knobRotated(ESPRotary &r) {
@@ -485,6 +396,7 @@ void knobClicked() {
     case BackgroundList:
     case TempoList:
       spotifyAction = PlayGenre;
+      setStatusMessage("play");
       break;
     default:
       break;
@@ -495,6 +407,7 @@ void knobDoubleClicked() {
   lastInputMillis = millis();
   if (spotifyAccessToken[0] == '\0') return;
   spotifyAction = Next;
+  setStatusMessage("next");
 }
 
 void knobLongPressStarted() {
@@ -513,21 +426,24 @@ void knobLongPressStarted() {
 void knobLongPressStopped() {
   lastInputMillis = millis();
   if (menuIndex == 0) {
-    if (spotifyAccessToken[0] != '\0') spotifyAction = Toggle;
+    if (spotifyAccessToken[0] != '\0') {
+      spotifyAction = Toggle;
+      setStatusMessage(spotifyIsPlaying ? "pause" : "play");
+    }
     setMenuMode(lastMenuMode, lastMenuIndex);
   } else if (menuIndex == ToggleBookmark) {
     if (!isBookmarked(genreIndex)) {
       addBookmark(genreIndex);
-      strcpy(statusMessage, "added");
+      setStatusMessage("added");
     } else {
       removeBookmark(genreIndex);
       if (lastMenuMode == BookmarksList) {
         lastMenuIndex = (lastMenuIndex == 0) ? 0 : min(lastMenuIndex, bookmarksCount - 1);
       }
-      strcpy(statusMessage, "removed");
+      setStatusMessage("deleted");
     }
-    statusMessageUntilMillis = millis() + 1000;
     setMenuMode(lastMenuMode, lastMenuIndex);
+    writeDataJson();
   } else if (menuIndex != lastMenuIndex) {
     uint32_t newMenuIndex = lastMenuIndex;
 
@@ -610,42 +526,50 @@ void updateDisplay() {
   const int lineOne = 0;
   const int lineTwo = 16;
   const int lineThree = 32;
-  unsigned long current_millis = millis();
-  int8_t t = current_millis % 6;
+  unsigned long currentMillis = millis();
+  int8_t t = currentMillis % 6;
   bool connected = WiFi.isConnected();
-  if (current_millis < 500) {
+  if (currentMillis < 500) {
     display.setTextAlignment(TEXT_ALIGN_CENTER);
     display.setFont(Dialog_plain_12);
     display.drawString(centerX, lineTwo, "every noise");
     display.drawString(centerX, lineThree, "at once");
     display.drawRect(t, t, 127 - (t * 2), 63 - (t * 2));
     display.display();
-    lastDisplayMillis = current_millis;
+    lastDisplayMillis = currentMillis;
     delay(80);
-  } else if (lastInputMillis > lastDisplayMillis || (current_millis - lastDisplayMillis) > 10) {
+  } else if (lastInputMillis > lastDisplayMillis || (currentMillis - lastDisplayMillis) > 10) {
     display.clear();
     display.setTextAlignment(TEXT_ALIGN_CENTER);
     display.setFont(Dialog_plain_12);
 
-    if (!connected) {
+    if (!connected || spotifyGettingToken) {
       if (t == 0) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, ".");
       if (t == 1) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "...");
       if (t == 2) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, ".:.");
       if (t == 3) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "-:-");
       if (t == 4) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "_-_");
       if (t == 5) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "_");
+
+      if (currentMillis > 1000) {
+        if (!connected) {
+          display.drawStringMaxWidth(centerX, lineOne, maxWidth, "wi-fi?");
+        } else if (spotifyGettingToken) {
+          display.drawStringMaxWidth(centerX, lineOne, maxWidth, "spotify?");
+        }
+      }
+
       delay(80);
     } else if (usersCount == 0) {
       display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "setup at http://");
       display.drawStringMaxWidth(centerX, lineThree, maxWidth, nodeName + ".local");
-    } else if (spotifyGettingToken) {
-      display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "spotify...");
     } else if (menuMode == RootMenu) {
       display.drawRect(7, 9, 114, 32);
       if (menuIndex == 0) {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, spotifyIsPlaying ? "pause" : "play");
       } else if (menuIndex == ToggleBookmark) {
-        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, isBookmarked(genreIndex) ? "- bookmark" : "+ bookmark");
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth,
+                                   isBookmarked(genreIndex) ? "del bookmark" : "add bookmark");
       } else {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, rootMenuItems[menuIndex]);
       }
@@ -681,17 +605,6 @@ void updateDisplay() {
           display.drawStringMaxWidth(centerX, lineTwo, maxWidth, device->name);
         }
       }
-      // } else if (menuMode == BookmarksList) {
-      //   if (bookmarksCount == 0) {
-      //     display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "no bookmarks yet");
-      //   } else {
-      //     char header[7];
-      //     sprintf(header, "%d / %d", menuIndex + 1, menuSize);
-      //     display.drawStringMaxWidth(centerX, lineOne, maxWidth, header);
-
-      //     const char *genre = bookmarkedGenres[menuIndex];
-      //     display.drawStringMaxWidth(centerX, lineTwo, maxWidth, genre);
-      //   }
     } else {
       const char *text;
       if (menuMode == BookmarksList) {
@@ -706,11 +619,11 @@ void updateDisplay() {
 
       display.drawStringMaxWidth(centerX, lineTwo, maxWidth, text);
 
-      if (current_millis < statusMessageUntilMillis && statusMessage[0] != '\0') {
+      if (currentMillis < statusMessageUntilMillis && statusMessage[0] != '\0') {
         display.drawString(centerX, lineOne, statusMessage);
       } else if (spotifyIsPlaying && (spotifyAction == Idle || spotifyAction == CurrentlyPlaying) &&
                  playingGenreIndex == genreIndex) {
-        uint32_t estimated_millis = progress_ms + (current_millis - last_curplay_millis);
+        uint32_t estimated_millis = progress_ms + (currentMillis - last_curplay_millis);
         uint8_t seconds = estimated_millis / 1000 % 60;
         uint8_t minutes = estimated_millis / (1000 * 60) % 60;
         uint8_t hours = estimated_millis / (1000 * 60 * 60);
@@ -721,14 +634,6 @@ void updateDisplay() {
           sprintf(elapsed, "%d:%02d:%02d", hours, minutes, seconds);
         }
         display.drawString(centerX, lineOne, elapsed);
-      } else if (spotifyAction == PlayGenre || (spotifyAction == Toggle && !spotifyIsPlaying)) {
-        display.drawString(centerX, lineOne, "play");
-      } else if (spotifyAction == Toggle && spotifyIsPlaying) {
-        display.drawString(centerX, lineOne, "pause");
-      } else if (spotifyAction == Previous) {
-        display.drawString(centerX, lineOne, "previous");
-      } else if (spotifyAction == Next) {
-        display.drawString(centerX, lineOne, "next");
       } else {
         char label[13];
         if (menuMode == TempoList) {
@@ -900,23 +805,24 @@ void setActiveDevice(SptfDevice_t *device) {
 }
 
 bool readDataJson() {
-  File f = SPIFFS.open("/users.json", "r");
-  DynamicJsonDocument doc(3000);
+  File f = SPIFFS.open("/data.json", "r");
+  DynamicJsonDocument doc(5000);
   DeserializationError error = deserializeJson(doc, f);
   f.close();
 
   if (error) {
-    Serial.printf("Failed to read users.json: %s\n", error.c_str());
+    Serial.printf("Failed to read data.json: %s\n", error.c_str());
     return false;
   } else {
     serializeJson(doc, Serial);
     Serial.println();
   }
 
-  usersCount = min(MAX_USERS, doc.size());
+  JsonArray usersArray = doc["users"];
+  usersCount = min(MAX_USERS, usersArray.size());
 
   for (uint8_t i = 0; i < usersCount; i++) {
-    JsonObject jsonUser = doc[i];
+    JsonObject jsonUser = usersArray[i];
     const char *name = jsonUser["name"];
     const char *token = jsonUser["token"];
     const char *country = jsonUser["country"];
@@ -933,16 +839,26 @@ bool readDataJson() {
 
   if (usersCount > 0 && activeUser == NULL) setActiveUser(&users[0]);
 
+  JsonArray bookmarksArray = doc["bookmarks"];
+
+  for (int i = 0; i < bookmarksArray.size(); i++) {
+    const char *genreName = bookmarksArray[i];
+    int genreIndex = getGenreIndex(genreName);
+    if (genreIndex >= 0) addBookmark(genreIndex);
+  }
+
   return true;
 }
 
 bool writeDataJson() {
-  File f = SPIFFS.open("/users.json", "w+");
-  DynamicJsonDocument doc(3000);
+  File f = SPIFFS.open("/data.json", "w+");
+  DynamicJsonDocument doc(5000);
+
+  JsonArray usersArray = doc.createNestedArray("users");
 
   for (uint8_t i = 0; i < usersCount; i++) {
     SptfUser_t *user = &users[i];
-    JsonObject obj = doc.createNestedObject();
+    JsonObject obj = usersArray.createNestedObject();
     obj["name"] = user->name;
     obj["token"] = user->refreshToken;
     obj["country"] = user->country;
@@ -950,10 +866,17 @@ bool writeDataJson() {
     obj["selected"] = (bool)(strcmp(user->refreshToken, spotifyRefreshToken) == 0);
   }
 
+  JsonArray bookmarksArray = doc.createNestedArray("bookmarks");
+
+  for (int i = 0; i < bookmarksCount; i++) {
+    const char *genreName = bookmarkedGenres[i];
+    bookmarksArray.add(genreName);
+  }
+
   size_t bytes = serializeJson(doc, f);
   f.close();
   if (bytes <= 0) {
-    Serial.printf("Failed to write users.json: %d\n", bytes);
+    Serial.printf("Failed to write data.json: %d\n", bytes);
     return false;
   }
   serializeJson(doc, Serial);
