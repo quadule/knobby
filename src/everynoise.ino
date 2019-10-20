@@ -46,7 +46,18 @@ typedef struct {
   uint8_t volumePercent;
 } SptfDevice_t;
 
-enum SpotifyActions { Idle, GetToken, CurrentlyPlaying, CurrentProfile, Next, Previous, Toggle, PlayGenre, GetDevices };
+enum SpotifyActions {
+  Idle,
+  GetToken,
+  CurrentlyPlaying,
+  CurrentProfile,
+  Next,
+  Previous,
+  Toggle,
+  PlayGenre,
+  GetDevices,
+  SetVolume
+};
 
 enum GrantTypes { gt_authorization_code, gt_refresh_token };
 
@@ -92,14 +103,15 @@ enum MenuModes {
   ModernityList = 7,
   BackgroundList = 8,
   TempoList = 9,
-  ToggleBookmark = 10
+  ToggleBookmark = 10,
+  VolumeControl = 11
 };
 MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
 uint32_t lastMenuIndex = 0;
-const char *rootMenuItems[] = {"play/pause", "users",       "devices",         "bookmarks",
-                               "name",       "name ending", "popularity",      "modernity",
-                               "background", "tempo",       "add/del bookmark"};
+const char *rootMenuItems[] = {"play/pause", "users",       "devices",          "bookmarks",
+                               "name",       "name ending", "popularity",       "modernity",
+                               "background", "tempo",       "add/del bookmark", "volume"};
 #define MAX_USERS 10
 SptfUser_t users[MAX_USERS] = {};
 uint8_t usersCount = 0;
@@ -120,6 +132,8 @@ uint32_t menuSize = GENRE_COUNT;
 uint32_t menuIndex = 0;
 int lastKnobPosition = 0;
 double lastKnobSpeed = 0.0;
+int toggleBookmarkIndex = -1;
+int volumeControlIndex = -1;
 
 TaskHandle_t spotifyApiTask;
 
@@ -280,15 +294,26 @@ const char *genrePtr(const char *genreName) {
   return NULL;
 }
 
+bool shouldShowToggleBookmark() {
+  return lastMenuMode != RootMenu && lastMenuMode != UserList && lastMenuMode != DeviceList &&
+         lastMenuMode != VolumeControl;
+}
+
+bool shouldShowVolumeControl() {
+  return activeDevice != NULL;
+}
+
 void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
   menuMode = newMode;
-  switch (menuMode) {
-    case RootMenu:
-      menuSize = sizeof(rootMenuItems) / sizeof(rootMenuItems[0]);
 
-      // toggle bookmark menu item
-      if (lastMenuMode == RootMenu || lastMenuMode == UserList || lastMenuMode == DeviceList) menuSize--;
-      break;
+  if (menuMode == RootMenu) {
+    int nextDynamicIndex = ToggleBookmark;
+    toggleBookmarkIndex = shouldShowToggleBookmark() ? nextDynamicIndex++ : -1;
+    volumeControlIndex = shouldShowVolumeControl() ? nextDynamicIndex++ : -1;
+    menuSize = nextDynamicIndex;
+  }
+
+  switch (menuMode) {
     case UserList:
       menuSize = usersCount;
       break;
@@ -305,6 +330,11 @@ void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
     case BackgroundList:
     case TempoList:
       menuSize = GENRE_COUNT;
+      break;
+    case VolumeControl:
+      menuSize = 101;  // 0-100%
+      break;
+    default:
       break;
   }
   menuIndex = newMenuIndex % menuSize;
@@ -333,11 +363,17 @@ void knobRotated(ESPRotary &r) {
     lastKnobSpeed = 0.0;
   }
 
-  int newMenuIndex = ((int)menuIndex + (positionDelta * steps)) % (int)menuSize;
-  if (newMenuIndex < 0) newMenuIndex += menuSize;
-  // Serial.printf("newIndex=%d from old=%d pos=%d delta=%d steps=%d size=%d\n", newMenuIndex, menuIndex, newPosition,
-  // positionDelta, steps, menuSize);
-  menuIndex = newMenuIndex;
+  if (menuMode == VolumeControl) {
+    int newMenuIndex = (int)menuIndex + positionDelta;
+    newMenuIndex = newMenuIndex < 0 ? 0 : min(newMenuIndex, menuSize - 1);
+    menuIndex = newMenuIndex;
+  } else {
+    int newMenuIndex = ((int)menuIndex + (positionDelta * steps)) % (int)menuSize;
+    if (newMenuIndex < 0) newMenuIndex += menuSize;
+    // Serial.printf("newIndex=%d from old=%d pos=%d delta=%d steps=%d size=%d\n", newMenuIndex, menuIndex, newPosition,
+    // positionDelta, steps, menuSize);
+    menuIndex = newMenuIndex;
+  }
 
   switch (menuMode) {
     case AlphabeticList:
@@ -361,6 +397,10 @@ void knobRotated(ESPRotary &r) {
     case BookmarksList:
       genreIndex = max(0, getGenreIndex(bookmarkedGenres[menuIndex]));
       break;
+    case VolumeControl:
+      if (activeDevice != NULL) {
+        activeDevice->volumePercent = menuIndex;
+      }
     default:
       break;
   }
@@ -398,6 +438,9 @@ void knobClicked() {
       spotifyAction = PlayGenre;
       setStatusMessage("play");
       break;
+    case VolumeControl:
+      spotifyAction = SetVolume;
+      break;
     default:
       break;
   }
@@ -431,7 +474,7 @@ void knobLongPressStopped() {
       setStatusMessage(spotifyIsPlaying ? "pause" : "play");
     }
     setMenuMode(lastMenuMode, lastMenuIndex);
-  } else if (menuIndex == ToggleBookmark) {
+  } else if (menuIndex == toggleBookmarkIndex) {
     if (!isBookmarked(genreIndex)) {
       addBookmark(genreIndex);
       setStatusMessage("added");
@@ -444,6 +487,10 @@ void knobLongPressStopped() {
     }
     setMenuMode(lastMenuMode, lastMenuIndex);
     writeDataJson();
+  } else if (menuIndex == volumeControlIndex) {
+    if (activeDevice != NULL) {
+      setMenuMode(VolumeControl, activeDevice->volumePercent);
+    }
   } else if (menuIndex != lastMenuIndex) {
     uint32_t newMenuIndex = lastMenuIndex;
 
@@ -551,11 +598,11 @@ void updateDisplay() {
       if (t == 4) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "_-_");
       if (t == 5) display.drawStringMaxWidth(centerX, lineTwo, maxWidth, "_");
 
-      if (currentMillis > 1000) {
+      if (currentMillis > 2000) {
         if (!connected) {
-          display.drawStringMaxWidth(centerX, lineOne, maxWidth, "wi-fi?");
+          display.drawStringMaxWidth(centerX, lineOne, maxWidth, "wi-fi");
         } else if (spotifyGettingToken) {
-          display.drawStringMaxWidth(centerX, lineOne, maxWidth, "spotify?");
+          display.drawStringMaxWidth(centerX, lineOne, maxWidth, "spotify");
         }
       }
 
@@ -567,14 +614,16 @@ void updateDisplay() {
       display.drawRect(7, 9, 114, 32);
       if (menuIndex == 0) {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, spotifyIsPlaying ? "pause" : "play");
-      } else if (menuIndex == ToggleBookmark) {
+      } else if (menuIndex == toggleBookmarkIndex) {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth,
                                    isBookmarked(genreIndex) ? "del bookmark" : "add bookmark");
+      } else if (menuIndex == volumeControlIndex) {
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, rootMenuItems[VolumeControl]);
       } else {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, rootMenuItems[menuIndex]);
       }
     } else if (menuMode == UserList) {
-      char header[7];
+      char header[8];
       sprintf(header, "%d / %d", menuIndex + 1, menuSize);
       display.drawStringMaxWidth(centerX, lineOne, maxWidth, header);
 
@@ -605,6 +654,12 @@ void updateDisplay() {
           display.drawStringMaxWidth(centerX, lineTwo, maxWidth, device->name);
         }
       }
+    } else if (menuMode == VolumeControl) {
+      display.drawRect(8, lineTwo, 104, 16);
+      display.fillRect(10, lineTwo + 2, menuIndex, 12);
+      char label[4];
+      sprintf(label, "%d%%", activeDevice->volumePercent);
+      display.drawStringMaxWidth(centerX, lineThree, maxWidth, label);
     } else {
       const char *text;
       if (menuMode == BookmarksList) {
@@ -760,6 +815,9 @@ void spotifyApiLoop(void *params) {
           break;
         case GetDevices:
           spotifyGetDevices();
+          break;
+        case SetVolume:
+          spotifySetVolume();
           break;
       }
     }
@@ -1145,8 +1203,19 @@ void spotifyCurrentlyPlaying() {
       progress_ms = json["progress_ms"];
       uint32_t duration_ms = json["item"]["duration_ms"];
 
+      if (json.containsKey("device")) {
+        SptfDevice_t *device = activeDevice;
+        if (device == NULL && devicesCount == 0) device = activeDevice = &devices[devicesCount];
+        JsonObject jsonDevice = json["device"];
+        strncpy(activeDeviceId, jsonDevice["id"], sizeof(device->id));
+        strncpy(device->id, jsonDevice["id"], sizeof(device->id));
+        strncpy(device->name, jsonDevice["name"], sizeof(device->name));
+        device->volumePercent = jsonDevice["volume_percent"];
+      }
+
       // Check if current song is about to end
       if (spotifyIsPlaying) {
+        inactivityMillis = 90000;
         uint32_t remaining_ms = duration_ms - progress_ms;
         if (remaining_ms < SPOTIFY_MAX_POLLING_DELAY) {
           // Refresh at the end of current song,
@@ -1304,5 +1373,14 @@ void spotifyGetDevices() {
       }
     }
   }
+  spotifyAction = CurrentlyPlaying;
+}
+
+void spotifySetVolume() {
+  if (activeDevice == NULL) return;
+  char path[85];
+  snprintf(path, sizeof(path), "/player/volume?device_id=%s&volume_percent=%d", activeDevice->id, activeDevice->volumePercent);
+  HTTP_response_t response;
+  response = spotifyApiRequest("PUT", path);
   spotifyAction = CurrentlyPlaying;
 }
