@@ -24,7 +24,7 @@ OneButton button(ROTARY_ENCODER_BUTTON_PIN, true, true);
 
 #define min(X, Y) (((X) < (Y)) ? (X) : (Y))
 #define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
-const uint16_t SPOTIFY_MAX_POLLING_DELAY = 30000;
+const uint16_t SPOTIFY_MAX_POLLING_DELAY = 20000;
 const uint16_t SPOTIFY_MIN_POLLING_INTERVAL = 10000;
 
 typedef struct {
@@ -84,7 +84,7 @@ SpotifyActions spotifyAction = Idle;
 
 int playingGenreIndex = -1;
 uint32_t genreIndex = 0;
-unsigned long inactivityMillis = 45000;
+unsigned long inactivityMillis = 60000;
 unsigned long lastInputMillis = 0;
 unsigned long lastDisplayMillis = 0;
 unsigned long lastReconnectAttemptMillis = 0;
@@ -182,7 +182,7 @@ void setup() {
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     send_events = true;
-    inactivityMillis = 90000;
+    inactivityMillis = 120000;
     uint32_t ts = millis();
     Serial.printf("\n> [%d] server.on /\n", ts);
     if (spotifyAccessToken[0] == '\0' && !spotifyGettingToken) {
@@ -825,18 +825,6 @@ void spotifyApiLoop(void *params) {
   }
 }
 
-String b64Encode(String str) {
-  String encodedStr = base64::encode(str);
-
-  // Remove unnecessary linefeeds
-  int idx = -1;
-  while ((idx = encodedStr.indexOf('\n')) != -1) {
-    encodedStr.remove(idx, 1);
-  }
-
-  return encodedStr;
-}
-
 void setActiveUser(SptfUser_t *user) {
   activeUser = user;
   strncpy(spotifyRefreshToken, activeUser->refreshToken, sizeof(spotifyRefreshToken));
@@ -1130,7 +1118,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
            "Content-Length: %d\r\n"
            "Content-Type: application/x-www-form-urlencoded\r\n"
            "Connection: close\r\n\r\n",
-           b64Encode(basicAuth).c_str(), strlen(requestContent));
+           base64::encode(basicAuth).c_str(), strlen(requestContent));
 
   HTTP_response_t response = httpRequest("accounts.spotify.com", 443, requestHeaders, requestContent);
 
@@ -1309,7 +1297,7 @@ void spotifyToggle() {
     spotifyIsPlaying = !spotifyIsPlaying;
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
-  spotifyAction = CurrentlyPlaying;
+  spotifyAction = spotifyIsPlaying ? CurrentlyPlaying : Idle;
 };
 
 void spotifyPlayPlaylist(const char *playlistId) {
@@ -1368,7 +1356,6 @@ void spotifyGetDevices() {
         if (is_active || strcmp(activeDeviceId, id) == 0) {
           activeDevice = device;
           strncpy(activeDeviceId, id, sizeof(activeDeviceId));
-          if (menuMode == DeviceList) menuIndex = i;
         }
       }
     }
