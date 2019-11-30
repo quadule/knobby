@@ -56,7 +56,8 @@ enum SpotifyActions {
   Toggle,
   PlayGenre,
   GetDevices,
-  SetVolume
+  SetVolume,
+  ToggleShuffle
 };
 
 enum GrantTypes { gt_authorization_code, gt_refresh_token };
@@ -77,6 +78,7 @@ uint32_t next_curplay_millis = 0;
 
 bool spotifyGettingToken = false;
 bool spotifyIsPlaying = false;
+bool spotifyIsShuffled = false;
 bool send_events = false;
 uint32_t progress_ms = 0;
 
@@ -103,15 +105,17 @@ enum MenuModes {
   ModernityList = 7,
   BackgroundList = 8,
   TempoList = 9,
-  ToggleBookmark = 10,
-  VolumeControl = 11
+  ToggleBookmarkItem = 10,
+  ToggleShuffleItem = 11,
+  VolumeControl = 12
 };
 MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
 uint32_t lastMenuIndex = 0;
 const char *rootMenuItems[] = {"play/pause", "users",       "devices",          "bookmarks",
                                "name",       "name ending", "popularity",       "modernity",
-                               "background", "tempo",       "add/del bookmark", "volume"};
+                               "background", "tempo",       "add/del bookmark", "shuffle",
+                               "volume"};
 #define MAX_USERS 10
 SptfUser_t users[MAX_USERS] = {};
 uint8_t usersCount = 0;
@@ -134,6 +138,7 @@ int lastKnobPosition = 0;
 double lastKnobSpeed = 0.0;
 int toggleBookmarkIndex = -1;
 int volumeControlIndex = -1;
+int toggleShuffleIndex = -1;
 
 TaskHandle_t spotifyApiTask;
 
@@ -303,13 +308,18 @@ bool shouldShowVolumeControl() {
   return activeDevice != NULL;
 }
 
+bool shouldShowToggleShuffle() {
+  return spotifyIsPlaying;
+}
+
 void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
   menuMode = newMode;
 
   if (menuMode == RootMenu) {
-    int nextDynamicIndex = ToggleBookmark;
+    int nextDynamicIndex = ToggleBookmarkItem;
     toggleBookmarkIndex = shouldShowToggleBookmark() ? nextDynamicIndex++ : -1;
     volumeControlIndex = shouldShowVolumeControl() ? nextDynamicIndex++ : -1;
+    toggleShuffleIndex = shouldShowToggleShuffle() ? nextDynamicIndex++ : -1;
     menuSize = nextDynamicIndex;
   }
 
@@ -491,6 +501,10 @@ void knobLongPressStopped() {
     if (activeDevice != NULL) {
       setMenuMode(VolumeControl, activeDevice->volumePercent);
     }
+  } else if (menuIndex == toggleShuffleIndex) {
+    setStatusMessage(spotifyIsShuffled ? "shuffle off" : "shuffle on");
+    spotifyAction = ToggleShuffle;
+    setMenuMode(lastMenuMode, lastMenuIndex);
   } else if (menuIndex != lastMenuIndex) {
     uint32_t newMenuIndex = lastMenuIndex;
 
@@ -619,6 +633,8 @@ void updateDisplay() {
                                    isBookmarked(genreIndex) ? "del bookmark" : "add bookmark");
       } else if (menuIndex == volumeControlIndex) {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, rootMenuItems[VolumeControl]);
+      } else if (menuIndex == toggleShuffleIndex) {
+        display.drawStringMaxWidth(centerX, lineTwo, maxWidth, spotifyIsShuffled ? "unshuffle" : "shuffle");
       } else {
         display.drawStringMaxWidth(centerX, lineTwo, maxWidth, rootMenuItems[menuIndex]);
       }
@@ -818,6 +834,9 @@ void spotifyApiLoop(void *params) {
           break;
         case SetVolume:
           spotifySetVolume();
+          break;
+        case ToggleShuffle:
+          spotifyToggleShuffle();
           break;
       }
     }
@@ -1188,6 +1207,7 @@ void spotifyCurrentlyPlaying() {
     if (!error) {
       last_curplay_millis = millis();
       spotifyIsPlaying = json["is_playing"];
+      spotifyIsShuffled = json["shuffle_state"];
       progress_ms = json["progress_ms"];
       uint32_t duration_ms = json["item"]["duration_ms"];
 
@@ -1217,6 +1237,7 @@ void spotifyCurrentlyPlaying() {
     }
   } else if (response.httpCode == 204) {
     spotifyIsPlaying = false;
+    spotifyIsShuffled = false;
     spotifyResetProgress();
   } else {
     Serial.printf("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
@@ -1371,3 +1392,22 @@ void spotifySetVolume() {
   response = spotifyApiRequest("PUT", path);
   spotifyAction = CurrentlyPlaying;
 }
+
+void spotifyToggleShuffle() {
+  if (spotifyAccessToken[0] == '\0') return;
+
+  spotifyIsShuffled = !spotifyIsShuffled;
+  HTTP_response_t response;
+
+  char path[30];
+  snprintf(path, sizeof(path), "/player/shuffle?state=%s", spotifyIsShuffled ? "true" : "false");
+  response = spotifyApiRequest("PUT", path);\
+
+  if (response.httpCode == 204) {
+    next_curplay_millis = millis() + 200;
+  } else {
+    spotifyIsShuffled = !spotifyIsShuffled;
+    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+  }
+  spotifyAction = spotifyIsPlaying ? CurrentlyPlaying : Idle;
+};
