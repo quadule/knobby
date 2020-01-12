@@ -5,18 +5,24 @@ require "nokogiri"
 require "erb"
 
 ID_PATTERN = /:playlist:([A-Za-z0-9]{22})/
-Genre = Struct.new(:name, :id, :label)
+Genre = Struct.new(:name, :id, :label, :color)
 
 def build_genre(row)
   name = row.at("td.note:last").text
   link = row.at("a.note")[:href]
+  id = link[ID_PATTERN, 1]
   label = row.at("td.note:first")[:title].to_s
     .sub("average duration", "")
     .sub(" bpm", "")
     .sub("%", "")
     .split(/\:\s+/).last
-  id = link[ID_PATTERN, 1]
-  Genre.new(name, id, label)
+  style = row.at("td.note a")[:style].to_s
+  r, g, b = *style[/color:\s+#([0-9a-f]{6})/i, 1].scan(/../).map { |c| c.to_i(16) }
+  Genre.new(name, id, label, color_565(r, g, b))
+end
+
+def color_565(r, g, b)
+  ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
 end
 
 sorted_genres = Hash.new { [] }
@@ -39,6 +45,8 @@ template = <<-END_TEMPLATE
 const char* genres[GENRE_COUNT] = { <%= names.map(&:inspect).join(", ") %> };
 
 const char* playlists[GENRE_COUNT] = { <%= alphabetical.map { |g| g.id.inspect }.join(", ") %> };
+
+const uint16_t genreColors[GENRE_COUNT] = { <%= alphabetical.map { |g| g.color.to_s }.join(", ") %> };
 
 const uint16_t genreIndexes_suffix[GENRE_COUNT] = { <%= suffix.map { |g| names.index(g.name) }.join(", ") %> };
 
