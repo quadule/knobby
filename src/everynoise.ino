@@ -146,8 +146,8 @@ int toggleShuffleIndex = -1;
 TaskHandle_t spotifyApiTask;
 
 void setup() {
-  SPIFFS.begin(true);
   Serial.begin(115200);
+  SPIFFS.begin(true);
 
   // enable wakeup on button click
   esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
@@ -306,7 +306,7 @@ bool shouldShowToggleBookmark() {
 
 bool shouldShowVolumeControl() { return activeDevice != NULL; }
 
-bool shouldShowToggleShuffle() { return spotifyIsPlaying; }
+bool shouldShowToggleShuffle() { return true; }
 
 void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
   menuMode = newMode;
@@ -922,7 +922,8 @@ void spotifyApiLoop(void *params) {
           }
           break;
         case CurrentlyPlaying:
-          if (next_curplay_millis && (cur_millis >= next_curplay_millis) &&
+          if (spotifyLastUpdateMillis == 0 ||
+              next_curplay_millis && (cur_millis >= next_curplay_millis) &&
               cur_millis - spotifyLastUpdateMillis >= SPOTIFY_MIN_POLLING_INTERVAL) {
             spotifyCurrentlyPlaying();
           }
@@ -1301,7 +1302,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
 
-  if (success) spotifyAction = grant_type == gt_authorization_code ? CurrentProfile : CurrentlyPlaying;
+  if (success) spotifyAction = grant_type == gt_authorization_code ? CurrentProfile : GetDevices;
 
   spotifyGettingToken = false;
 }
@@ -1337,8 +1338,8 @@ void spotifyCurrentlyPlaying() {
         device->volumePercent = jsonDevice["volume_percent"];
       }
 
-      // Check if current song is about to end
       if (spotifyIsPlaying) {
+        // Check if current song is about to end
         inactivityMillis = 90000;
         uint32_t remaining_ms = duration_ms - progress_ms;
         if (remaining_ms < SPOTIFY_MAX_POLLING_DELAY) {
@@ -1346,12 +1347,15 @@ void spotifyCurrentlyPlaying() {
           // without considering remaining polling delay
           next_curplay_millis = millis() + remaining_ms + 200;
         }
+      } else if (spotifyAction == CurrentlyPlaying) {
+        spotifyAction = Idle;
       }
     } else {
       Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
       eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
     }
   } else if (response.httpCode == 204) {
+    spotifyAction = Idle;
     spotifyIsPlaying = false;
     spotifyIsShuffled = false;
     spotifyResetProgress();
