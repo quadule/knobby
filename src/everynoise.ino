@@ -69,23 +69,20 @@ enum EventsLogTypes { log_line, log_raw };
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
 
-String nodeName = "everynoisebox";
 String spotifyAuthCode;
 RTC_DATA_ATTR char spotifyAccessToken[300] = "";
-
-RTC_DATA_ATTR time_t token_lifetime = 0;
-RTC_DATA_ATTR time_t token_time = 0;
+RTC_DATA_ATTR time_t spotifyTokenLifetime = 0;
+RTC_DATA_ATTR time_t spotifyTokenTime = 0;
 uint32_t spotifyLastUpdateMillis = 0;
-uint32_t next_curplay_millis = 0;
-
+uint32_t nextCurrentlyPlayingMillis = 0;
 bool spotifyGettingToken = false;
 bool spotifyIsPlaying = false;
 bool spotifyIsShuffled = false;
-bool send_events = false;
-uint32_t progress_ms = 0;
-
+uint32_t spotifyProgressMillis = 0;
 SpotifyActions spotifyAction = Idle;
 
+String nodeName = "everynoisebox";
+bool sendLogEvents = false;
 int playingGenreIndex = -1;
 uint32_t genreIndex = 0;
 unsigned long inactivityMillis = 60000;
@@ -94,7 +91,6 @@ unsigned long lastDisplayMillis = 0;
 unsigned long lastReconnectAttemptMillis = 0;
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
-
 char statusMessage[20] = "";
 unsigned long statusMessageUntilMillis = 0;
 
@@ -185,7 +181,7 @@ void setup() {
   server.addHandler(&events);
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    send_events = true;
+    sendLogEvents = true;
     inactivityMillis = 120000;
     uint32_t ts = millis();
     Serial.printf("\n> [%d] server.on /\n", ts);
@@ -266,8 +262,8 @@ void setup() {
   });
 
   server.on("/toggleevents", HTTP_GET, [](AsyncWebServerRequest *request) {
-    send_events = !send_events;
-    request->send(200, "text/plain", send_events ? "1" : "0");
+    sendLogEvents = !sendLogEvents;
+    request->send(200, "text/plain", sendLogEvents ? "1" : "0");
   });
 
   server.onNotFound([](AsyncWebServerRequest *request) { request->send(404); });
@@ -419,8 +415,8 @@ void knobClicked() {
     case UserList:
       if (usersCount > 0) {
         setActiveUser(&users[menuIndex]);
-        token_lifetime = 0;
-        token_time = 0;
+        spotifyTokenLifetime = 0;
+        spotifyTokenTime = 0;
         spotifyAccessToken[0] = '\0';
         displayInvalidated = true;
         writeDataJson();
@@ -786,7 +782,7 @@ void updateDisplay() {
         drawCenteredText(statusMessage, tft.width());
       } else if (spotifyIsPlaying && (spotifyAction == Idle || spotifyAction == CurrentlyPlaying) &&
                  playingGenreIndex == genreIndex) {
-        uint32_t estimated_millis = progress_ms + (currentMillis - spotifyLastUpdateMillis);
+        uint32_t estimated_millis = spotifyProgressMillis + (currentMillis - spotifyLastUpdateMillis);
         uint8_t seconds = estimated_millis / 1000 % 60;
         uint8_t minutes = estimated_millis / (1000 * 60) % 60;
         uint8_t hours = estimated_millis / (1000 * 60 * 60);
@@ -815,12 +811,12 @@ void updateDisplay() {
 }
 
 void eventsSendLog(const char *logData, EventsLogTypes type = log_line) {
-  if (!send_events) return;
+  if (!sendLogEvents) return;
   events.send(logData, type == log_line ? "line" : "raw");
 }
 
 void eventsSendInfo(const char *msg, const char *payload = "") {
-  if (!send_events) return;
+  if (!sendLogEvents) return;
 
   DynamicJsonDocument json(512);
   json["msg"] = msg;
@@ -834,7 +830,7 @@ void eventsSendInfo(const char *msg, const char *payload = "") {
 }
 
 void eventsSendError(int code, const char *msg, const char *payload = "") {
-  if (!send_events) return;
+  if (!sendLogEvents) return;
 
   DynamicJsonDocument json(512);
   json["code"] = code;
@@ -856,7 +852,7 @@ void loop() {
   struct timeval now;
   gettimeofday(&now, NULL);
   time_t currentSeconds = now.tv_sec;
-  int token_age = currentSeconds - token_time;
+  int token_age = currentSeconds - spotifyTokenTime;
   bool connected = WiFi.isConnected();
 
   if (currentMillis - lastInputMillis > inactivityMillis) {
@@ -877,7 +873,7 @@ void loop() {
     lastReconnectAttemptMillis = currentMillis;
   }
 
-  if (connected && !spotifyGettingToken && (spotifyAccessToken[0] == '\0' || token_age >= token_lifetime)) {
+  if (connected && !spotifyGettingToken && (spotifyAccessToken[0] == '\0' || token_age >= spotifyTokenLifetime)) {
     spotifyGettingToken = true;
     spotifyAction = GetToken;
   }
@@ -914,8 +910,8 @@ void spotifyApiLoop(void *params) {
           break;
         case CurrentlyPlaying:
           if (spotifyLastUpdateMillis == 0 ||
-              next_curplay_millis && (cur_millis >= next_curplay_millis) &&
-              cur_millis - spotifyLastUpdateMillis >= SPOTIFY_MIN_POLLING_INTERVAL) {
+              (nextCurrentlyPlayingMillis && (cur_millis >= nextCurrentlyPlayingMillis) &&
+              cur_millis - spotifyLastUpdateMillis >= SPOTIFY_MIN_POLLING_INTERVAL)) {
             spotifyCurrentlyPlaying();
           }
           break;
@@ -1256,10 +1252,10 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
     if (!error) {
       strncpy(spotifyAccessToken, json["access_token"], sizeof(spotifyAccessToken));
       if (spotifyAccessToken[0] != '\0') {
-        token_lifetime = (json["expires_in"].as<uint32_t>() - 300);
+        spotifyTokenLifetime = (json["expires_in"].as<uint32_t>() - 300);
         struct timeval now;
         gettimeofday(&now, NULL);
-        token_time = now.tv_sec;
+        spotifyTokenTime = now.tv_sec;
         success = true;
         if (json.containsKey("refresh_token")) {
           const char *newRefreshToken = json["refresh_token"];
@@ -1302,7 +1298,7 @@ void spotifyCurrentlyPlaying() {
   if (spotifyAccessToken[0] == '\0' || !activeUser) return;
   uint32_t ts = millis();
   Serial.printf("\n> [%d] spotifyCurrentlyPlaying()\n", ts);
-  next_curplay_millis = 0;
+  nextCurrentlyPlayingMillis = 0;
 
   char url[18];
   sprintf(url, "/player?market=%s", activeUser->country);
@@ -1316,7 +1312,7 @@ void spotifyCurrentlyPlaying() {
       spotifyLastUpdateMillis = millis();
       spotifyIsPlaying = json["is_playing"];
       spotifyIsShuffled = json["shuffle_state"];
-      progress_ms = json["progress_ms"];
+      spotifyProgressMillis = json["progress_ms"];
       uint32_t duration_ms = json["item"]["duration_ms"];
 
       if (json.containsKey("device")) {
@@ -1332,11 +1328,11 @@ void spotifyCurrentlyPlaying() {
       if (spotifyIsPlaying) {
         // Check if current song is about to end
         inactivityMillis = 90000;
-        uint32_t remaining_ms = duration_ms - progress_ms;
+        uint32_t remaining_ms = duration_ms - spotifyProgressMillis;
         if (remaining_ms < SPOTIFY_MAX_POLLING_DELAY) {
           // Refresh at the end of current song,
           // without considering remaining polling delay
-          next_curplay_millis = millis() + remaining_ms + 200;
+          nextCurrentlyPlayingMillis = millis() + remaining_ms + 200;
         }
       } else if (spotifyAction == CurrentlyPlaying) {
         spotifyAction = Idle;
@@ -1424,7 +1420,7 @@ void spotifyToggle() {
   }
 
   if (response.httpCode == 204) {
-    next_curplay_millis = millis() + 200;
+    nextCurrentlyPlayingMillis = millis() + 200;
   } else {
     spotifyIsPlaying = !spotifyIsPlaying;
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
@@ -1457,9 +1453,9 @@ void spotifyPlayPlaylist(const char *playlistId) {
 };
 
 void spotifyResetProgress() {
-  progress_ms = 0;
+  spotifyProgressMillis = 0;
   spotifyLastUpdateMillis = millis();
-  next_curplay_millis = millis() + 200;
+  nextCurrentlyPlayingMillis = millis() + 200;
 };
 
 void spotifyGetDevices() {
@@ -1516,7 +1512,7 @@ void spotifyToggleShuffle() {
   response = spotifyApiRequest("PUT", path);
 
   if (response.httpCode == 204) {
-    next_curplay_millis = millis() + 200;
+    nextCurrentlyPlayingMillis = millis() + 200;
   } else {
     spotifyIsShuffled = !spotifyIsShuffled;
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
