@@ -26,7 +26,7 @@ def color_565(r, g, b)
 end
 
 sorted_genres = Hash.new { [] }
-%w[popularity modernity background tempo].each do |vector|
+%w[popularity modernity background].each do |vector|
   print "Fetching rankings by #{vector}... "
   doc = Nokogiri::HTML(open("http://everynoise.com/everynoise1d.cgi?vector=#{vector}&scope=all"))
   sorted_genres[vector] = doc.css("body > table > tr").map(&method(:build_genre))
@@ -37,7 +37,6 @@ genres = sorted_genres.values.first
 alphabetical = genres.sort_by(&:name)
 names = alphabetical.map(&:name)
 suffix = genres.sort_by { |genre| genre.name.reverse }
-sorted_genres["tempo"].reverse!
 
 template = <<-END_TEMPLATE
 #define GENRE_COUNT <%= genres.size %>

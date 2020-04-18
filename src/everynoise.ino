@@ -108,16 +108,15 @@ enum MenuModes {
   PopularityList = 6,
   ModernityList = 7,
   BackgroundList = 8,
-  TempoList = 9,
-  ToggleBookmarkItem = 10,
-  ToggleShuffleItem = 11,
-  VolumeControl = 12
+  ToggleBookmarkItem = 9,
+  ToggleShuffleItem = 10,
+  VolumeControl = 11
 };
 MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
 uint32_t lastMenuIndex = 0;
 const char *rootMenuItems[] = {"play/pause",       "users",      "devices",   "bookmarks",  "name",
-                               "name ending",      "popularity", "modernity", "background", "tempo",
+                               "name ending",      "popularity", "modernity", "background",
                                "add/del bookmark", "shuffle",    "volume"};
 #define MAX_USERS 10
 SptfUser_t users[MAX_USERS] = {};
@@ -334,7 +333,6 @@ void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
     case PopularityList:
     case ModernityList:
     case BackgroundList:
-    case TempoList:
       menuSize = GENRE_COUNT;
       break;
     case VolumeControl:
@@ -399,9 +397,6 @@ void knobRotated(ESPRotary &r) {
     case BackgroundList:
       genreIndex = genreIndexes_background[menuIndex];
       break;
-    case TempoList:
-      genreIndex = genreIndexes_tempo[menuIndex];
-      break;
     case BookmarksList:
       genreIndex = max(0, getGenreIndex(bookmarkedGenres[menuIndex]));
       break;
@@ -443,7 +438,6 @@ void knobClicked() {
     case PopularityList:
     case ModernityList:
     case BackgroundList:
-    case TempoList:
       spotifyAction = PlayGenre;
       setStatusMessage("play");
       break;
@@ -559,9 +553,6 @@ void knobLongPressStopped() {
         break;
       case BackgroundList:
         newMenuIndex = getGenreMenuIndex(genreIndexes_background, newMenuIndex);
-        break;
-      case TempoList:
-        newMenuIndex = getGenreMenuIndex(genreIndexes_tempo, newMenuIndex);
         break;
       default:
         break;
