@@ -360,7 +360,7 @@ void knobRotated(ESPRotary &r) {
   if (menuSize > 20 && lastInputDelta > 1 && lastInputDelta <= 25) {
     double speed = (3 * lastKnobSpeed + (double)positionDelta / lastInputDelta) / 4.0;
     lastKnobSpeed = speed;
-    steps = min(50, max(1, (int)(fabs(speed) * 180)));
+    steps = min(50, max(1, (int)(fabs(speed) * 250)));
   } else {
     lastKnobSpeed = 0.0;
   }
@@ -602,29 +602,29 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1
     totalWidth += width;
 
     // Always try to break on a space or dash
-    if (unicode == ' ' || unicode == '-') {
-      preferredBreakpoint = lastPos;
+    if (unicode == ' ') {
+      preferredBreakpoint = pos;
+      widthAtBreakpoint = totalWidth - width;
+    } else if (unicode == '-') {
+      preferredBreakpoint = pos;
       widthAtBreakpoint = totalWidth;
     }
 
-    if (totalWidth >= maxWidth) {
+    if (totalWidth >= maxWidth - width) {
       if (preferredBreakpoint == 0) {
         preferredBreakpoint = lastPos;
         widthAtBreakpoint = totalWidth;
       }
       uint16_t lineLength = preferredBreakpoint - lastDrawnPos;
       uint16_t lineWidth = widthAtBreakpoint;
-      // Ignore trailing spaces when centering
-      if (unicode == ' ') {
-        lineLength -= 1;
-        lineWidth -= 2 * width;
-      }
+
       char line[lineLength + 1] = { 0 };
       strncpy(line, &text[lastDrawnPos], lineLength);
 
       img.setCursor(centerX - lineWidth / 2, lineNumber * lineHeight);
       img.printToSprite(line, lineLength);
-      lastDrawnPos = preferredBreakpoint + 1;
+      lastDrawnPos = preferredBreakpoint;
+      // if (unicode == ' ') lastDrawnPos++;
       // It is possible that we did not draw all letters to n so we need
       // to account for the width of the chars from `n - preferredBreakpoint`
       // by calculating the width we did not draw yet.
@@ -654,45 +654,47 @@ void updateDisplay() {
   const int lineThree = lineTwo + LINE_HEIGHT;
   const int textPadding = 12;
   const int textWidth = tft.width() - (2 * textPadding);
-  bool connected = WiFi.isConnected();
   displayInvalidated = false;
   if (!displayInvalidatedPartial) tft.fillScreen(TFT_BLACK);
   displayInvalidatedPartial = false;
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   unsigned long currentMillis = millis();
-  int8_t t = currentMillis % 6;
 
-  if (currentMillis < 1000) {
-    tft.drawString("every noise", centerX, lineTwo);
-    tft.drawString("at once", centerX, lineThree);
-    tft.drawRect(t * 2, t * 2, 239 - (t * 4), 134 - (t * 4), TFT_WHITE);
-    delay(90 + random(50));
-    displayInvalidated = true;
+  if (currentMillis < 2200) {
+    static int ticks = 0;
+    ticks += 1;
+    genreIndex = menuIndex = random(GENRE_COUNT);
+    const char *randomGenre = genres[genreIndex];
+    uint8_t level = min(10 + ticks * 15, 255);
+    uint16_t gray = tft.color565(level, level, level);
+    tft.setCursor(textPadding, lineTwo);
+    img.setTextColor(gray, TFT_BLACK);
+    drawCenteredText(randomGenre, textWidth, 2);
+    delay(5 + ticks * 15);
+  } else if (currentMillis < 3400) {
+    img.setTextColor(TFT_WHITE, TFT_BLACK);
+    tft.setCursor(textPadding, lineTwo - 14);
+    if (random(10) < 7) {
+      drawCenteredText("every noise", textWidth);
+    } else if (random(10) < 4) {
+      drawCenteredText("", textWidth);
+    }
+    tft.setCursor(textPadding, lineThree - 18);
+    if (random(10) < 6) {
+      drawCenteredText("at once", textWidth);
+    } else if (random(10) < 4) {
+      drawCenteredText("", textWidth);
+    }
+    // tft.drawRoundRect(t * 2, t * 2, 239 - (t * 4), 134 - (t * 4), 9, TFT_WHITE);
+    delay(111);
   } else {
-    if (!connected || spotifyGettingToken) {
-      if (t == 0) tft.drawString(".", centerX, 24);
-      if (t == 1) tft.drawString("...", centerX, 24);
-      if (t == 2) tft.drawString(".:.", centerX, 24);
-      if (t == 3) tft.drawString("-:-", centerX, 24);
-      if (t == 4) tft.drawString("_-_", centerX, 24);
-      if (t == 5) tft.drawString("_", centerX, 24);
-
-      if (currentMillis > 2000) {
-        if (!connected) {
-          tft.drawString("wi-fi", centerX, lineTwo);
-        } else if (spotifyGettingToken) {
-          tft.drawString("spotify", centerX, lineTwo);
-        }
-      }
-      delay(90 + random(50));
-      displayInvalidated = true;
-    } else if (usersCount == 0) {
+    if (usersCount == 0) {
       tft.drawString("setup at http://", centerX, lineTwo);
       tft.drawString(nodeName + ".local", centerX, lineThree);
     } else if (menuMode == RootMenu) {
-      tft.drawRect(10, 37, 219, 49, TFT_WHITE);
-      tft.fillRect(11, 38, 217, 47, TFT_BLACK);
+      tft.fillRoundRect(11, 38, 217, 47, 5, TFT_BLACK);
+      tft.drawRoundRect(10, 37, 219, 49, 5, TFT_WHITE);
       tft.setCursor(textPadding, lineTwo);
       if (menuIndex == 0) {
         drawCenteredText(spotifyIsPlaying ? "pause" : "play", textWidth);
@@ -708,7 +710,7 @@ void updateDisplay() {
     } else if (menuMode == UserList) {
       char header[8];
       sprintf(header, "%d / %d", menuIndex + 1, menuSize);
-      tft.setCursor(textPadding, lineOne);
+      tft.setCursor(textPadding + 1, lineOne);
       drawCenteredText(header, textWidth);
 
       SptfUser_t *user = &users[menuIndex];
@@ -731,7 +733,7 @@ void updateDisplay() {
       } else {
         char header[7];
         sprintf(header, "%d / %d", menuIndex + 1, menuSize);
-        tft.setCursor(textPadding, lineOne);
+        tft.setCursor(textPadding + 1, lineOne);
         drawCenteredText(header, textWidth);
 
         SptfDevice_t *device = &devices[menuIndex];
@@ -751,8 +753,8 @@ void updateDisplay() {
       uint8_t width = 220;
       img.createSprite(width, 82);
       img.fillSprite(TFT_BLACK);
-      img.drawRoundRect(0, 0, width, 32, 5, TFT_WHITE);
-      img.fillRoundRect(4, 4, round(2.12 * menuIndex), 24, 3, TFT_LIGHTGREY);
+      img.drawRoundRect(0, 0, width, 32, 5, TFT_LIGHTGREY);
+      img.fillRoundRect(4, 4, round(2.12 * menuIndex), 24, 3, TFT_SILVER);
       char label[4];
       sprintf(label, "%d%%", activeDevice->volumePercent);
       img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
@@ -767,19 +769,21 @@ void updateDisplay() {
           text = "no bookmarks yet";
         } else {
           text = bookmarkedGenres[menuIndex];
+          int colorIndex = getGenreIndex(text);
+          if (index >= 0) img.setTextColor(genreColors[colorIndex], TFT_BLACK);
         }
       } else {
         text = genres[genreIndex];
         img.setTextColor(genreColors[genreIndex], TFT_BLACK);
       }
 
-      tft.setCursor(0, lineTwo);
-      drawCenteredText(text, tft.width(), 2);
+      tft.setCursor(textPadding, lineTwo);
+      drawCenteredText(text, textWidth, 2);
 
-      img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+      img.setTextColor(TFT_SILVER, TFT_BLACK);
       if (currentMillis < statusMessageUntilMillis && statusMessage[0] != '\0') {
-        tft.setCursor(0, lineOne);
-        drawCenteredText(statusMessage, tft.width());
+        tft.setCursor(textPadding, lineOne);
+        drawCenteredText(statusMessage, textWidth);
       } else if (spotifyIsPlaying && (spotifyAction == Idle || spotifyAction == CurrentlyPlaying) &&
                  playingGenreIndex == genreIndex) {
         uint32_t estimated_millis = spotifyProgressMillis + (currentMillis - spotifyLastUpdateMillis);
@@ -792,17 +796,13 @@ void updateDisplay() {
         } else {
           sprintf(elapsed, "%d:%02d:%02d", hours, minutes, seconds);
         }
-        tft.setCursor(0, lineOne);
-        drawCenteredText(elapsed, tft.width());
+        tft.setCursor(textPadding, lineOne);
+        drawCenteredText(elapsed, textWidth);
       } else {
         char label[13];
-        if (menuMode == TempoList) {
-          sprintf(label, "~%s bpm", genreLabels_tempo[menuIndex]);
-        } else {
-          sprintf(label, "%d / %d", menuIndex + 1, menuSize);
-        }
-        tft.setCursor(0, lineOne);
-        drawCenteredText(label, tft.width());
+        sprintf(label, "%d / %d", menuIndex + 1, menuSize);
+        tft.setCursor(textPadding + 1, lineOne);
+        drawCenteredText(label, textWidth);
       }
     }
 
@@ -917,7 +917,6 @@ void spotifyApiLoop(void *params) {
           break;
         case CurrentProfile:
           spotifyCurrentProfile();
-          displayInvalidated = true;
           break;
         case Next:
           spotifyNext();
