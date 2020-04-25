@@ -302,11 +302,11 @@ void knobRotated(ESPRotary &r) {
 
   int steps = 1;
   float speed = 0.0;
-  if (menuSize > 20 && lastInputDelta >= 1 && lastInputDelta < 34) {
+  if (menuSize > 20 && lastInputDelta >= 1 && lastInputDelta < 32) {
     speed = (float)positionDelta / (float)lastInputDelta;
     steps = max(1, (int)(fabs(speed) * 180));
   }
-  lastKnobSpeed = lastInputDelta > 100 ? 0.0 : (4.0 * lastKnobSpeed + speed) / 5.0;
+  lastKnobSpeed = lastInputDelta > 100 ? 0.0 : (17.0 * lastKnobSpeed + speed) / 18.0;
 
   if (menuMode == VolumeControl) {
     int newMenuIndex = (int)menuIndex + positionDelta;
@@ -636,7 +636,7 @@ void updateDisplay() {
     img.setTextColor(TFT_DARKGREY, TFT_BLACK);
     drawCenteredText(header, textWidth);
 
-    SptfUser_t *user = &spotifyUsers[menuIndex];
+    SpotifyUser_t *user = &spotifyUsers[menuIndex];
     tft.setCursor(textPadding, lineTwo);
     img.setTextColor(TFT_WHITE, TFT_BLACK);
     if (user->name[0] == '\0') {
@@ -659,7 +659,7 @@ void updateDisplay() {
       tft.setCursor(textPadding + 1, lineOne);
       drawCenteredText(header, textWidth);
 
-      SptfDevice_t *device = &spotifyDevices[menuIndex];
+      SpotifyDevice_t *device = &spotifyDevices[menuIndex];
       tft.setCursor(textPadding, lineTwo);
       img.setTextColor(TFT_WHITE, TFT_BLACK);
       if (strcmp(device->id, activeSpotifyDeviceId) == 0) {
@@ -942,13 +942,13 @@ void spotifyApiLoop(void *params) {
   }
 }
 
-void setActiveUser(SptfUser_t *user) {
+void setActiveUser(SpotifyUser_t *user) {
   activeSpotifyUser = user;
   strncpy(spotifyRefreshToken, activeSpotifyUser->refreshToken, sizeof(spotifyRefreshToken) - 1);
   if (user->selectedDeviceId[0] != '\0')
     strncpy(activeSpotifyDeviceId, user->selectedDeviceId, sizeof(activeSpotifyDeviceId) - 1);
 
-  SptfDevice_t *device = NULL;
+  SpotifyDevice_t *device = NULL;
   for (uint8_t i = 0; i < spotifyDevicesCount; i++) {
     if (strcmp(spotifyDevices[i].id, activeSpotifyDeviceId) == 0) {
       device = &spotifyDevices[i];
@@ -958,7 +958,7 @@ void setActiveUser(SptfUser_t *user) {
   setActiveDevice(device);
 }
 
-void setActiveDevice(SptfDevice_t *device) {
+void setActiveDevice(SpotifyDevice_t *device) {
   activeSpotifyDevice = device;
   if (activeSpotifyDevice == NULL) {
     spotifyDevicesCount = 0;
@@ -992,7 +992,7 @@ bool readDataJson() {
     const char *country = jsonUser["country"];
     const char *selectedDeviceId = jsonUser["selectedDeviceId"];
 
-    SptfUser_t *user = &spotifyUsers[i];
+    SpotifyUser_t *user = &spotifyUsers[i];
     strncpy(user->name, name, sizeof(user->name) - 1);
     strncpy(user->refreshToken, token, sizeof(user->refreshToken) - 1);
     strncpy(user->country, country, sizeof(user->country) - 1);
@@ -1021,7 +1021,7 @@ bool writeDataJson() {
   JsonArray usersArray = doc.createNestedArray("users");
 
   for (uint8_t i = 0; i < usersCount; i++) {
-    SptfUser_t *user = &spotifyUsers[i];
+    SpotifyUser_t *user = &spotifyUsers[i];
     JsonObject obj = usersArray.createNestedObject();
     obj["name"] = user->name;
     obj["token"] = user->refreshToken;
@@ -1258,14 +1258,14 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
             strncpy(spotifyRefreshToken, newRefreshToken, sizeof(spotifyRefreshToken) - 1);
             bool found = false;
             for (uint8_t i = 0; i < usersCount; i++) {
-              SptfUser_t *user = &spotifyUsers[i];
+              SpotifyUser_t *user = &spotifyUsers[i];
               if (strcmp(user->refreshToken, spotifyRefreshToken) == 0) {
                 found = true;
                 break;
               }
             }
             if (!found && usersCount < MAX_SPOTIFY_USERS) {
-              SptfUser_t *user = &spotifyUsers[usersCount++];
+              SpotifyUser_t *user = &spotifyUsers[usersCount++];
               strncpy(user->refreshToken, spotifyRefreshToken, sizeof(user->refreshToken) - 1);
               user->selected = true;
               setActiveUser(user);
@@ -1518,7 +1518,7 @@ void spotifyGetDevices() {
         bool isActive = jsonDevice["is_active"];
         uint8_t volume_percent = jsonDevice["volume_percent"];
 
-        SptfDevice_t *device = &spotifyDevices[i];
+        SpotifyDevice_t *device = &spotifyDevices[i];
         strncpy(device->id, id, sizeof(device->id) - 1);
         strncpy(device->name, name, sizeof(device->name) - 1);
         device->volumePercent = volume_percent;

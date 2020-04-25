@@ -14,13 +14,13 @@ typedef struct {
   char country[3] = "";
   bool selected = false;
   char selectedDeviceId[41] = "";
-} SptfUser_t;
+} SpotifyUser_t;
 
 typedef struct {
   char id[41] = "";
   char name[64] = "";
   uint8_t volumePercent;
-} SptfDevice_t;
+} SpotifyDevice_t;
 
 typedef struct {
   char name[64] = "";
@@ -31,8 +31,8 @@ typedef struct {
   uint32_t progressMillis = 0;
   uint32_t durationMillis = 0;
   uint32_t lastUpdateMillis = 0;
-  char playlistId[41] = "";
-} SptfState_t;
+  char playlistId[23] = "";
+} SpotifyState_t;
 
 enum SpotifyActions {
   Idle,
@@ -60,15 +60,15 @@ bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = Idle;
 
 #define MAX_SPOTIFY_USERS 10
-SptfUser_t spotifyUsers[MAX_SPOTIFY_USERS] = {};
+SpotifyUser_t spotifyUsers[MAX_SPOTIFY_USERS] = {};
 uint8_t usersCount = 0;
-SptfUser_t *activeSpotifyUser = NULL;
+SpotifyUser_t *activeSpotifyUser = NULL;
 RTC_DATA_ATTR char spotifyRefreshToken[150] = "";
 
 #define MAX_SPOTIFY_DEVICES 10
-SptfDevice_t spotifyDevices[MAX_SPOTIFY_DEVICES] = {};
+SpotifyDevice_t spotifyDevices[MAX_SPOTIFY_DEVICES] = {};
 uint8_t spotifyDevicesCount = 0;
-SptfDevice_t *activeSpotifyDevice = NULL;
+SpotifyDevice_t *activeSpotifyDevice = NULL;
 RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
 
-SptfState_t spotifyState = {};
+SpotifyState_t spotifyState = {};
