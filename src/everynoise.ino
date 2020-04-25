@@ -368,6 +368,7 @@ void knobClicked() {
       if (spotifyDevicesCount > 0) {
         setActiveDevice(&spotifyDevices[menuIndex]);
         writeDataJson();
+        if (spotifyState.isPlaying) spotifyAction = TransferPlayback;
       }
       break;
     case BookmarksList:
@@ -917,6 +918,9 @@ void spotifyApiLoop(void *params) {
         case ToggleShuffle:
           spotifyToggleShuffle();
           break;
+        case TransferPlayback:
+          spotifyTransferPlayback();
+          break;
       }
     }
     delay(10);
@@ -925,9 +929,9 @@ void spotifyApiLoop(void *params) {
 
 void setActiveUser(SptfUser_t *user) {
   activeSpotifyUser = user;
-  strncpy(spotifyRefreshToken, activeSpotifyUser->refreshToken, sizeof(spotifyRefreshToken));
+  strncpy(spotifyRefreshToken, activeSpotifyUser->refreshToken, sizeof(spotifyRefreshToken) - 1);
   if (user->selectedDeviceId[0] != '\0')
-    strncpy(activeSpotifyDeviceId, user->selectedDeviceId, sizeof(activeSpotifyDeviceId));
+    strncpy(activeSpotifyDeviceId, user->selectedDeviceId, sizeof(activeSpotifyDeviceId) - 1);
 
   SptfDevice_t *device = NULL;
   for (uint8_t i = 0; i < spotifyDevicesCount; i++) {
@@ -944,8 +948,8 @@ void setActiveDevice(SptfDevice_t *device) {
   if (activeSpotifyDevice == NULL) {
     spotifyDevicesCount = 0;
   } else {
-    strncpy(activeSpotifyDeviceId, activeSpotifyDevice->id, sizeof(activeSpotifyDeviceId));
-    strncpy(activeSpotifyUser->selectedDeviceId, activeSpotifyDevice->id, sizeof(activeSpotifyUser->selectedDeviceId));
+    strncpy(activeSpotifyDeviceId, activeSpotifyDevice->id, sizeof(activeSpotifyDeviceId) - 1);
+    strncpy(activeSpotifyUser->selectedDeviceId, activeSpotifyDevice->id, sizeof(activeSpotifyUser->selectedDeviceId) - 1);
   }
 }
 
@@ -974,10 +978,10 @@ bool readDataJson() {
     const char *selectedDeviceId = jsonUser["selectedDeviceId"];
 
     SptfUser_t *user = &spotifyUsers[i];
-    strncpy(user->name, name, sizeof(user->name));
-    strncpy(user->refreshToken, token, sizeof(user->refreshToken));
-    strncpy(user->country, country, sizeof(user->country));
-    strncpy(user->selectedDeviceId, selectedDeviceId, sizeof(user->selectedDeviceId));
+    strncpy(user->name, name, sizeof(user->name) - 1);
+    strncpy(user->refreshToken, token, sizeof(user->refreshToken) - 1);
+    strncpy(user->country, country, sizeof(user->country) - 1);
+    strncpy(user->selectedDeviceId, selectedDeviceId, sizeof(user->selectedDeviceId) - 1);
 
     if (jsonUser["selected"].as<bool>() == true) setActiveUser(user);
   }
@@ -1226,7 +1230,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
     DeserializationError error = deserializeJson(json, response.payload);
 
     if (!error) {
-      strncpy(spotifyAccessToken, json["access_token"], sizeof(spotifyAccessToken));
+      strncpy(spotifyAccessToken, json["access_token"], sizeof(spotifyAccessToken) - 1);
       if (spotifyAccessToken[0] != '\0') {
         spotifyTokenLifetime = (json["expires_in"].as<uint32_t>() - 300);
         struct timeval now;
@@ -1236,7 +1240,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
         if (json.containsKey("refresh_token")) {
           const char *newRefreshToken = json["refresh_token"];
           if (strcmp(newRefreshToken, spotifyRefreshToken) != 0) {
-            strncpy(spotifyRefreshToken, newRefreshToken, sizeof(spotifyRefreshToken));
+            strncpy(spotifyRefreshToken, newRefreshToken, sizeof(spotifyRefreshToken) - 1);
             bool found = false;
             for (uint8_t i = 0; i < usersCount; i++) {
               SptfUser_t *user = &spotifyUsers[i];
@@ -1247,7 +1251,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
             }
             if (!found && usersCount < MAX_SPOTIFY_USERS) {
               SptfUser_t *user = &spotifyUsers[usersCount++];
-              strncpy(user->refreshToken, spotifyRefreshToken, sizeof(user->refreshToken));
+              strncpy(user->refreshToken, spotifyRefreshToken, sizeof(user->refreshToken) - 1);
               user->selected = true;
               setActiveUser(user);
               writeDataJson();
@@ -1293,39 +1297,48 @@ void spotifyCurrentlyPlaying() {
       if (!context.isNull()) {
         if (strcmp(context["type"], "playlist") == 0) {
           const char *id = strrchr(context["uri"], ':') - 1;
-          strncpy(spotifyState.playlistId, id, sizeof(spotifyState.playlistId));
+          strncpy(spotifyState.playlistId, id, sizeof(spotifyState.playlistId) - 1);
         }
       }
 
       JsonObject item = json["item"];
       if (!item.isNull()) {
         spotifyState.durationMillis = item["duration_ms"];
-        strncpy(spotifyState.name, item["name"], sizeof(spotifyState.name));
+        strncpy(spotifyState.name, item["name"], sizeof(spotifyState.name) - 1);
 
         JsonObject album = item["album"];
         if (!album.isNull()) {
-          strncpy(spotifyState.albumName, album["name"], sizeof(spotifyState.albumName));
+          strncpy(spotifyState.albumName, album["name"], sizeof(spotifyState.albumName) - 1);
         } else {
           spotifyState.albumName[0] = '\0';
         }
 
         JsonArray artists = item["artists"];
         if (artists.size() > 0) {
-          strncpy(spotifyState.artistName, artists[0]["name"], sizeof(spotifyState.artistName));
+          strncpy(spotifyState.artistName, artists[0]["name"], sizeof(spotifyState.artistName) - 1);
         } else {
           spotifyState.artistName[0] = '\0';
         }
       }
 
       if (json.containsKey("device")) {
-        SptfDevice_t *device = activeSpotifyDevice;
-        if (device == NULL && spotifyDevicesCount == 0)
-          device = activeSpotifyDevice = &spotifyDevices[spotifyDevicesCount];
         JsonObject jsonDevice = json["device"];
-        strncpy(activeSpotifyDeviceId, jsonDevice["id"], sizeof(device->id));
-        strncpy(device->id, jsonDevice["id"], sizeof(device->id));
-        strncpy(device->name, jsonDevice["name"], sizeof(device->name));
-        device->volumePercent = jsonDevice["volume_percent"];
+        const char *playingDeviceId = jsonDevice["id"];
+        strncpy(activeSpotifyDeviceId, playingDeviceId, sizeof(activeSpotifyDeviceId) - 1);
+
+        int playingDeviceIndex = -1;
+        for (uint8_t i = 0; i < spotifyDevicesCount; i++) {
+          if (strcmp(spotifyDevices[i].id, playingDeviceId) == 0) {
+            playingDeviceIndex = i;
+            break;
+          }
+        }
+        if (playingDeviceIndex == -1) playingDeviceIndex = spotifyDevicesCount = 0;
+        activeSpotifyDevice = &spotifyDevices[playingDeviceIndex];
+
+        strncpy(activeSpotifyDevice->id, playingDeviceId, sizeof(activeSpotifyDevice->id) - 1);
+        strncpy(activeSpotifyDevice->name, jsonDevice["name"], sizeof(activeSpotifyDevice->name) - 1);
+        activeSpotifyDevice->volumePercent = jsonDevice["volume_percent"];
       }
 
       if (spotifyState.isPlaying) {
@@ -1338,6 +1351,7 @@ void spotifyCurrentlyPlaying() {
           nextCurrentlyPlayingMillis = millis() + remainingMillis + 100;
         }
       } else if (spotifyAction == CurrentlyPlaying) {
+        inactivityMillis = 60000;
         spotifyAction = Idle;
       }
     } else {
@@ -1369,10 +1383,10 @@ void spotifyCurrentProfile() {
     DeserializationError error = deserializeJson(json, response.payload);
 
     if (!error) {
-      const char *display_name = json["display_name"];
+      const char *displayName = json["display_name"];
       const char *country = json["country"];
-      strncpy(activeSpotifyUser->name, display_name, sizeof(activeSpotifyUser->name));
-      strncpy(activeSpotifyUser->country, country, sizeof(activeSpotifyUser->country));
+      strncpy(activeSpotifyUser->name, displayName, sizeof(activeSpotifyUser->name) - 1);
+      strncpy(activeSpotifyUser->country, country, sizeof(activeSpotifyUser->country) - 1);
       writeDataJson();
     } else {
       Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
@@ -1534,12 +1548,14 @@ void spotifyToggleShuffle() {
 
 void spotifyTransferPlayback() {
   if (activeSpotifyDevice == NULL) return;
-  char requestContent[59];
-  snprintf(requestContent, sizeof(requestContent), "{device_ids:[\"%s\"]}", activeSpotifyDeviceId);
+  char requestContent[61];
+  snprintf(requestContent, sizeof(requestContent), "{\"device_ids\":[\"%s\"]}", activeSpotifyDeviceId);
   HTTP_response_t response;
-  response = spotifyApiRequest("PUT", "/player");
+  response = spotifyApiRequest("PUT", "/player", requestContent);
   if (response.httpCode == 204) {
-
+    nextCurrentlyPlayingMillis = millis() + 1;
+  } else {
+    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
   spotifyAction = CurrentlyPlaying;
-}
+};

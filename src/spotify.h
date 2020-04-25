@@ -45,7 +45,8 @@ enum SpotifyActions {
   PlayGenre,
   GetDevices,
   SetVolume,
-  ToggleShuffle
+  ToggleShuffle,
+  TransferPlayback
 };
 
 enum GrantTypes { gt_authorization_code, gt_refresh_token };
