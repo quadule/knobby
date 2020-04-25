@@ -590,6 +590,18 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1
   img.deleteSprite();
 }
 
+void formatMillis(char *output, unsigned long millis) {
+  unsigned int seconds = millis / 1000 % 60;
+  unsigned int minutes = millis / (1000 * 60) % 60;
+  unsigned int hours = millis / (1000 * 60 * 60);
+
+  if (hours == 0) {
+    sprintf(output, "%d:%02d", minutes, seconds);
+  } else {
+    sprintf(output, "%d:%02d:%02d", hours, minutes, seconds);
+  }
+}
+
 void updateDisplay() {
   displayInvalidated = false;
   if (!displayInvalidatedPartial) tft.fillScreen(TFT_BLACK);
@@ -681,32 +693,35 @@ void updateDisplay() {
       img.setTextColor(TFT_WHITE, TFT_BLACK);
       drawCenteredText(statusMessage, textWidth);
     } else if (playingGenreIndex == genreIndex && (spotifyState.isPlaying || spotifyAction == PlayGenre)) {
-      img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-      uint32_t estimated_millis = spotifyState.progressMillis + (currentMillis - spotifyState.lastUpdateMillis);
-      uint8_t seconds = estimated_millis / 1000 % 60;
-      uint8_t minutes = estimated_millis / (1000 * 60) % 60;
-      uint8_t hours = estimated_millis / (1000 * 60 * 60);
-      tft.setCursor(textPadding, lineOne);
+      char elapsed[11];
+      uint32_t estimatedMillis = spotifyState.progressMillis;
+      if (spotifyState.isPlaying) estimatedMillis += currentMillis - spotifyState.lastUpdateMillis;
+      formatMillis(elapsed, estimatedMillis);
 
-      char elapsed[10];
-      if (hours == 0) {
-        sprintf(elapsed, "%d:%02d", minutes, seconds);
+      img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+      tft.setCursor(textPadding, lineOne);
+      if (spotifyState.durationMillis == 0) {
+        drawCenteredText(elapsed, textWidth);
       } else {
-        sprintf(elapsed, "%d:%02d:%02d", hours, minutes, seconds);
+        char duration[11];
+        formatMillis(duration, spotifyState.durationMillis);
+        char status[24];
+        sprintf(status, "%s / %s", elapsed, duration);
+        drawCenteredText(status, textWidth);
       }
-      drawCenteredText(elapsed, textWidth);
+
     } else {
-      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
       char label[13];
       sprintf(label, "%d / %d", menuIndex + 1, menuSize);
+      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
       tft.setCursor(textPadding + 1, lineOne);
       drawCenteredText(label, textWidth);
     }
 
     if (menuMode == BookmarksList) {
       if (bookmarksCount == 0) {
-        img.setTextColor(TFT_DARKGREY, TFT_BLACK);
         text = "no bookmarks yet";
+        img.setTextColor(TFT_DARKGREY, TFT_BLACK);
       } else {
         text = bookmarkedGenres[menuIndex];
         int genreIndex = getGenreIndex(text);
