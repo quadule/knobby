@@ -64,16 +64,18 @@ enum MenuModes {
   AlphabeticSuffixList = 5,
   PopularityList = 6,
   ModernityList = 7,
-  BackgroundList = 8,
-  ToggleBookmarkItem = 9,
-  ToggleShuffleItem = 10,
-  VolumeControl = 11
+  ColorList = 8,
+  AddedList = 9,
+  ToggleBookmarkItem = 10,
+  ToggleShuffleItem = 11,
+  VolumeControl = 12
 };
 RTC_DATA_ATTR MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
 uint32_t lastMenuIndex = 0;
-const char *rootMenuItems[] = {"play/pause", "users",     "devices",    "bookmarks",        "name",    "name ending",
-                               "popularity", "modernity", "background", "add/del bookmark", "shuffle", "volume"};
+const char *rootMenuItems[] = {"play/pause",       "users",      "devices",   "bookmarks", "name",
+                               "name ending",      "popularity", "modernity", "color",     "date added",
+                               "add/del bookmark", "shuffle",    "volume"};
 
 #define MAX_BOOKMARKS 1024
 uint16_t bookmarksCount = 0;
@@ -270,7 +272,8 @@ void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
     case AlphabeticSuffixList:
     case PopularityList:
     case ModernityList:
-    case BackgroundList:
+    case ColorList:
+    case AddedList:
       menuSize = GENRE_COUNT;
       break;
     case VolumeControl:
@@ -333,8 +336,11 @@ void knobRotated(ESPRotary &r) {
     case ModernityList:
       genreIndex = genreIndexes_modernity[menuIndex];
       break;
-    case BackgroundList:
-      genreIndex = genreIndexes_background[menuIndex];
+    case ColorList:
+      genreIndex = genreIndexes_color[menuIndex];
+      break;
+    case AddedList:
+      genreIndex = genreIndexes_added[menuIndex];
       break;
     case BookmarksList:
       genreIndex = max(0, getGenreIndex(bookmarkedGenres[menuIndex]));
@@ -376,7 +382,8 @@ void knobClicked() {
     case AlphabeticSuffixList:
     case PopularityList:
     case ModernityList:
-    case BackgroundList:
+    case ColorList:
+    case AddedList:
       spotifyAction = PlayGenre;
       setStatusMessage("play");
       break;
@@ -490,8 +497,11 @@ void knobLongPressStopped() {
       case ModernityList:
         newMenuIndex = getGenreMenuIndex(genreIndexes_modernity, newMenuIndex);
         break;
-      case BackgroundList:
-        newMenuIndex = getGenreMenuIndex(genreIndexes_background, newMenuIndex);
+      case ColorList:
+        newMenuIndex = getGenreMenuIndex(genreIndexes_color, newMenuIndex);
+        break;
+      case AddedList:
+        newMenuIndex = getGenreMenuIndex(genreIndexes_added, newMenuIndex);
         break;
       default:
         break;

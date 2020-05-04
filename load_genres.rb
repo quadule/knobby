@@ -26,7 +26,7 @@ def color_565(r, g, b)
 end
 
 sorted_genres = Hash.new { [] }
-%w[popularity modernity background].each do |vector|
+%w[popularity modernity color added].each do |vector|
   print "Fetching rankings by #{vector}... "
   doc = Nokogiri::HTML(open("http://everynoise.com/everynoise1d.cgi?vector=#{vector}&scope=all"))
   sorted_genres[vector] = doc.css("body > table > tr").map(&method(:build_genre))
