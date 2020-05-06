@@ -11,17 +11,17 @@
 #include "time.h"
 
 #define FONT_NAME "GillSans24"
-#define LINE_HEIGHT 28
+#define LINE_HEIGHT 27
 TFT_eSPI tft = TFT_eSPI(135, 240);
 TFT_eSprite img = TFT_eSprite(&tft);
 
-const int centerX = 120;
+const int centerX = 119;
 const int lineOne = 14;
-const int lineTwo = lineOne + LINE_HEIGHT + 2;
+const int lineTwo = lineOne + LINE_HEIGHT + 3;
 const int lineThree = lineTwo + LINE_HEIGHT;
-const int lineSpacing = 4;
-const int textPadding = 4;
-const int textWidth = 234;
+const int lineSpacing = 3;
+const int textPadding = 10;
+const int textWidth = 239 - textPadding * 2;
 
 #define ROTARY_ENCODER_A_PIN 12
 #define ROTARY_ENCODER_B_PIN 13
@@ -33,7 +33,6 @@ OneButton button(ROTARY_ENCODER_BUTTON_PIN, true, true);
 #include "settings.h"
 #include "spotify.h"
 
-#define min(X, Y) (((X) < (Y)) ? (X) : (Y))
 #define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
 
 enum EventsLogTypes { log_line, log_raw };
@@ -44,12 +43,15 @@ AsyncEventSource events("/events");
 String nodeName = "everynoisebox";
 bool sendLogEvents = false;
 int playingGenreIndex = -1;
-RTC_DATA_ATTR uint32_t genreIndex = 0;
+RTC_DATA_ATTR uint16_t genreIndex = 0;
 RTC_DATA_ATTR time_t lastSleepSeconds = 0;
 unsigned long inactivityMillis = 60000;
 unsigned long lastInputMillis = 1;
 unsigned long lastDisplayMillis = 0;
 unsigned long lastReconnectAttemptMillis = 0;
+unsigned long randomizingGenreEndMillis = 0;
+unsigned long randomizingGenreTicks = 0;
+bool randomizingGenreAutoplay = false;
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
 char statusMessage[24] = "";
@@ -72,7 +74,7 @@ enum MenuModes {
 };
 RTC_DATA_ATTR MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
-uint32_t lastMenuIndex = 0;
+uint16_t lastMenuIndex = 0;
 const char *rootMenuItems[] = {"play/pause",       "users",      "devices",   "bookmarks", "name",
                                "name ending",      "popularity", "modernity", "color",     "date added",
                                "add/del bookmark", "shuffle",    "volume"};
@@ -81,10 +83,13 @@ const char *rootMenuItems[] = {"play/pause",       "users",      "devices",   "b
 uint16_t bookmarksCount = 0;
 const char *bookmarkedGenres[MAX_BOOKMARKS];
 
-RTC_DATA_ATTR uint32_t menuSize = GENRE_COUNT;
-RTC_DATA_ATTR uint32_t menuIndex = 0;
+RTC_DATA_ATTR uint16_t menuSize = GENRE_COUNT;
+RTC_DATA_ATTR uint16_t menuIndex = 0;
 int lastKnobPosition = 0;
 float lastKnobSpeed = 0.0;
+const unsigned long extraLongPressMillis = 1800;
+unsigned long longPressStartedMillis = 0;
+bool knobRotatedWhileLongPressed = false;
 int toggleBookmarkIndex = -1;
 int volumeControlIndex = -1;
 int toggleShuffleIndex = -1;
@@ -94,9 +99,6 @@ TaskHandle_t spotifyApiTask;
 void setup() {
   Serial.begin(115200);
   SPIFFS.begin(true);
-
-  // enable wakeup on button click
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
 
   knob.setChangedHandler(knobRotated);
   button.setDebounceTicks(30);
@@ -231,58 +233,116 @@ void setup() {
   tft.fillScreen(TFT_BLACK);
 }
 
-int getGenreIndex(const char *genreName) {
+int getGenreIndexByName(const char *genreName) {
   for (size_t i = 0; i < GENRE_COUNT; i++) {
     if (strcmp(genreName, genres[i]) == 0) return i;
   }
   return -1;
 }
 
+bool isGenreMenu(MenuModes mode) {
+  return mode != RootMenu && mode != UserList && mode != DeviceList && mode != VolumeControl;
+}
+
+unsigned long longPressedMillis() {
+  return longPressStartedMillis == 0 ? 0 : millis() - longPressStartedMillis;
+}
+
+unsigned long extraLongPressedMillis() {
+  long extraMillis = (long)longPressedMillis() - extraLongPressMillis;
+  return extraMillis < 0 ? 0 : extraMillis;
+}
+
+bool shouldShowRandom() {
+  return longPressedMillis() > extraLongPressMillis && !knobRotatedWhileLongPressed && isGenreMenu(lastMenuMode);
+}
+
 bool shouldShowToggleBookmark() {
-  return lastMenuMode != RootMenu && lastMenuMode != UserList && lastMenuMode != DeviceList &&
-         lastMenuMode != VolumeControl;
+  return isGenreMenu(lastMenuMode);
 }
 
 bool shouldShowVolumeControl() { return activeSpotifyDevice != NULL; }
 
 bool shouldShowToggleShuffle() { return true; }
 
-void setMenuMode(MenuModes newMode, uint32_t newMenuIndex) {
-  menuMode = newMode;
+uint16_t getMenuSize(MenuModes mode) {
+  int nextDynamicIndex = ToggleBookmarkItem;
 
-  if (menuMode == RootMenu) {
-    int nextDynamicIndex = ToggleBookmarkItem;
-    toggleBookmarkIndex = shouldShowToggleBookmark() ? nextDynamicIndex++ : -1;
-    volumeControlIndex = shouldShowVolumeControl() ? nextDynamicIndex++ : -1;
-    toggleShuffleIndex = shouldShowToggleShuffle() ? nextDynamicIndex++ : -1;
-    menuSize = nextDynamicIndex;
-  }
-
-  switch (menuMode) {
+  switch (mode) {
+    case RootMenu:
+      toggleBookmarkIndex = shouldShowToggleBookmark() ? nextDynamicIndex++ : -1;
+      volumeControlIndex = shouldShowVolumeControl() ? nextDynamicIndex++ : -1;
+      toggleShuffleIndex = shouldShowToggleShuffle() ? nextDynamicIndex++ : -1;
+      return nextDynamicIndex;
     case UserList:
-      menuSize = usersCount;
-      break;
+      return usersCount;
     case DeviceList:
-      menuSize = spotifyDevicesCount == 0 ? 1 : spotifyDevicesCount;
-      break;
+      return spotifyDevicesCount == 0 ? 1 : spotifyDevicesCount;
     case BookmarksList:
-      menuSize = bookmarksCount == 0 ? 1 : bookmarksCount;
-      break;
+      return bookmarksCount == 0 ? 1 : bookmarksCount;
     case AlphabeticList:
     case AlphabeticSuffixList:
     case PopularityList:
     case ModernityList:
     case ColorList:
     case AddedList:
-      menuSize = GENRE_COUNT;
-      break;
+      return GENRE_COUNT;
     case VolumeControl:
-      menuSize = 101;  // 0-100%
-      break;
+      return 101;  // 0-100%
     default:
-      break;
+      return 0;
   }
-  menuIndex = newMenuIndex % menuSize;
+}
+
+uint16_t getGenreIndexForMenuIndex(uint16_t index, MenuModes mode) {
+  switch (mode) {
+    case AlphabeticList:
+      return index;
+    case AlphabeticSuffixList:
+      return genreIndexes_suffix[index];
+    case PopularityList:
+      return genreIndexes_popularity[index];
+    case ModernityList:
+      return genreIndexes_modernity[index];
+    case ColorList:
+      return genreIndexes_color[index];
+    case AddedList:
+      return genreIndexes_added[index];
+    default:
+      return 0;
+  }
+}
+
+uint16_t getMenuIndexForGenreIndex(uint16_t index, MenuModes mode) {
+  switch (mode) {
+    case AlphabeticList:
+      return index;
+    case AlphabeticSuffixList:
+      return getIndexOfGenreIndex(genreIndexes_suffix, index);
+    case PopularityList:
+      return getIndexOfGenreIndex(genreIndexes_popularity, index);
+    case ModernityList:
+      return getIndexOfGenreIndex(genreIndexes_modernity, index);
+    case ColorList:
+      return getIndexOfGenreIndex(genreIndexes_color, index);
+    case AddedList:
+      return getIndexOfGenreIndex(genreIndexes_added, index);
+    default:
+      return 0;
+  }
+}
+
+uint16_t getIndexOfGenreIndex(const uint16_t indexes[], uint16_t indexToFind) {
+  for (uint16_t i = 0; i < GENRE_COUNT; i++) {
+    if (indexes[i] == indexToFind) return i;
+  }
+  return 0;
+}
+
+void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
+  menuMode = newMode;
+  menuSize = getMenuSize(newMode);
+  menuIndex = menuSize == 0 ? 0 : newMenuIndex % menuSize;
   displayInvalidated = true;
   displayInvalidatedPartial = false;
 }
@@ -294,15 +354,28 @@ void setStatusMessage(const char *message, unsigned long durationMs = 1300) {
   displayInvalidatedPartial = true;
 }
 
+void startRandomizingGenres(bool autoplay = false) {
+  unsigned long currentMillis = millis();
+  if (currentMillis > randomizingGenreEndMillis) {
+    randomizingGenreEndMillis = millis() + 1800;
+    randomizingGenreTicks = 0;
+    randomizingGenreAutoplay = autoplay;
+    displayInvalidated = true;
+    displayInvalidatedPartial = false;
+  }
+}
+
 void knobRotated(ESPRotary &r) {
   unsigned long now = millis();
   unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
   lastInputMillis = now;
+  if (button.isLongPressed()) knobRotatedWhileLongPressed = true;
 
   int newPosition = r.getPosition();
   int positionDelta = newPosition - lastKnobPosition;
   lastKnobPosition = newPosition;
 
+  if (menuSize == 0) return;
   int steps = 1;
   float speed = 0.0;
   if (menuSize > 20 && lastInputDelta >= 1 && lastInputDelta < 32) {
@@ -318,32 +391,20 @@ void knobRotated(ESPRotary &r) {
   } else {
     int newMenuIndex = ((int)menuIndex + (positionDelta * steps)) % (int)menuSize;
     if (newMenuIndex < 0) newMenuIndex += menuSize;
-    // Serial.printf("> [%d] %d / %d lastInputDelta=%d knobDelta=%d menuSteps=%d speed=%f\n",
-    //               now, newMenuIndex, menuSize, lastInputDelta, positionDelta, steps, lastKnobSpeed);
     menuIndex = newMenuIndex;
   }
 
   switch (menuMode) {
     case AlphabeticList:
-      genreIndex = menuIndex;
-      break;
     case AlphabeticSuffixList:
-      genreIndex = genreIndexes_suffix[menuIndex];
-      break;
     case PopularityList:
-      genreIndex = genreIndexes_popularity[menuIndex];
-      break;
     case ModernityList:
-      genreIndex = genreIndexes_modernity[menuIndex];
-      break;
     case ColorList:
-      genreIndex = genreIndexes_color[menuIndex];
-      break;
     case AddedList:
-      genreIndex = genreIndexes_added[menuIndex];
+      genreIndex = getGenreIndexForMenuIndex(menuIndex, menuMode);
       break;
     case BookmarksList:
-      genreIndex = max(0, getGenreIndex(bookmarkedGenres[menuIndex]));
+      genreIndex = max(0, getGenreIndexByName(bookmarkedGenres[menuIndex]));
       break;
     case VolumeControl:
       if (activeSpotifyDevice != NULL) {
@@ -353,6 +414,7 @@ void knobRotated(ESPRotary &r) {
       break;
   }
 
+  displayInvalidated = true;
   displayInvalidatedPartial = true;
 }
 
@@ -403,7 +465,8 @@ void knobDoubleClicked() {
 }
 
 void knobLongPressStarted() {
-  lastInputMillis = millis();
+  longPressStartedMillis = lastInputMillis = millis();
+  knobRotatedWhileLongPressed = false;
   if (menuMode != RootMenu) {
     lastMenuMode = menuMode;
     lastMenuIndex = menuIndex;
@@ -411,13 +474,15 @@ void knobLongPressStarted() {
   if (spotifyState.isPlaying) {
     setMenuMode(RootMenu, 0);
   } else {
-    setMenuMode(RootMenu, (uint32_t)menuMode);
+    setMenuMode(RootMenu, (uint16_t)menuMode);
   }
 }
 
 void knobLongPressStopped() {
   lastInputMillis = millis();
-  if (menuIndex == 0) {
+  if (shouldShowRandom()) {
+    startRandomizingGenres();
+  } else if (menuIndex == 0) {
     if (spotifyAccessToken[0] != '\0') {
       spotifyAction = Toggle;
       setStatusMessage(spotifyState.isPlaying ? "pause" : "play");
@@ -430,7 +495,7 @@ void knobLongPressStopped() {
     } else {
       removeBookmark(genreIndex);
       if (lastMenuMode == BookmarksList) {
-        lastMenuIndex = (lastMenuIndex == 0) ? 0 : min(lastMenuIndex, bookmarksCount - 1);
+        lastMenuIndex = (lastMenuIndex == 0) ? 0 : min((int)lastMenuIndex, (int)bookmarksCount - 1);
       }
       setStatusMessage("deleted");
     }
@@ -445,7 +510,7 @@ void knobLongPressStopped() {
     spotifyAction = ToggleShuffle;
     setMenuMode(lastMenuMode, lastMenuIndex);
   } else if (menuIndex != lastMenuIndex) {
-    uint32_t newMenuIndex = lastMenuIndex;
+    uint16_t newMenuIndex = lastMenuIndex;
 
     switch (menuIndex) {
       case UserList:
@@ -486,22 +551,12 @@ void knobLongPressStopped() {
         }
         break;
       case AlphabeticList:
-        newMenuIndex = genreIndex;
-        break;
       case AlphabeticSuffixList:
-        newMenuIndex = getGenreMenuIndex(genreIndexes_suffix, newMenuIndex);
-        break;
       case PopularityList:
-        newMenuIndex = getGenreMenuIndex(genreIndexes_popularity, newMenuIndex);
-        break;
       case ModernityList:
-        newMenuIndex = getGenreMenuIndex(genreIndexes_modernity, newMenuIndex);
-        break;
       case ColorList:
-        newMenuIndex = getGenreMenuIndex(genreIndexes_color, newMenuIndex);
-        break;
       case AddedList:
-        newMenuIndex = getGenreMenuIndex(genreIndexes_added, newMenuIndex);
+        newMenuIndex = getMenuIndexForGenreIndex(genreIndex, (MenuModes)menuIndex);
         break;
       default:
         break;
@@ -511,19 +566,13 @@ void knobLongPressStopped() {
   } else {
     setMenuMode(lastMenuMode, lastMenuIndex);
   }
-}
-
-uint32_t getGenreMenuIndex(const uint16_t indexes[], uint32_t defaultIndex) {
-  for (uint32_t i = 1; i < GENRE_COUNT; i++) {
-    if (indexes[i] == genreIndex) return i;
-  }
-  return defaultIndex;
+  longPressStartedMillis = 0;
 }
 
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1) {
   const uint16_t lineHeight = img.gFont.yAdvance + lineSpacing;
   const uint16_t spriteHeight = img.gFont.yAdvance * maxLines + lineSpacing * (maxLines - 1);
-  const uint16_t centerX = maxWidth / 2 + 1;
+  const uint16_t centerX = maxWidth / 2;
   const uint16_t len = strlen(text);
 
   uint16_t lineNumber = 0;
@@ -532,6 +581,7 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1
   uint16_t index = 0;
   uint16_t preferredBreakpoint = 0;
   uint16_t widthAtBreakpoint = 0;
+  bool breakpointOnSpace = false;
   uint16_t lastDrawnPos = 0;
 
   img.createSprite(maxWidth, spriteHeight);
@@ -557,15 +607,18 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1
     if (unicode == ' ') {
       preferredBreakpoint = pos;
       widthAtBreakpoint = totalWidth - width;
+      breakpointOnSpace = true;
     } else if (unicode == '-') {
       preferredBreakpoint = pos;
       widthAtBreakpoint = totalWidth;
+      breakpointOnSpace = false;
     }
 
     if (totalWidth >= maxWidth - width) {
       if (preferredBreakpoint == 0) {
         preferredBreakpoint = lastPos;
         widthAtBreakpoint = totalWidth;
+        breakpointOnSpace = false;
       }
       uint16_t lineLength = preferredBreakpoint - lastDrawnPos;
       uint16_t lineWidth = widthAtBreakpoint;
@@ -576,11 +629,11 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1
       img.setCursor(centerX - lineWidth / 2, lineNumber * lineHeight);
       img.printToSprite(line, lineLength);
       lastDrawnPos = preferredBreakpoint;
-      // if (unicode == ' ') lastDrawnPos++;
       // It is possible that we did not draw all letters to n so we need
       // to account for the width of the chars from `n - preferredBreakpoint`
       // by calculating the width we did not draw yet.
       totalWidth = totalWidth - widthAtBreakpoint;
+      if (breakpointOnSpace) totalWidth -= img.gFont.spaceWidth + 1;
       preferredBreakpoint = 0;
       lineNumber++;
       if (lineNumber > maxLines) break;
@@ -623,11 +676,34 @@ void updateDisplay() {
   if (usersCount == 0) {
     tft.drawString("setup at http://", centerX, lineTwo);
     tft.drawString(nodeName + ".local", centerX, lineThree);
-  } else if (menuMode == RootMenu) {
-    tft.fillRoundRect(11, lineTwo - 14, 217, 47, 5, TFT_BLACK);
-    img.setTextColor(TFT_WHITE, TFT_BLACK);
+  } else if (currentMillis < randomizingGenreEndMillis) {
+    randomizingGenreTicks += 1;
+    genreIndex = random(getMenuSize(lastMenuMode));
+    menuIndex = getMenuIndexForGenreIndex(genreIndex, lastMenuMode);
     tft.setCursor(textPadding, lineTwo);
-    if (menuIndex == 0) {
+    img.setTextColor(genreColors[genreIndex], TFT_BLACK);
+    drawCenteredText(genres[genreIndex], textWidth, 3);
+    auto delayMillis = pow(randomizingGenreTicks, 2);
+    if (millis() + delayMillis >= randomizingGenreEndMillis) {
+      if (randomizingGenreAutoplay) {
+        spotifyAction = PlayGenre;
+        setStatusMessage("play");
+      }
+      randomizingGenreEndMillis = 0;
+      setMenuMode(lastMenuMode, menuIndex);
+    }
+    delay(delayMillis);
+    displayInvalidated = true;
+    displayInvalidatedPartial = randomizingGenreTicks > 1;
+  } else if (menuMode == RootMenu) {
+    tft.setCursor(textPadding, lineTwo);
+    img.setTextColor(TFT_WHITE, TFT_BLACK);
+    if (shouldShowRandom()) {
+      double pressedProgress = min(1.0, (double)extraLongPressedMillis() / (double)extraLongPressMillis);
+      tft.drawFastHLine(0, 0, (int)(pressedProgress * 239), TFT_WHITE);
+      drawCenteredText("random", textWidth);
+      delay(20);
+    } else if (menuIndex == 0) {
       drawCenteredText(spotifyState.isPlaying ? "pause" : "play", textWidth);
     } else if (menuIndex == toggleBookmarkIndex) {
       drawCenteredText(isBookmarked(genreIndex) ? "del bookmark" : "add bookmark", textWidth);
@@ -638,11 +714,11 @@ void updateDisplay() {
     } else {
       drawCenteredText(rootMenuItems[menuIndex], textWidth);
     }
-    tft.drawRoundRect(10, lineTwo - 15, 219, 49, 5, TFT_WHITE);
+    tft.drawRoundRect(9, lineTwo - 15, 221, 49, 5, TFT_WHITE);
   } else if (menuMode == UserList) {
     char header[8];
     sprintf(header, "%d / %d", menuIndex + 1, menuSize);
-    tft.setCursor(textPadding + 1, lineOne);
+    tft.setCursor(textPadding, lineOne);
     img.setTextColor(TFT_DARKGREY, TFT_BLACK);
     drawCenteredText(header, textWidth);
 
@@ -666,7 +742,7 @@ void updateDisplay() {
     } else {
       char header[7];
       sprintf(header, "%d / %d", menuIndex + 1, menuSize);
-      tft.setCursor(textPadding + 1, lineOne);
+      tft.setCursor(textPadding, lineOne);
       drawCenteredText(header, textWidth);
 
       SpotifyDevice_t *device = &spotifyDevices[menuIndex];
@@ -724,7 +800,7 @@ void updateDisplay() {
       char label[13];
       sprintf(label, "%d / %d", menuIndex + 1, menuSize);
       img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-      tft.setCursor(textPadding + 1, lineOne);
+      tft.setCursor(textPadding, lineOne);
       drawCenteredText(label, textWidth);
     }
 
@@ -734,7 +810,7 @@ void updateDisplay() {
         img.setTextColor(TFT_DARKGREY, TFT_BLACK);
       } else {
         text = bookmarkedGenres[menuIndex];
-        int genreIndex = getGenreIndex(text);
+        int genreIndex = getGenreIndexByName(text);
         if (genreIndex >= 0) img.setTextColor(genreColors[genreIndex], TFT_BLACK);
       }
     } else {
@@ -801,15 +877,17 @@ void loop() {
   bool connected = WiFi.isConnected();
 
   if (currentMillis - lastInputMillis > inactivityMillis) {
+    if (!isGenreMenu(menuMode)) menuMode = AlphabeticList;
+    lastSleepSeconds = currentSeconds;
+    spotifyAction = Idle;
     tft.fillScreen(TFT_BLACK);
     Serial.printf("\n> [%d] Entering deep sleep.\n", currentMillis);
     eventsSendLog("Entering deep sleep.");
-    lastSleepSeconds = currentSeconds;
-    spotifyAction = Idle;
     WiFi.disconnect(true);
     digitalWrite(TFT_BL, LOW);
     tft.writecommand(TFT_DISPOFF);
     tft.writecommand(TFT_SLPIN);
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
     esp_deep_sleep_start();
   }
 
@@ -824,9 +902,14 @@ void loop() {
     spotifyAction = GetToken;
   }
 
-  if (currentMillis < 1000) {
+  if (currentMillis < 1000 && (secondsAsleep == 0 || secondsAsleep > 60 * 5)) {
     bool pickRandomGenre = secondsAsleep == 0 || secondsAsleep > (60 * 30);
     startupAnimation(pickRandomGenre);
+  }
+
+  if (shouldShowRandom() && extraLongPressedMillis() > extraLongPressMillis) {
+    longPressStartedMillis = 0;
+    startRandomizingGenres(true);
   }
 
   if (statusMessage[0] != '\0' && currentMillis > statusMessageUntilMillis) {
@@ -835,6 +918,9 @@ void loop() {
     displayInvalidated = true;
     displayInvalidatedPartial = true;
   } else if (playingGenreIndex == genreIndex && (currentMillis - lastDisplayMillis) > 950) {
+    displayInvalidated = true;
+    displayInvalidatedPartial = true;
+  } else if (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2) {
     displayInvalidated = true;
     displayInvalidatedPartial = true;
   } else if (lastInputMillis > lastDisplayMillis) {
@@ -936,6 +1022,7 @@ void spotifyApiLoop(void *params) {
         case GetDevices:
           spotifyGetDevices();
           displayInvalidated = true;
+          displayInvalidatedPartial = true;
           break;
         case SetVolume:
           spotifySetVolume();
@@ -993,7 +1080,7 @@ bool readDataJson() {
   }
 
   JsonArray usersArray = doc["users"];
-  usersCount = min(MAX_SPOTIFY_USERS, usersArray.size());
+  usersCount = min((size_t)MAX_SPOTIFY_USERS, usersArray.size());
 
   for (uint8_t i = 0; i < usersCount; i++) {
     JsonObject jsonUser = usersArray[i];
@@ -1017,7 +1104,7 @@ bool readDataJson() {
 
   for (int i = 0; i < bookmarksArray.size(); i++) {
     const char *genreName = bookmarksArray[i];
-    int genreIndex = getGenreIndex(genreName);
+    int genreIndex = getGenreIndexByName(genreName);
     if (genreIndex >= 0) addBookmark(genreIndex);
   }
 
@@ -1058,7 +1145,7 @@ bool writeDataJson() {
   return true;
 }
 
-bool isBookmarked(uint32_t genreIndex) {
+bool isBookmarked(uint16_t genreIndex) {
   for (int i = 0; i < bookmarksCount; i++) {
     if (strcmp(bookmarkedGenres[i], genres[genreIndex]) == 0) {
       return true;
@@ -1067,13 +1154,13 @@ bool isBookmarked(uint32_t genreIndex) {
   return false;
 }
 
-void addBookmark(uint32_t genreIndex) {
+void addBookmark(uint16_t genreIndex) {
   if (bookmarksCount < MAX_BOOKMARKS) {
     bookmarkedGenres[bookmarksCount++] = genres[genreIndex];
   }
 }
 
-void removeBookmark(uint32_t genreIndex) {
+void removeBookmark(uint16_t genreIndex) {
   for (int i = 0; i < bookmarksCount; i++) {
     if (strcmp(bookmarkedGenres[i], genres[genreIndex]) == 0) {
       bookmarksCount--;
@@ -1518,7 +1605,7 @@ void spotifyGetDevices() {
 
     if (!error) {
       JsonArray jsonDevices = doc["devices"];
-      spotifyDevicesCount = min(MAX_SPOTIFY_DEVICES, jsonDevices.size());
+      spotifyDevicesCount = min((size_t)MAX_SPOTIFY_DEVICES, jsonDevices.size());
       if (spotifyDevicesCount == 0) activeSpotifyDeviceId[0] = '\0';
       if (menuMode == DeviceList) menuSize = spotifyDevicesCount;
       for (uint8_t i = 0; i < spotifyDevicesCount; i++) {
