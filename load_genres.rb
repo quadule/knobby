@@ -33,6 +33,11 @@ sorted_genres = Hash.new { [] }
   puts "done"
 end
 
+print "Fetching countries... "
+doc = Nokogiri::HTML(open("http://everynoise.com/countries.html"))
+countries = doc.css(".country a").map { |c| [c.text, c[:href].split(":").last] }.sort_by(&:first).to_h
+puts "done"
+
 genres = sorted_genres.values.first
 alphabetical = genres.sort_by(&:name)
 names = alphabetical.map(&:name)
@@ -40,10 +45,15 @@ suffix = genres.sort_by { |genre| genre.name.reverse }
 
 template = <<-END_TEMPLATE
 #define GENRE_COUNT <%= genres.size %>
+#define COUNTRY_COUNT <%= countries.size %>
 
 const char* genres[GENRE_COUNT] = { <%= names.map(&:inspect).join(", ") %> };
 
-const char* playlists[GENRE_COUNT] = { <%= alphabetical.map { |g| g.id.inspect }.join(", ") %> };
+const char* genrePlaylists[GENRE_COUNT] = { <%= alphabetical.map { |g| g.id.inspect }.join(", ") %> };
+
+const char* countries[COUNTRY_COUNT] = { <%= countries.keys.map(&:inspect).join(", ") %> };
+
+const char* countryPlaylists[COUNTRY_COUNT] = { <%= countries.values.map(&:inspect).join(", ") %> };
 
 const uint16_t genreColors[GENRE_COUNT] = { <%= alphabetical.map { |g| g.color.to_s }.join(", ") %> };
 

@@ -11,15 +11,15 @@
 #include "time.h"
 
 #define FONT_NAME "GillSans24"
-#define LINE_HEIGHT 27
+#define LINE_HEIGHT 28
 TFT_eSPI tft = TFT_eSPI(135, 240);
 TFT_eSprite img = TFT_eSprite(&tft);
 
-const int centerX = 119;
-const int lineOne = 14;
+const int centerX = 120;
+const int lineOne = 13;
 const int lineTwo = lineOne + LINE_HEIGHT + 3;
 const int lineThree = lineTwo + LINE_HEIGHT;
-const int lineSpacing = 3;
+const int lineSpacing = 4;
 const int textPadding = 10;
 const int textWidth = 239 - textPadding * 2;
 
@@ -62,12 +62,12 @@ enum MenuModes {
   UserList = 1,
   DeviceList = 2,
   BookmarksList = 3,
-  AlphabeticList = 4,
-  AlphabeticSuffixList = 5,
-  PopularityList = 6,
-  ModernityList = 7,
-  ColorList = 8,
-  AddedList = 9,
+  CountryList = 4,
+  AlphabeticList = 5,
+  AlphabeticSuffixList = 6,
+  PopularityList = 7,
+  ModernityList = 8,
+  ColorList = 9,
   ToggleBookmarkItem = 10,
   ToggleShuffleItem = 11,
   VolumeControl = 12
@@ -75,9 +75,9 @@ enum MenuModes {
 RTC_DATA_ATTR MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
 uint16_t lastMenuIndex = 0;
-const char *rootMenuItems[] = {"play/pause",       "users",      "devices",   "bookmarks", "name",
-                               "name ending",      "popularity", "modernity", "color",     "date added",
-                               "add/del bookmark", "shuffle",    "volume"};
+const char *rootMenuItems[] = {"play/pause",  "users",      "devices",   "bookmarks", "countries",        "name",
+                               "name ending", "popularity", "modernity", "color",     "add/del bookmark", "shuffle",
+                               "volume"};
 
 #define MAX_BOOKMARKS 1024
 uint16_t bookmarksCount = 0;
@@ -87,7 +87,7 @@ RTC_DATA_ATTR uint16_t menuSize = GENRE_COUNT;
 RTC_DATA_ATTR uint16_t menuIndex = 0;
 int lastKnobPosition = 0;
 float lastKnobSpeed = 0.0;
-const unsigned long extraLongPressMillis = 1800;
+const unsigned long extraLongPressMillis = 1500;
 unsigned long longPressStartedMillis = 0;
 bool knobRotatedWhileLongPressed = false;
 int toggleBookmarkIndex = -1;
@@ -280,12 +280,13 @@ uint16_t getMenuSize(MenuModes mode) {
       return spotifyDevicesCount == 0 ? 1 : spotifyDevicesCount;
     case BookmarksList:
       return bookmarksCount == 0 ? 1 : bookmarksCount;
+    case CountryList:
+      return COUNTRY_COUNT;
     case AlphabeticList:
     case AlphabeticSuffixList:
     case PopularityList:
     case ModernityList:
     case ColorList:
-    case AddedList:
       return GENRE_COUNT;
     case VolumeControl:
       return 101;  // 0-100%
@@ -306,8 +307,6 @@ uint16_t getGenreIndexForMenuIndex(uint16_t index, MenuModes mode) {
       return genreIndexes_modernity[index];
     case ColorList:
       return genreIndexes_color[index];
-    case AddedList:
-      return genreIndexes_added[index];
     default:
       return 0;
   }
@@ -325,8 +324,6 @@ uint16_t getMenuIndexForGenreIndex(uint16_t index, MenuModes mode) {
       return getIndexOfGenreIndex(genreIndexes_modernity, index);
     case ColorList:
       return getIndexOfGenreIndex(genreIndexes_color, index);
-    case AddedList:
-      return getIndexOfGenreIndex(genreIndexes_added, index);
     default:
       return 0;
   }
@@ -357,7 +354,7 @@ void setStatusMessage(const char *message, unsigned long durationMs = 1300) {
 void startRandomizingGenres(bool autoplay = false) {
   unsigned long currentMillis = millis();
   if (currentMillis > randomizingGenreEndMillis) {
-    randomizingGenreEndMillis = millis() + 1800;
+    randomizingGenreEndMillis = millis() + 1500;
     randomizingGenreTicks = 0;
     randomizingGenreAutoplay = autoplay;
     displayInvalidated = true;
@@ -400,7 +397,6 @@ void knobRotated(ESPRotary &r) {
     case PopularityList:
     case ModernityList:
     case ColorList:
-    case AddedList:
       genreIndex = getGenreIndexForMenuIndex(menuIndex, menuMode);
       break;
     case BookmarksList:
@@ -445,8 +441,15 @@ void knobClicked() {
     case PopularityList:
     case ModernityList:
     case ColorList:
-    case AddedList:
-      spotifyAction = PlayGenre;
+      spotifyPlayPlaylistId = genrePlaylists[genreIndex];
+      strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, sizeof(spotifyState.playlistId) - 1);
+      spotifyAction = PlayPlaylist;
+      setStatusMessage("play");
+      break;
+    case CountryList:
+      spotifyPlayPlaylistId = countryPlaylists[menuIndex];
+      strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, sizeof(spotifyState.playlistId) - 1);
+      spotifyAction = PlayPlaylist;
       setStatusMessage("play");
       break;
     case VolumeControl:
@@ -550,12 +553,14 @@ void knobLongPressStopped() {
           }
         }
         break;
+      case CountryList:
+        newMenuIndex = random(COUNTRY_COUNT);
+        break;
       case AlphabeticList:
       case AlphabeticSuffixList:
       case PopularityList:
       case ModernityList:
       case ColorList:
-      case AddedList:
         newMenuIndex = getMenuIndexForGenreIndex(genreIndex, (MenuModes)menuIndex);
         break;
       default:
@@ -686,7 +691,8 @@ void updateDisplay() {
     auto delayMillis = pow(randomizingGenreTicks, 2);
     if (millis() + delayMillis >= randomizingGenreEndMillis) {
       if (randomizingGenreAutoplay) {
-        spotifyAction = PlayGenre;
+        spotifyAction = PlayPlaylist;
+        spotifyPlayPlaylistId = genrePlaylists[genreIndex];
         setStatusMessage("play");
       }
       randomizingGenreEndMillis = 0;
@@ -773,12 +779,25 @@ void updateDisplay() {
     img.deleteSprite();
   } else {
     const char *text;
+    const char *playlistId;
+
+    if (menuMode == CountryList) {
+      text = countries[menuIndex];
+      playlistId = countryPlaylists[menuIndex];
+    } else if (menuMode == BookmarksList) {
+      text = bookmarksCount == 0 ? "no bookmarks yet" : bookmarkedGenres[genreIndex];
+      playlistId = genrePlaylists[genreIndex];
+    } else {
+      text = genres[genreIndex];
+      playlistId = genrePlaylists[genreIndex];
+    }
+    bool isActivePlaylist = strcmp(playlistId, spotifyState.playlistId) == 0;
 
     tft.setCursor(textPadding, lineOne);
     if (currentMillis < statusMessageUntilMillis && statusMessage[0] != '\0') {
       img.setTextColor(TFT_WHITE, TFT_BLACK);
       drawCenteredText(statusMessage, textWidth);
-    } else if (playingGenreIndex == genreIndex && (spotifyState.isPlaying || spotifyAction == PlayGenre)) {
+    } else if (isActivePlaylist && (spotifyState.isPlaying || spotifyAction == PlayPlaylist)) {
       char elapsed[11];
       uint32_t estimatedMillis = spotifyState.progressMillis;
       if (spotifyState.isPlaying) estimatedMillis += currentMillis - spotifyState.lastUpdateMillis;
@@ -795,7 +814,6 @@ void updateDisplay() {
         sprintf(status, "%s / %s", elapsed, duration);
         drawCenteredText(status, textWidth);
       }
-
     } else {
       char label[13];
       sprintf(label, "%d / %d", menuIndex + 1, menuSize);
@@ -806,20 +824,19 @@ void updateDisplay() {
 
     if (menuMode == BookmarksList) {
       if (bookmarksCount == 0) {
-        text = "no bookmarks yet";
         img.setTextColor(TFT_DARKGREY, TFT_BLACK);
       } else {
-        text = bookmarkedGenres[menuIndex];
         int genreIndex = getGenreIndexByName(text);
         if (genreIndex >= 0) img.setTextColor(genreColors[genreIndex], TFT_BLACK);
       }
+    } else if (menuMode == CountryList) {
+      img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
     } else {
-      text = genres[genreIndex];
       img.setTextColor(genreColors[genreIndex], TFT_BLACK);
     }
 
     tft.setCursor(textPadding, lineTwo);
-    if (spotifyState.isPlaying && playingGenreIndex == genreIndex && spotifyState.name[0] != '\0') {
+    if (isActivePlaylist && spotifyState.isPlaying && spotifyState.name[0] != '\0') {
       char playing[201];
       snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
       drawCenteredText(playing, textWidth, 3);
@@ -917,7 +934,7 @@ void loop() {
     statusMessage[0] = '\0';
     displayInvalidated = true;
     displayInvalidatedPartial = true;
-  } else if (playingGenreIndex == genreIndex && (currentMillis - lastDisplayMillis) > 950) {
+  } else if (spotifyState.isPlaying && (currentMillis - lastDisplayMillis) > 950) {
     displayInvalidated = true;
     displayInvalidatedPartial = true;
   } else if (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2) {
@@ -1015,9 +1032,8 @@ void spotifyApiLoop(void *params) {
         case Toggle:
           spotifyToggle();
           break;
-        case PlayGenre:
-          playingGenreIndex = genreIndex;
-          spotifyPlayPlaylist(playlists[genreIndex]);
+        case PlayPlaylist:
+          spotifyPlayPlaylist();
           break;
         case GetDevices:
           spotifyGetDevices();
@@ -1406,9 +1422,11 @@ void spotifyCurrentlyPlaying() {
       spotifyState.progressMillis = json["progress_ms"];
 
       JsonObject context = json["context"];
-      if (!context.isNull()) {
+      if (context.isNull()) {
+        spotifyState.playlistId[0] = '\0';
+      } else {
         if (strcmp(context["type"], "playlist") == 0) {
-          const char *id = strrchr(context["uri"], ':') - 1;
+          const char *id = strrchr(context["uri"], ':') + 1;
           strncpy(spotifyState.playlistId, id, sizeof(spotifyState.playlistId) - 1);
         }
       }
@@ -1559,12 +1577,12 @@ void spotifyToggle() {
   spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
 };
 
-void spotifyPlayPlaylist(const char *playlistId) {
-  if (spotifyAccessToken[0] == '\0') return;
+void spotifyPlayPlaylist() {
+  if (spotifyAccessToken[0] == '\0' || spotifyPlayPlaylistId[0] == '\0') return;
 
   spotifyResetProgress();
   char requestContent[59];
-  snprintf(requestContent, sizeof(requestContent), "{\"context_uri\":\"spotify:playlist:%s\"}", playlistId);
+  snprintf(requestContent, sizeof(requestContent), "{\"context_uri\":\"spotify:playlist:%s\"}", spotifyPlayPlaylistId);
   HTTP_response_t response;
   if (activeSpotifyDeviceId[0] != '\0') {
     char path[64];
@@ -1577,10 +1595,12 @@ void spotifyPlayPlaylist(const char *playlistId) {
   if (response.httpCode == 204) {
     spotifyResetProgress();
     spotifyState.isPlaying = true;
+    strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, sizeof(spotifyState.playlistId) - 1);
   } else {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
   spotifyAction = CurrentlyPlaying;
+  spotifyPlayPlaylistId = nullptr;
 };
 
 void spotifyResetProgress() {
