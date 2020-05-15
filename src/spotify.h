@@ -1,6 +1,8 @@
 #include "Arduino.h"
 #include "driver/rtc_io.h"
 
+#define SPOTIFY_ID_SIZE 22
+
 const uint16_t SPOTIFY_POLL_INTERVAL = 30000;
 
 typedef struct {
@@ -31,7 +33,7 @@ typedef struct {
   uint32_t progressMillis = 0;
   uint32_t durationMillis = 0;
   uint32_t lastUpdateMillis = 0;
-  char playlistId[23] = "";
+  char playlistId[SPOTIFY_ID_SIZE + 1] = "";
 } SpotifyState_t;
 
 enum SpotifyActions {
@@ -46,7 +48,8 @@ enum SpotifyActions {
   GetDevices,
   SetVolume,
   ToggleShuffle,
-  TransferPlayback
+  TransferPlayback,
+  GetPlaylistDescription
 };
 
 enum GrantTypes { gt_authorization_code, gt_refresh_token };
@@ -71,5 +74,7 @@ SpotifyDevice_t spotifyDevices[MAX_SPOTIFY_DEVICES] = {};
 uint8_t spotifyDevicesCount = 0;
 SpotifyDevice_t *activeSpotifyDevice = nullptr;
 RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
+
+int spotifyVolumeTarget = -1;
 
 SpotifyState_t spotifyState = {};
