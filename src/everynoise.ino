@@ -230,6 +230,7 @@ void setup() {
 
   readDataJson();
 
+  spotifyHttp.setReuse(true);
   xTaskCreate(spotifyApiLoop,   /* Function to implement the task */
               "spotifyApiLoop", /* Name of the task */
               10000,            /* Stack size in words */
@@ -1373,26 +1374,24 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
 }
 
 HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {
-  uint32_t ts = millis();
-  Serial.printf("\n> [%d] spotifyApiRequest(%s, %s, %s)\n", ts, method, endpoint, content);
+  spotifyHttp.begin("api.spotify.com", 443, "/v1/" + String(endpoint));
+  spotifyHttp.addHeader("Authorization", "Bearer " + String(spotifyAccessToken));
 
-  char headers[512];
-  snprintf(headers, sizeof(headers),
-           "%s /v1/%s HTTP/1.1\r\n"
-           "Host: api.spotify.com\r\n"
-           "Authorization: Bearer %s\r\n"
-           "Content-Length: %d\r\n"
-           "Connection: close\r\n\r\n",
-           method, endpoint, spotifyAccessToken, strlen(content));
+  int code;
+  if (String(method) == "GET") {
+    code = spotifyHttp.GET();
+  } else {
+    code = spotifyHttp.sendRequest(method, content);
+  }
 
-  HTTP_response_t response = httpRequest("api.spotify.com", 443, headers, content);
-
-  if (response.httpCode == 401) {
-    Serial.println("401 Unauthorized, clearing spotifyAccessToken");
+  if (code == 401) {
+    log_w("401 Unauthorized, clearing spotifyAccessToken");
     spotifyAccessToken[0] = '\0';
   }
 
-  return response;
+  String payload = spotifyHttp.getString();
+  spotifyHttp.end();
+  return { code, payload };
 }
 
 /**

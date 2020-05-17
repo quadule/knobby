@@ -79,4 +79,6 @@ RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
 int spotifySetVolumeAtMillis = -1;
 int spotifySetVolumeTo = -1;
 
+HTTPClient spotifyHttp;
+
 SpotifyState_t spotifyState = {};
