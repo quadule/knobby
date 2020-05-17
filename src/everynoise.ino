@@ -17,7 +17,7 @@ TFT_eSprite img = TFT_eSprite(&tft);
 
 const int centerX = 120;
 const int lineOne = 13;
-const int lineTwo = lineOne + LINE_HEIGHT + 3;
+const int lineTwo = lineOne + LINE_HEIGHT + 2;
 const int lineThree = lineTwo + LINE_HEIGHT;
 const int lineSpacing = 4;
 const int textPadding = 10;
@@ -103,6 +103,7 @@ int rootMenuToggleShuffleIndex = -1;
 TaskHandle_t spotifyApiTask;
 
 void setup() {
+  tft.init();
   similarMenuItems.reserve(16);
   Serial.begin(115200);
   SPIFFS.begin(true);
@@ -116,7 +117,6 @@ void setup() {
   button.attachLongPressStart(knobLongPressStarted);
   button.attachLongPressStop(knobLongPressStopped);
 
-  tft.init();
   tft.setRotation(3);
   tft.loadFont(FONT_NAME);
   img.loadFont(FONT_NAME);
@@ -247,13 +247,9 @@ int getGenreIndexByName(const char *genreName) {
   return -1;
 }
 
-// int errorCount = 0;
 int getGenreIndexByPlaylistId(const char *playlistId) {
   for (size_t i = 0; i < GENRE_COUNT; i++) {
     int result = strncmp(playlistId, genrePlaylists[i], SPOTIFY_ID_SIZE);
-    // if (strlen(playlistId) != SPOTIFY_ID_SIZE && ++errorCount < 10) {
-    //   Serial.printf("strncmp(\"%s\", \"%s\") # => %d\n", playlistId, genrePlaylists[i], result);
-    // }
     if (result == 0) return i;
   }
   return -1;
@@ -382,9 +378,6 @@ void setMenuIndex(uint16_t newMenuIndex) {
         }
       }
       break;
-    case VolumeControl:
-      spotifyVolumeTarget = menuIndex;
-      break;
     default:
       break;
   }
@@ -439,9 +432,14 @@ void knobRotated(ESPRotary &r) {
 
   if (menuMode == VolumeControl) {
     // int newMenuIndex = (int)menuIndex + positionDelta;
+    if (steps >= 2) steps /= 2;
+    steps = min(steps, 10);
     int newMenuIndex = ((int)menuIndex + (positionDelta * steps));
     newMenuIndex = newMenuIndex < 0 ? 0 : min(newMenuIndex, menuSize - 1);
     setMenuIndex(newMenuIndex);
+    spotifyAction = SetVolume;
+    spotifySetVolumeTo = menuIndex;
+    spotifySetVolumeAtMillis = now + 100;
   } else {
     int newMenuIndex = ((int)menuIndex + (positionDelta * steps)) % (int)menuSize;
     if (newMenuIndex < 0) newMenuIndex += menuSize;
@@ -494,8 +492,7 @@ void knobClicked() {
       setStatusMessage("play");
       break;
     case VolumeControl:
-      spotifyVolumeTarget = menuIndex;
-      spotifyAction = SetVolume;
+      spotifySetVolumeAtMillis = millis();
       break;
     default:
       break;
@@ -522,6 +519,7 @@ void knobLongPressStarted() {
   } else if (menuMode == SimilarList) {
     setMenuMode(RootMenu, rootMenuSimilarIndex);
   } else if (menuMode == VolumeControl) {
+    spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
     setMenuMode(RootMenu, rootMenuVolumeControlIndex);
   } else {
     setMenuMode(RootMenu, (uint16_t)menuMode);
@@ -565,6 +563,7 @@ void knobLongPressStopped() {
     writeDataJson();
   } else if (menuIndex == rootMenuVolumeControlIndex) {
     if (activeSpotifyDevice != nullptr) {
+      spotifyAction = SetVolume;
       setMenuMode(VolumeControl, activeSpotifyDevice->volumePercent);
     } else {
       setMenuMode(lastMenuMode, lastMenuIndex);
@@ -1031,7 +1030,7 @@ void loop() {
   if (displayInvalidated) {
     updateDisplay();
   } else {
-    if (spotifyAction != Idle && spotifyAction != CurrentlyPlaying && menuMode != RootMenu) {
+    if (spotifyAction != Idle && spotifyAction != CurrentlyPlaying && spotifyAction != SetVolume && menuMode != RootMenu) {
       tft.drawFastHLine(-currentMillis % tft.width(), 0, 20, TFT_BLACK);
       tft.drawFastHLine(-(currentMillis + 20) % tft.width(), 0, 20, TFT_DARKGREY);
       tft.drawFastHLine(-(currentMillis + 40) % tft.width(), 0, 20, TFT_BLACK);
@@ -1125,7 +1124,7 @@ void spotifyApiLoop(void *params) {
           displayInvalidatedPartial = true;
           break;
         case SetVolume:
-          spotifySetVolume();
+          if (spotifySetVolumeAtMillis > 0 && millis() >= spotifySetVolumeAtMillis) spotifySetVolume();
           break;
         case ToggleShuffle:
           spotifyToggleShuffle();
@@ -1379,7 +1378,7 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
 
   char headers[512];
   snprintf(headers, sizeof(headers),
-           "%s /v1%s HTTP/1.1\r\n"
+           "%s /v1/%s HTTP/1.1\r\n"
            "Host: api.spotify.com\r\n"
            "Authorization: Bearer %s\r\n"
            "Content-Length: %d\r\n"
@@ -1494,7 +1493,7 @@ void spotifyCurrentlyPlaying() {
   nextCurrentlyPlayingMillis = 0;
 
   char url[21];
-  sprintf(url, "/me/player?market=%s", activeSpotifyUser->country);
+  sprintf(url, "me/player?market=%s", activeSpotifyUser->country);
   HTTP_response_t response = spotifyApiRequest("GET", url);
 
   if (response.httpCode == 200) {
@@ -1593,7 +1592,7 @@ void spotifyCurrentProfile() {
   if (spotifyAccessToken[0] == '\0') return;
   uint32_t ts = millis();
 
-  HTTP_response_t response = spotifyApiRequest("GET", "/me");
+  HTTP_response_t response = spotifyApiRequest("GET", "me");
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(2000);
@@ -1619,7 +1618,7 @@ void spotifyCurrentProfile() {
 
 void spotifyNext() {
   spotifyResetProgress();
-  HTTP_response_t response = spotifyApiRequest("POST", "/me/player/next");
+  HTTP_response_t response = spotifyApiRequest("POST", "me/player/next");
   if (response.httpCode == 204) {
     spotifyResetProgress();
     spotifyState.isPlaying = true;
@@ -1631,7 +1630,7 @@ void spotifyNext() {
 
 void spotifyPrevious() {
   spotifyResetProgress();
-  HTTP_response_t response = spotifyApiRequest("POST", "/me/player/previous");
+  HTTP_response_t response = spotifyApiRequest("POST", "me/player/previous");
   if (response.httpCode == 204) {
     spotifyResetProgress();
     spotifyState.isPlaying = true;
@@ -1648,11 +1647,11 @@ void spotifyToggle() {
   HTTP_response_t response;
   if (activeSpotifyDeviceId[0] != '\0') {
     char path[68];
-    snprintf(path, sizeof(path), wasPlaying ? "/me/player/pause?device_id=%s" : "/player/play?device_id=%s",
+    snprintf(path, sizeof(path), wasPlaying ? "me/player/pause?device_id=%s" : "player/play?device_id=%s",
              activeSpotifyDeviceId);
     response = spotifyApiRequest("PUT", path);
   } else {
-    response = spotifyApiRequest("PUT", wasPlaying ? "/me/player/pause" : "/me/player/play");
+    response = spotifyApiRequest("PUT", wasPlaying ? "me/player/pause" : "me/player/play");
   }
 
   if (response.httpCode == 204) {
@@ -1673,10 +1672,10 @@ void spotifyPlayPlaylist() {
   HTTP_response_t response;
   if (activeSpotifyDeviceId[0] != '\0') {
     char path[67];
-    snprintf(path, sizeof(path), "/me/player/play?device_id=%s", activeSpotifyDeviceId);
+    snprintf(path, sizeof(path), "me/player/play?device_id=%s", activeSpotifyDeviceId);
     response = spotifyApiRequest("PUT", path, requestContent);
   } else {
-    response = spotifyApiRequest("PUT", "/me/player/play", requestContent);
+    response = spotifyApiRequest("PUT", "me/player/play", requestContent);
   }
 
   if (response.httpCode == 204) {
@@ -1705,7 +1704,7 @@ void spotifyResetProgress() {
 
 void spotifyGetDevices() {
   if (spotifyAccessToken[0] == '\0') return;
-  HTTP_response_t response = spotifyApiRequest("GET", "/me/player/devices");
+  HTTP_response_t response = spotifyApiRequest("GET", "me/player/devices");
   if (response.httpCode == 200) {
     DynamicJsonDocument doc(5000);
     DeserializationError error = deserializeJson(doc, response.payload);
@@ -1737,9 +1736,10 @@ void spotifyGetDevices() {
 }
 
 void spotifySetVolume() {
+  spotifySetVolumeAtMillis = -1;
   if (activeSpotifyDevice == nullptr) return;
   char path[74];
-  snprintf(path, sizeof(path), "/me/player/volume?volume_percent=%d", spotifyVolumeTarget);
+  snprintf(path, sizeof(path), "me/player/volume?volume_percent=%d", spotifySetVolumeTo);
   HTTP_response_t response;
   response = spotifyApiRequest("PUT", path);
   spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
@@ -1752,7 +1752,7 @@ void spotifyToggleShuffle() {
   HTTP_response_t response;
 
   char path[33];
-  snprintf(path, sizeof(path), "/me/player/shuffle?state=%s", spotifyState.isShuffled ? "true" : "false");
+  snprintf(path, sizeof(path), "me/player/shuffle?state=%s", spotifyState.isShuffled ? "true" : "false");
   response = spotifyApiRequest("PUT", path);
 
   if (response.httpCode == 204) {
@@ -1769,7 +1769,7 @@ void spotifyTransferPlayback() {
   char requestContent[61];
   snprintf(requestContent, sizeof(requestContent), "{\"device_ids\":[\"%s\"]}", activeSpotifyDeviceId);
   HTTP_response_t response;
-  response = spotifyApiRequest("PUT", "/me/player", requestContent);
+  response = spotifyApiRequest("PUT", "me/player", requestContent);
   if (response.httpCode == 204) {
     nextCurrentlyPlayingMillis = millis() + 1;
   } else {
@@ -1783,7 +1783,7 @@ void spotifyGetPlaylistDescription() {
   const char *activePlaylistId = genrePlaylists[genreIndex];
   HTTP_response_t response;
   char url[53];
-  snprintf(url, sizeof(url), "/playlists/%s?fields=description", activePlaylistId);
+  snprintf(url, sizeof(url), "playlists/%s?fields=description", activePlaylistId);
   response = spotifyApiRequest("GET", url);
 
   if (response.httpCode == 200) {

@@ -1,4 +1,5 @@
 #include "Arduino.h"
+#include "HTTPClient.h"
 #include "driver/rtc_io.h"
 
 #define SPOTIFY_ID_SIZE 22
@@ -75,6 +76,7 @@ uint8_t spotifyDevicesCount = 0;
 SpotifyDevice_t *activeSpotifyDevice = nullptr;
 RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
 
-int spotifyVolumeTarget = -1;
+int spotifySetVolumeAtMillis = -1;
+int spotifySetVolumeTo = -1;
 
 SpotifyState_t spotifyState = {};
