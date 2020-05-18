@@ -1,5 +1,6 @@
 #include "Arduino.h"
 #include "HTTPClient.h"
+#include "WiFiClientSecure.h"
 #include "driver/rtc_io.h"
 
 #define SPOTIFY_ID_SIZE 22
@@ -59,7 +60,7 @@ String spotifyAuthCode;
 RTC_DATA_ATTR char spotifyAccessToken[300] = "";
 RTC_DATA_ATTR time_t spotifyTokenLifetime = 0;
 RTC_DATA_ATTR time_t spotifyTokenSeconds = 0;
-uint32_t nextCurrentlyPlayingMillis = 0;
+uint32_t nextCurrentlyPlayingMillis = 4000;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = Idle;
 const char *spotifyPlayPlaylistId = nullptr;
@@ -79,6 +80,7 @@ RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
 int spotifySetVolumeAtMillis = -1;
 int spotifySetVolumeTo = -1;
 
+WiFiClientSecure client;
 HTTPClient spotifyHttp;
 
 SpotifyState_t spotifyState = {};

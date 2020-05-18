@@ -4,6 +4,7 @@
 #include "ESPmDNS.h"
 #include "OneButton.h"
 #include "SPIFFS.h"
+#include "StreamString.h"
 #include "TFT_eSPI.h"
 #include "WiFiClientSecure.h"
 #include "base64.h"
@@ -230,6 +231,9 @@ void setup() {
 
   readDataJson();
 
+  spotifyHttp.setUserAgent("knobby");
+  spotifyHttp.setConnectTimeout(4000);
+  spotifyHttp.setTimeout(4000);
   spotifyHttp.setReuse(true);
   xTaskCreate(spotifyApiLoop,   /* Function to implement the task */
               "spotifyApiLoop", /* Name of the task */
@@ -412,6 +416,14 @@ void startRandomizingGenres(bool autoplay = false) {
   }
 }
 
+void playPlaylist(const char *playlistId) {
+  spotifyResetProgress();
+  spotifyPlayPlaylistId = playlistId;
+  strncpy(spotifyState.playlistId, playlistId, SPOTIFY_ID_SIZE);
+  spotifyAction = PlayPlaylist;
+  setStatusMessage("play");
+}
+
 void knobRotated(ESPRotary &r) {
   unsigned long now = millis();
   unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
@@ -473,24 +485,15 @@ void knobClicked() {
     case AlphabeticList:
     case AlphabeticSuffixList:
     case PopularityList:
-      spotifyPlayPlaylistId = genrePlaylists[genreIndex];
-      strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, SPOTIFY_ID_SIZE);
-      spotifyAction = PlayPlaylist;
-      setStatusMessage("play");
+      playPlaylist(genrePlaylists[genreIndex]);
       break;
     case SimilarList:
       if (!similarMenuItems.empty()) {
-        spotifyPlayPlaylistId = similarMenuItems[menuIndex].playlistId;
-        strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, SPOTIFY_ID_SIZE);
-        spotifyAction = PlayPlaylist;
-        setStatusMessage("play");
+        playPlaylist(similarMenuItems[menuIndex].playlistId);
       }
       break;
     case CountryList:
-      spotifyPlayPlaylistId = countryPlaylists[menuIndex];
-      strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, SPOTIFY_ID_SIZE);
-      spotifyAction = PlayPlaylist;
-      setStatusMessage("play");
+      playPlaylist(countryPlaylists[menuIndex]);
       break;
     case VolumeControl:
       spotifySetVolumeAtMillis = millis();
@@ -1085,7 +1088,7 @@ void startupAnimation(bool pickRandomGenre) {
 void spotifyApiLoop(void *params) {
   for (;;) {
     if (WiFi.status() == WL_CONNECTED) {
-      uint32_t cur_millis = millis();
+      uint32_t now = millis();
 
       switch (spotifyAction) {
         case Idle:
@@ -1098,9 +1101,7 @@ void spotifyApiLoop(void *params) {
           }
           break;
         case CurrentlyPlaying:
-          if (spotifyState.lastUpdateMillis == 0 ||
-              (nextCurrentlyPlayingMillis && (cur_millis >= nextCurrentlyPlayingMillis)) ||
-              (cur_millis - spotifyState.lastUpdateMillis >= SPOTIFY_POLL_INTERVAL)) {
+          if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis) {
             spotifyCurrentlyPlaying();
           }
           break;
@@ -1276,8 +1277,6 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
   uint32_t ts = millis();
   Serial.printf("\n> [%d] httpRequest(%s, %d, ...)\n", ts, host, port);
 
-  WiFiClientSecure client;
-
   if (!client.connect(host, port)) {
     return {503, "Service unavailable (unable to connect)"};
   }
@@ -1374,9 +1373,16 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
 }
 
 HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {
-  spotifyHttp.begin("api.spotify.com", 443, "/v1/" + String(endpoint));
-  spotifyHttp.addHeader("Authorization", "Bearer " + String(spotifyAccessToken));
+  uint32_t ts = millis();
+  String path = String("/v1/") + endpoint;
+  Serial.printf("\n> [%d] spotifyApiRequest(%s, %s, %s)\n", ts, method, path.c_str(), content);
 
+
+  spotifyHttp.begin(client, "api.spotify.com", 443, path);
+  spotifyHttp.addHeader("Authorization", "Bearer " + String(spotifyAccessToken));
+    if(strlen(content) == 0) spotifyHttp.addHeader("Content-Length", "0");
+
+  StreamString payload;
   int code;
   if (String(method) == "GET") {
     code = spotifyHttp.GET();
@@ -1385,13 +1391,20 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
   }
 
   if (code == 401) {
-    log_w("401 Unauthorized, clearing spotifyAccessToken");
+    Serial.println("401 Unauthorized, clearing spotifyAccessToken");
     spotifyAccessToken[0] = '\0';
+  } else if (code == 204 || spotifyHttp.getSize() == 0) {
+    Serial.println("empty response, returning");
+  } else {
+    if (!payload.reserve(spotifyHttp.getSize() + 1)) {
+      Serial.printf("not enough memory to reserve a string! need: %d", (spotifyHttp.getSize() + 1));
+    }
+    spotifyHttp.writeToStream(&payload);
   }
-
-  String payload = spotifyHttp.getString();
   spotifyHttp.end();
-  return { code, payload };
+
+  HTTP_response_t response = {code, payload};
+  return response;
 }
 
 /**
@@ -1487,9 +1500,9 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
 }
 
 void spotifyCurrentlyPlaying() {
+  nextCurrentlyPlayingMillis = 0;
   if (spotifyAccessToken[0] == '\0' || !activeSpotifyUser) return;
   uint32_t ts = millis();
-  nextCurrentlyPlayingMillis = 0;
 
   char url[21];
   sprintf(url, "me/player?market=%s", activeSpotifyUser->country);
@@ -1562,7 +1575,9 @@ void spotifyCurrentlyPlaying() {
         if (remainingMillis < SPOTIFY_POLL_INTERVAL) {
           // Refresh at the end of current song,
           // without considering remaining polling delay
-          nextCurrentlyPlayingMillis = millis() + remainingMillis + 100;
+          nextCurrentlyPlayingMillis = millis() + remainingMillis + 800;
+        } else {
+          nextCurrentlyPlayingMillis = millis() + SPOTIFY_POLL_INTERVAL;
         }
       } else if (spotifyAction == CurrentlyPlaying) {
         inactivityMillis = 60000;
@@ -1655,7 +1670,7 @@ void spotifyToggle() {
 
   if (response.httpCode == 204) {
     spotifyState.isPlaying = !wasPlaying;
-    nextCurrentlyPlayingMillis = millis() + 1;
+    nextCurrentlyPlayingMillis = millis() + 800;
   } else {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
@@ -1696,7 +1711,7 @@ void spotifyResetProgress() {
   spotifyState.progressMillis = 0;
   spotifyState.lastUpdateMillis = millis();
   spotifyState.isPlaying = false;
-  nextCurrentlyPlayingMillis = millis() + 10;
+  nextCurrentlyPlayingMillis = millis() + 800;
   displayInvalidated = true;
   displayInvalidatedPartial = true;
 };
@@ -1755,7 +1770,7 @@ void spotifyToggleShuffle() {
   response = spotifyApiRequest("PUT", path);
 
   if (response.httpCode == 204) {
-    nextCurrentlyPlayingMillis = millis() + 1;
+    nextCurrentlyPlayingMillis = millis() + 800;
   } else {
     spotifyState.isShuffled = !spotifyState.isShuffled;
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
@@ -1770,7 +1785,7 @@ void spotifyTransferPlayback() {
   HTTP_response_t response;
   response = spotifyApiRequest("PUT", "me/player", requestContent);
   if (response.httpCode == 204) {
-    nextCurrentlyPlayingMillis = millis() + 1;
+    nextCurrentlyPlayingMillis = millis() + 800;
   } else {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
