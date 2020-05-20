@@ -9,6 +9,7 @@
 #include "WiFiClientSecure.h"
 #include "base64.h"
 #include "driver/rtc_io.h"
+#include "esp_adc_cal.h"
 #include "time.h"
 
 #define FONT_NAME "GillSans24"
@@ -24,6 +25,8 @@ const int lineSpacing = 3;
 const int textPadding = 10;
 const int textWidth = 239 - textPadding * 2;
 
+#define ADC_EN          14  //ADC_EN is the ADC detection enable port
+#define ADC_PIN         34
 #define ROTARY_ENCODER_A_PIN 12
 #define ROTARY_ENCODER_B_PIN 13
 #define ROTARY_ENCODER_BUTTON_PIN 15
@@ -41,6 +44,8 @@ enum EventsLogTypes { log_line, log_raw };
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
 
+int vref = 1100;
+float batteryVoltage = 0.0;
 String nodeName = "knobby";
 RTC_DATA_ATTR unsigned int bootCount = 0;
 bool sendLogEvents = false;
@@ -115,6 +120,25 @@ void setup() {
     genreIndex = menuIndex = random(GENRE_COUNT);
   }
   bootCount++;
+
+  /*
+  ADC_EN is the ADC detection enable port
+  If the USB port is used for power supply, it is turned on by default.
+  If it is powered by battery, it needs to be set to high level
+  */
+  pinMode(ADC_EN, OUTPUT);
+  digitalWrite(ADC_EN, HIGH);
+  esp_adc_cal_characteristics_t adc_chars;
+  esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
+  //Check type of calibration value used to characterize ADC
+  if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
+      Serial.printf("eFuse Vref:%u mV", adc_chars.vref);
+      vref = adc_chars.vref;
+  } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
+      Serial.printf("Two Point --> coeff_a:%umV coeff_b:%umV\n", adc_chars.coeff_a, adc_chars.coeff_b);
+  } else {
+      Serial.println("Default Vref: 1100mV");
+  }
 
   knob.setChangedHandler(knobRotated);
   button.setDebounceTicks(30);
@@ -536,6 +560,8 @@ void knobLongPressStarted() {
   } else {
     setMenuMode(RootMenu, (uint16_t)menuMode);
   }
+
+  batteryVoltage = ((float)analogRead(ADC_PIN) / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
 }
 
 void knobLongPressStopped() {
@@ -809,6 +835,10 @@ void updateDisplay() {
     } else {
       drawCenteredText(rootMenuItems[menuIndex], textWidth);
     }
+    img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    tft.setCursor(textPadding, lineThree + LINE_HEIGHT);
+    String voltage = String(batteryVoltage) + "V";
+    drawCenteredText(voltage.c_str(), textWidth);
     tft.drawRoundRect(9, lineTwo - 15, 221, 49, 5, TFT_WHITE);
   } else if (menuMode == UserList) {
     char header[8];
@@ -1012,6 +1042,7 @@ void loop() {
     Serial.printf("\n> [%d] Entering deep sleep.\n", currentMillis);
     eventsSendLog("Entering deep sleep.");
     WiFi.disconnect(true);
+    adc_power_off();
     digitalWrite(TFT_BL, LOW);
     tft.writecommand(TFT_DISPOFF);
     tft.writecommand(TFT_SLPIN);
