@@ -4,8 +4,9 @@
 #include "driver/rtc_io.h"
 
 #define SPOTIFY_ID_SIZE 22
+#define SPOTIFY_WAIT_MILLIS 700
 
-const uint16_t SPOTIFY_POLL_INTERVAL = 30000;
+const uint16_t SPOTIFY_POLL_INTERVAL = 20000;
 
 typedef struct {
   int httpCode;
@@ -60,7 +61,7 @@ String spotifyAuthCode;
 RTC_DATA_ATTR char spotifyAccessToken[300] = "";
 RTC_DATA_ATTR time_t spotifyTokenLifetime = 0;
 RTC_DATA_ATTR time_t spotifyTokenSeconds = 0;
-uint32_t nextCurrentlyPlayingMillis = 4000;
+uint32_t nextCurrentlyPlayingMillis = 0;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = Idle;
 const char *spotifyPlayPlaylistId = nullptr;

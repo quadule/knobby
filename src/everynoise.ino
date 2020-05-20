@@ -12,15 +12,15 @@
 #include "time.h"
 
 #define FONT_NAME "GillSans24"
-#define LINE_HEIGHT 28
+#define LINE_HEIGHT 27
 TFT_eSPI tft = TFT_eSPI(135, 240);
 TFT_eSprite img = TFT_eSprite(&tft);
 
 const int centerX = 120;
-const int lineOne = 13;
-const int lineTwo = lineOne + LINE_HEIGHT + 2;
+const int lineOne = 12;
+const int lineTwo = lineOne + LINE_HEIGHT + 3;
 const int lineThree = lineTwo + LINE_HEIGHT;
-const int lineSpacing = 4;
+const int lineSpacing = 3;
 const int textPadding = 10;
 const int textWidth = 239 - textPadding * 2;
 
@@ -41,7 +41,8 @@ enum EventsLogTypes { log_line, log_raw };
 AsyncWebServer server(80);
 AsyncEventSource events("/events");
 
-String nodeName = "everynoisebox";
+String nodeName = "knobby";
+RTC_DATA_ATTR unsigned int bootCount = 0;
 bool sendLogEvents = false;
 int playingGenreIndex = -1;
 RTC_DATA_ATTR uint16_t genreIndex = 0;
@@ -52,6 +53,7 @@ unsigned long lastDisplayMillis = 0;
 unsigned long lastReconnectAttemptMillis = 0;
 unsigned long randomizingGenreEndMillis = 0;
 unsigned long randomizingGenreTicks = 0;
+bool inputLocked = false;
 bool randomizingGenreAutoplay = false;
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
@@ -108,6 +110,11 @@ void setup() {
   similarMenuItems.reserve(16);
   Serial.begin(115200);
   SPIFFS.begin(true);
+
+  if (bootCount == 0) {
+    genreIndex = menuIndex = random(GENRE_COUNT);
+  }
+  bootCount++;
 
   knob.setChangedHandler(knobRotated);
   button.setDebounceTicks(30);
@@ -466,12 +473,13 @@ void knobClicked() {
   switch (menuMode) {
     case UserList:
       if (usersCount > 0) {
-        setActiveUser(&spotifyUsers[menuIndex]);
+        spotifyAction = Idle;
         spotifyTokenLifetime = 0;
         spotifyTokenSeconds = 0;
         spotifyAccessToken[0] = '\0';
-        displayInvalidated = true;
+        setActiveUser(&spotifyUsers[menuIndex]);
         writeDataJson();
+        displayInvalidated = true;
       }
       break;
     case DeviceList:
@@ -517,7 +525,7 @@ void knobLongPressStarted() {
     lastMenuMode = menuMode;
     lastMenuIndex = menuIndex;
   }
-  getMenuSize(RootMenu); // update indexes
+
   if (spotifyState.isPlaying) {
     setMenuMode(RootMenu, 0);
   } else if (menuMode == SimilarList) {
@@ -639,7 +647,7 @@ void knobLongPressStopped() {
 
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1) {
   const uint16_t lineHeight = img.gFont.yAdvance + lineSpacing;
-  const uint16_t spriteHeight = img.gFont.yAdvance * maxLines + lineSpacing * (maxLines - 1);
+  // const uint16_t spriteHeight = img.gFont.yAdvance * maxLines + lineSpacing * (maxLines - 1);
   const uint16_t centerX = round(maxWidth / 2.0);
   const uint16_t len = strlen(text);
 
@@ -652,7 +660,7 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1
   bool breakpointOnSpace = false;
   uint16_t lastDrawnPos = 0;
 
-  img.createSprite(maxWidth, spriteHeight);
+  img.createSprite(maxWidth, img.gFont.yAdvance);
 
   while (pos < len) {
     uint16_t lastPos = pos;
@@ -694,8 +702,11 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1
       char line[lineLength + 1] = {0};
       strncpy(line, &text[lastDrawnPos], lineLength);
 
-      img.setCursor(centerX - round(lineWidth / 2.0), lineNumber * lineHeight);
+      img.setCursor(centerX - round(lineWidth / 2.0), 0);
       img.printToSprite(line, lineLength);
+      img.pushSprite(tft.getCursorX(), tft.getCursorY());
+      tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
+
       lastDrawnPos = preferredBreakpoint;
       // It is possible that we did not draw all letters to n so we need
       // to account for the width of the chars from `n - preferredBreakpoint`
@@ -705,20 +716,29 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1
       preferredBreakpoint = 0;
       lineNumber++;
       if (lineNumber > maxLines) break;
+      img.fillSprite(TFT_BLACK);
     }
   }
 
   // Draw last part if needed
-  if (lastDrawnPos < len) {
+  if (lastDrawnPos < len && lineNumber < maxLines) {
     uint16_t lineLength = len - lastDrawnPos;
     char line[lineLength + 1] = {0};
     strncpy(line, &text[lastDrawnPos], lineLength);
-    img.setCursor(centerX - round(totalWidth / 2.0), lineNumber * lineHeight);
+    img.setCursor(centerX - round(totalWidth / 2.0), 0);
     img.printToSprite(line, lineLength);
+    img.pushSprite(tft.getCursorX(), tft.getCursorY());
+    tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
+    lineNumber++;
   }
 
-  img.pushSprite(tft.getCursorX(), tft.getCursorY());
   img.deleteSprite();
+
+  while (lineNumber < maxLines) {
+    tft.fillRect(tft.getCursorX(), tft.getCursorY(), maxWidth, lineHeight, TFT_BLACK);
+    tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
+    lineNumber++;
+  }
 }
 
 void formatMillis(char *output, unsigned long millis) {
@@ -742,8 +762,11 @@ void updateDisplay() {
   unsigned long currentMillis = millis();
 
   if (usersCount == 0) {
-    tft.drawString("setup at http://", centerX, lineTwo);
-    tft.drawString(nodeName + ".local", centerX, lineThree);
+    const char *hostname = (nodeName + ".local").c_str();
+    tft.setCursor(textPadding, lineTwo);
+    drawCenteredText("setup at http://", textWidth);
+    tft.setCursor(textPadding, lineThree);
+    drawCenteredText(hostname, textWidth);
   } else if (currentMillis < randomizingGenreEndMillis) {
     randomizingGenreTicks += 1;
     genreIndex = random(getMenuSize(lastMenuMode));
@@ -921,7 +944,8 @@ void updateDisplay() {
     }
 
     tft.setCursor(textPadding, lineTwo);
-    if (isActivePlaylist && spotifyState.isPlaying && spotifyState.name[0] != '\0') {
+    if (isActivePlaylist && spotifyState.isPlaying && spotifyState.name[0] != '\0' &&
+        (spotifyState.progressMillis + currentMillis - spotifyState.lastUpdateMillis) % 6000 < 3000) {
       char playing[201];
       snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
       drawCenteredText(playing, textWidth, 3);
@@ -967,15 +991,17 @@ void eventsSendError(int code, const char *msg, const char *payload = "") {
 }
 
 void loop() {
-  knob.loop();
-  button.tick();
+  if (!inputLocked) {
+    knob.loop();
+    button.tick();
+  }
 
   uint32_t currentMillis = millis();
   struct timeval now;
   gettimeofday(&now, NULL);
   time_t currentSeconds = now.tv_sec;
   time_t secondsAsleep = currentSeconds - lastSleepSeconds;
-  time_t spotifyTokenAge = currentSeconds - spotifyTokenSeconds;
+  time_t spotifyTokenAge = spotifyTokenSeconds == 0 ? 0 : currentSeconds - spotifyTokenSeconds;
   bool connected = WiFi.isConnected();
 
   if (currentMillis - lastInputMillis > inactivityMillis) {
@@ -1000,6 +1026,7 @@ void loop() {
   }
 
   if (connected && !spotifyGettingToken && (spotifyAccessToken[0] == '\0' || spotifyTokenAge > spotifyTokenLifetime)) {
+    Serial.printf("> [%d] Need access token...\n", currentMillis);
     spotifyGettingToken = true;
     spotifyAction = GetToken;
   }
@@ -1277,6 +1304,8 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
   uint32_t ts = millis();
   Serial.printf("\n> [%d] httpRequest(%s, %d, ...)\n", ts, host, port);
 
+  WiFiClientSecure client;
+
   if (!client.connect(host, port)) {
     return {503, "Service unavailable (unable to connect)"};
   }
@@ -1394,7 +1423,7 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
     Serial.println("401 Unauthorized, clearing spotifyAccessToken");
     spotifyAccessToken[0] = '\0';
   } else if (code == 204 || spotifyHttp.getSize() == 0) {
-    Serial.println("empty response, returning");
+    // Serial.println("empty response, returning");
   } else {
     if (!payload.reserve(spotifyHttp.getSize() + 1)) {
       Serial.printf("not enough memory to reserve a string! need: %d", (spotifyHttp.getSize() + 1));
@@ -1486,15 +1515,24 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
         }
       }
     } else {
-      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
+      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", (int)millis(), response.payload.c_str());
       eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
+      delay(5000);
     }
   } else {
-    Serial.printf("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
+    Serial.printf("  [%d] %d - %s\n", (int)millis(), response.httpCode, response.payload.c_str());
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    delay(5000);
   }
 
-  if (success) spotifyAction = grant_type == gt_authorization_code ? CurrentProfile : CurrentlyPlaying;
+  if (success) {
+    if (grant_type == gt_authorization_code) {
+      spotifyAction = CurrentProfile;
+    } else {
+      nextCurrentlyPlayingMillis = millis();
+      spotifyAction = CurrentlyPlaying;
+    }
+  }
 
   spotifyGettingToken = false;
 }
@@ -1569,19 +1607,21 @@ void spotifyCurrentlyPlaying() {
       }
 
       if (spotifyState.isPlaying && spotifyState.durationMillis > 0) {
-        // Check if current song is about to end
         inactivityMillis = 90000;
+        // Check if current song is about to end
         uint32_t remainingMillis = spotifyState.durationMillis - spotifyState.progressMillis;
         if (remainingMillis < SPOTIFY_POLL_INTERVAL) {
           // Refresh at the end of current song,
           // without considering remaining polling delay
-          nextCurrentlyPlayingMillis = millis() + remainingMillis + 800;
-        } else {
-          nextCurrentlyPlayingMillis = millis() + SPOTIFY_POLL_INTERVAL;
+          nextCurrentlyPlayingMillis = millis() + remainingMillis + 100;
         }
       } else if (spotifyAction == CurrentlyPlaying) {
         inactivityMillis = 60000;
-        spotifyAction = Idle;
+      }
+      if (spotifyState.isPlaying && nextCurrentlyPlayingMillis == 0) nextCurrentlyPlayingMillis = millis() + SPOTIFY_POLL_INTERVAL;
+      if (!spotifyState.isPlaying) {
+        displayInvalidated = true;
+        displayInvalidatedPartial = true;
       }
     } else {
       Serial.printf("  [%d] Heap free: %d\n", ts, ESP.getFreeHeap());
@@ -1596,6 +1636,7 @@ void spotifyCurrentlyPlaying() {
   } else {
     Serial.printf("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    delay(5000);
   }
 }
 
@@ -1661,7 +1702,7 @@ void spotifyToggle() {
   HTTP_response_t response;
   if (activeSpotifyDeviceId[0] != '\0') {
     char path[68];
-    snprintf(path, sizeof(path), wasPlaying ? "me/player/pause?device_id=%s" : "player/play?device_id=%s",
+    snprintf(path, sizeof(path), wasPlaying ? "me/player/pause?device_id=%s" : "me/player/play?device_id=%s",
              activeSpotifyDeviceId);
     response = spotifyApiRequest("PUT", path);
   } else {
@@ -1670,7 +1711,7 @@ void spotifyToggle() {
 
   if (response.httpCode == 204) {
     spotifyState.isPlaying = !wasPlaying;
-    nextCurrentlyPlayingMillis = millis() + 800;
+    nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
@@ -1711,7 +1752,7 @@ void spotifyResetProgress() {
   spotifyState.progressMillis = 0;
   spotifyState.lastUpdateMillis = millis();
   spotifyState.isPlaying = false;
-  nextCurrentlyPlayingMillis = millis() + 800;
+  nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   displayInvalidated = true;
   displayInvalidatedPartial = true;
 };
@@ -1752,10 +1793,12 @@ void spotifyGetDevices() {
 void spotifySetVolume() {
   spotifySetVolumeAtMillis = -1;
   if (activeSpotifyDevice == nullptr) return;
+  int setpoint = spotifySetVolumeTo;
   char path[74];
-  snprintf(path, sizeof(path), "me/player/volume?volume_percent=%d", spotifySetVolumeTo);
+  snprintf(path, sizeof(path), "me/player/volume?volume_percent=%d", setpoint);
   HTTP_response_t response;
   response = spotifyApiRequest("PUT", path);
+  if (activeSpotifyDevice != nullptr) activeSpotifyDevice->volumePercent = setpoint;
   spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
 }
 
@@ -1770,7 +1813,7 @@ void spotifyToggleShuffle() {
   response = spotifyApiRequest("PUT", path);
 
   if (response.httpCode == 204) {
-    nextCurrentlyPlayingMillis = millis() + 800;
+    nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
     spotifyState.isShuffled = !spotifyState.isShuffled;
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
@@ -1785,7 +1828,7 @@ void spotifyTransferPlayback() {
   HTTP_response_t response;
   response = spotifyApiRequest("PUT", "me/player", requestContent);
   if (response.httpCode == 204) {
-    nextCurrentlyPlayingMillis = millis() + 800;
+    nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
   }
@@ -1815,12 +1858,10 @@ void spotifyGetPlaylistDescription() {
         int idEnd = idStart + SPOTIFY_ID_SIZE;
         strlcpy(item.playlistId, description.c_str() + idStart, sizeof(item.playlistId));
 
-        // Serial.printf("Found playlist id='%s' ", item.playlistId);
         int nameStart = description.indexOf(">", idEnd) + 1;
         int nameEnd = description.indexOf("<", nameStart);
         if (nameStart > 0 && nameEnd > 0) {
           String name = description.substring(nameStart, nameEnd);
-          // Serial.printf("name='%s' ... ", name.c_str());
           int matchingGenreIndex = getGenreIndexByPlaylistId(item.playlistId);
           if (name == "Intro" || name == "Pulse" || name == "Edge" || matchingGenreIndex >= 0) {
             if(matchingGenreIndex < 0) {
@@ -1829,12 +1870,7 @@ void spotifyGetPlaylistDescription() {
               item.name[0] = '\0';
             }
             similarMenuItems.push_back(item);
-            // Serial.printf("added, index %d", matchingGenreIndex);
           }
-          //  else {
-          //   Serial.printf("skipped, index %d", matchingGenreIndex);
-          // }
-          // Serial.println();
 
           urlPosition = description.indexOf(playlistPrefix, nameEnd);
         } else {
