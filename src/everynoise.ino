@@ -113,6 +113,8 @@ TaskHandle_t spotifyApiTask;
 void setup() {
   tft.init();
   similarMenuItems.reserve(16);
+  spotifyDevices.reserve(10);
+  spotifyUsers.reserve(10);
   Serial.begin(115200);
   SPIFFS.begin(true);
 
@@ -332,9 +334,9 @@ uint16_t getMenuSize(MenuModes mode) {
       rootMenuToggleShuffleIndex = shouldShowToggleShuffle() ? nextDynamicIndex++ : -1;
       return nextDynamicIndex;
     case UserList:
-      return usersCount;
+      return spotifyUsers.size();
     case DeviceList:
-      return spotifyDevicesCount == 0 ? 1 : spotifyDevicesCount;
+      return spotifyDevices.size() == 0 ? 1 : spotifyDevices.size();
     case BookmarksList:
       return bookmarksCount == 0 ? 1 : bookmarksCount;
     case CountryList:
@@ -496,18 +498,19 @@ void knobClicked() {
 
   switch (menuMode) {
     case UserList:
-      if (usersCount > 0) {
+      if (!spotifyUsers.empty()) {
         spotifyAction = Idle;
         spotifyTokenLifetime = 0;
         spotifyTokenSeconds = 0;
         spotifyAccessToken[0] = '\0';
+        spotifyDevices.clear();
         setActiveUser(&spotifyUsers[menuIndex]);
         writeDataJson();
         displayInvalidated = true;
       }
       break;
     case DeviceList:
-      if (spotifyDevicesCount > 0) {
+      if (!spotifyDevices.empty()) {
         setActiveDevice(&spotifyDevices[menuIndex]);
         writeDataJson();
         if (spotifyState.isPlaying) spotifyAction = TransferPlayback;
@@ -615,12 +618,13 @@ void knobLongPressStopped() {
 
     switch (menuIndex) {
       case UserList:
-        if (usersCount == 0) {
+        if (spotifyUsers.empty()) {
           Serial.printf("No users found! Visit http://%s.local to sign in.\n", nodeName.c_str());
           setMenuMode(lastMenuMode, lastMenuIndex);
         } else {
           newMenuIndex = 0;
-          for (uint8_t i = 1; i < usersCount; i++) {
+          auto usersCount = spotifyUsers.size();
+          for (auto i = 1; i < usersCount; i++) {
             if (strcmp(spotifyUsers[i].refreshToken, spotifyRefreshToken) == 0) {
               newMenuIndex = i;
               break;
@@ -630,11 +634,12 @@ void knobLongPressStopped() {
         }
         break;
       case DeviceList:
-        if (spotifyDevicesCount == 0 || activeSpotifyDevice == nullptr) {
+        if (!spotifyDevicesLoaded || activeSpotifyDevice == nullptr) {
           spotifyAction = GetDevices;
         } else {
           newMenuIndex = 0;
-          for (uint8_t i = 0; i < spotifyDevicesCount; i++) {
+          auto devicesCount = spotifyDevices.size();
+          for (auto i = 0; i < devicesCount; i++) {
             if (strcmp(spotifyDevices[i].id, activeSpotifyDeviceId) == 0) {
               newMenuIndex = i;
               break;
@@ -787,7 +792,7 @@ void updateDisplay() {
   tft.setTextDatum(MC_DATUM);
   unsigned long currentMillis = millis();
 
-  if (usersCount == 0) {
+  if (spotifyUsers.empty()) {
     const char *hostname = (nodeName + ".local").c_str();
     tft.setCursor(textPadding, lineTwo);
     drawCenteredText("setup at http://", textWidth);
@@ -861,7 +866,7 @@ void updateDisplay() {
     }
   } else if (menuMode == DeviceList) {
     img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    if (spotifyDevicesCount == 0) {
+    if (spotifyDevices.empty()) {
       tft.setCursor(textPadding, lineTwo);
       drawCenteredText("loading...", textWidth);
     } else {
@@ -1206,21 +1211,19 @@ void setActiveUser(SpotifyUser_t *user) {
   if (user->selectedDeviceId[0] != '\0')
     strncpy(activeSpotifyDeviceId, user->selectedDeviceId, sizeof(activeSpotifyDeviceId) - 1);
 
-  SpotifyDevice_t *device = nullptr;
-  for (uint8_t i = 0; i < spotifyDevicesCount; i++) {
-    if (strcmp(spotifyDevices[i].id, activeSpotifyDeviceId) == 0) {
-      device = &spotifyDevices[i];
+  SpotifyDevice_t *activeDevice = nullptr;
+  for (SpotifyDevice_t device : spotifyDevices) {
+    if (strcmp(device.id, activeSpotifyDeviceId) == 0) {
+      activeDevice = &device;
       break;
     }
   }
-  setActiveDevice(device);
+  setActiveDevice(activeDevice);
 }
 
 void setActiveDevice(SpotifyDevice_t *device) {
   activeSpotifyDevice = device;
-  if (activeSpotifyDevice == nullptr) {
-    spotifyDevicesCount = 0;
-  } else {
+  if (activeSpotifyDevice != nullptr) {
     strncpy(activeSpotifyDeviceId, activeSpotifyDevice->id, sizeof(activeSpotifyDeviceId) - 1);
     strncpy(activeSpotifyUser->selectedDeviceId, activeSpotifyDevice->id, sizeof(activeSpotifyUser->selectedDeviceId) - 1);
   }
@@ -1241,30 +1244,28 @@ bool readDataJson() {
   }
 
   JsonArray usersArray = doc["users"];
-  usersCount = min((size_t)MAX_SPOTIFY_USERS, usersArray.size());
-
-  for (uint8_t i = 0; i < usersCount; i++) {
-    JsonObject jsonUser = usersArray[i];
+  spotifyUsers.clear();
+  for (JsonObject jsonUser : usersArray) {
     const char *name = jsonUser["name"];
     const char *token = jsonUser["token"];
     const char *country = jsonUser["country"];
     const char *selectedDeviceId = jsonUser["selectedDeviceId"];
 
-    SpotifyUser_t *user = &spotifyUsers[i];
-    strncpy(user->name, name, sizeof(user->name) - 1);
-    strncpy(user->refreshToken, token, sizeof(user->refreshToken) - 1);
-    strncpy(user->country, country, sizeof(user->country) - 1);
-    strncpy(user->selectedDeviceId, selectedDeviceId, sizeof(user->selectedDeviceId) - 1);
+    SpotifyUser_t user;
+    strncpy(user.name, name, sizeof(user.name) - 1);
+    strncpy(user.refreshToken, token, sizeof(user.refreshToken) - 1);
+    strncpy(user.country, country, sizeof(user.country) - 1);
+    strncpy(user.selectedDeviceId, selectedDeviceId, sizeof(user.selectedDeviceId) - 1);
+    spotifyUsers.push_back(user);
 
-    if (jsonUser["selected"].as<bool>() == true) setActiveUser(user);
+    if (jsonUser["selected"].as<bool>() == true) setActiveUser(&spotifyUsers.back());
   }
 
-  if (usersCount > 0 && activeSpotifyUser == nullptr) setActiveUser(&spotifyUsers[0]);
+  if (activeSpotifyUser == nullptr && !spotifyUsers.empty()) setActiveUser(&spotifyUsers[0]);
 
   JsonArray bookmarksArray = doc["bookmarks"];
 
-  for (int i = 0; i < bookmarksArray.size(); i++) {
-    const char *genreName = bookmarksArray[i];
+  for (const char *genreName : bookmarksArray) {
     int genreIndex = getGenreIndexByName(genreName);
     if (genreIndex >= 0) addBookmark(genreIndex);
   }
@@ -1278,14 +1279,13 @@ bool writeDataJson() {
 
   JsonArray usersArray = doc.createNestedArray("users");
 
-  for (uint8_t i = 0; i < usersCount; i++) {
-    SpotifyUser_t *user = &spotifyUsers[i];
+  for (SpotifyUser_t user : spotifyUsers) {
     JsonObject obj = usersArray.createNestedObject();
-    obj["name"] = user->name;
-    obj["token"] = user->refreshToken;
-    obj["country"] = user->country;
-    obj["selectedDeviceId"] = user->selectedDeviceId;
-    obj["selected"] = (bool)(strcmp(user->refreshToken, spotifyRefreshToken) == 0);
+    obj["name"] = user.name;
+    obj["token"] = user.refreshToken;
+    obj["country"] = user.country;
+    obj["selectedDeviceId"] = user.selectedDeviceId;
+    obj["selected"] = (bool)(strcmp(user.refreshToken, spotifyRefreshToken) == 0);
   }
 
   JsonArray bookmarksArray = doc.createNestedArray("bookmarks");
@@ -1512,7 +1512,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(768);
-    DeserializationError error = deserializeJson(json, response.payload);
+    DeserializationError error = deserializeJson(json, response.payload.c_str());
 
     if (!error) {
       strncpy(spotifyAccessToken, json["access_token"], sizeof(spotifyAccessToken) - 1);
@@ -1527,18 +1527,18 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
           if (strcmp(newRefreshToken, spotifyRefreshToken) != 0) {
             strncpy(spotifyRefreshToken, newRefreshToken, sizeof(spotifyRefreshToken) - 1);
             bool found = false;
-            for (uint8_t i = 0; i < usersCount; i++) {
-              SpotifyUser_t *user = &spotifyUsers[i];
-              if (strcmp(user->refreshToken, spotifyRefreshToken) == 0) {
+            for (SpotifyUser_t user : spotifyUsers) {
+              if (strcmp(user.refreshToken, spotifyRefreshToken) == 0) {
                 found = true;
                 break;
               }
             }
-            if (!found && usersCount < MAX_SPOTIFY_USERS) {
-              SpotifyUser_t *user = &spotifyUsers[usersCount++];
-              strncpy(user->refreshToken, spotifyRefreshToken, sizeof(user->refreshToken) - 1);
-              user->selected = true;
-              setActiveUser(user);
+            if (!found) {
+              SpotifyUser_t user;
+              strncpy(user.refreshToken, spotifyRefreshToken, sizeof(user.refreshToken) - 1);
+              user.selected = true;
+              spotifyUsers.push_back(user);
+              setActiveUser(&spotifyUsers.back());
               writeDataJson();
               spotifyAction = CurrentProfile;
             };
@@ -1579,7 +1579,7 @@ void spotifyCurrentlyPlaying() {
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(9000);
-    DeserializationError error = deserializeJson(json, response.payload);
+    DeserializationError error = deserializeJson(json, response.payload.c_str());
 
     if (!error) {
       spotifyState.lastUpdateMillis = millis();
@@ -1623,13 +1623,15 @@ void spotifyCurrentlyPlaying() {
         strncpy(activeSpotifyDeviceId, playingDeviceId, sizeof(activeSpotifyDeviceId) - 1);
 
         int playingDeviceIndex = -1;
-        for (uint8_t i = 0; i < spotifyDevicesCount; i++) {
+        auto devicesCount = spotifyDevices.size();
+        for (auto i = 0; i < devicesCount; i++) {
           if (strcmp(spotifyDevices[i].id, playingDeviceId) == 0) {
             playingDeviceIndex = i;
             break;
           }
         }
-        if (playingDeviceIndex == -1) playingDeviceIndex = spotifyDevicesCount = 0;
+        if (playingDeviceIndex == -1) playingDeviceIndex = 0;
+        if (devicesCount == 0) spotifyDevices.push_back({});
         activeSpotifyDevice = &spotifyDevices[playingDeviceIndex];
 
         strncpy(activeSpotifyDevice->id, playingDeviceId, sizeof(activeSpotifyDevice->id) - 1);
@@ -1682,7 +1684,7 @@ void spotifyCurrentProfile() {
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(2000);
-    DeserializationError error = deserializeJson(json, response.payload);
+    DeserializationError error = deserializeJson(json, response.payload.c_str());
 
     if (!error) {
       const char *displayName = json["display_name"];
@@ -1793,28 +1795,36 @@ void spotifyGetDevices() {
   HTTP_response_t response = spotifyApiRequest("GET", "me/player/devices");
   if (response.httpCode == 200) {
     DynamicJsonDocument doc(5000);
-    DeserializationError error = deserializeJson(doc, response.payload);
+    DeserializationError error = deserializeJson(doc, response.payload.c_str());
 
     if (!error) {
       JsonArray jsonDevices = doc["devices"];
-      spotifyDevicesCount = min((size_t)MAX_SPOTIFY_DEVICES, jsonDevices.size());
-      if (spotifyDevicesCount == 0) activeSpotifyDeviceId[0] = '\0';
-      if (menuMode == DeviceList) menuSize = spotifyDevicesCount;
-      for (uint8_t i = 0; i < spotifyDevicesCount; i++) {
-        JsonObject jsonDevice = doc["devices"][i];
+      unsigned int devicesCount = jsonDevices.size();
+      int activeDeviceIndex = -1;
+
+      if (devicesCount == 0) activeSpotifyDeviceId[0] = '\0';
+      spotifyDevices.clear();
+      for (JsonObject jsonDevice : jsonDevices) {
         const char *id = jsonDevice["id"];
         const char *name = jsonDevice["name"];
         bool isActive = jsonDevice["is_active"];
         uint8_t volume_percent = jsonDevice["volume_percent"];
 
-        SpotifyDevice_t *device = &spotifyDevices[i];
-        strncpy(device->id, id, sizeof(device->id) - 1);
-        strncpy(device->name, name, sizeof(device->name) - 1);
-        device->volumePercent = volume_percent;
+        SpotifyDevice_t device;
+        strncpy(device.id, id, sizeof(device.id) - 1);
+        strncpy(device.name, name, sizeof(device.name) - 1);
+        device.volumePercent = volume_percent;
+        spotifyDevices.push_back(device);
+
         if (isActive || strcmp(activeSpotifyDeviceId, id) == 0) {
-          activeSpotifyDevice = device;
+          activeDeviceIndex = spotifyDevices.size() - 1;
+          activeSpotifyDevice = &spotifyDevices.back();
           strncpy(activeSpotifyDeviceId, id, sizeof(activeSpotifyDeviceId) - 1);
         }
+      }
+      spotifyDevicesLoaded = true;
+      if (menuMode == DeviceList) {
+        setMenuMode(DeviceList, activeDeviceIndex < 0 ? 0 : activeDeviceIndex);
       }
     }
   }
@@ -1876,7 +1886,7 @@ void spotifyGetPlaylistDescription() {
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(3000);
-    DeserializationError error = deserializeJson(json, response.payload);
+    DeserializationError error = deserializeJson(json, response.payload.c_str());
     if (!error) {
       String description = json["description"];
 

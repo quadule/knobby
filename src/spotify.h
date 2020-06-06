@@ -66,15 +66,12 @@ bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = Idle;
 const char *spotifyPlayPlaylistId = nullptr;
 
-#define MAX_SPOTIFY_USERS 10
-SpotifyUser_t spotifyUsers[MAX_SPOTIFY_USERS] = {};
-uint8_t usersCount = 0;
+std::vector<SpotifyUser_t> spotifyUsers;
 SpotifyUser_t *activeSpotifyUser = nullptr;
 RTC_DATA_ATTR char spotifyRefreshToken[150] = "";
 
-#define MAX_SPOTIFY_DEVICES 10
-SpotifyDevice_t spotifyDevices[MAX_SPOTIFY_DEVICES] = {};
-uint8_t spotifyDevicesCount = 0;
+std::vector<SpotifyDevice_t> spotifyDevices;
+bool spotifyDevicesLoaded = false;
 SpotifyDevice_t *activeSpotifyDevice = nullptr;
 RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
 
