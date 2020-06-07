@@ -49,7 +49,6 @@ float batteryVoltage = 0.0;
 String nodeName = "knobby";
 RTC_DATA_ATTR unsigned int bootCount = 0;
 bool sendLogEvents = false;
-int playingGenreIndex = -1;
 RTC_DATA_ATTR uint16_t genreIndex = 0;
 RTC_DATA_ATTR time_t lastSleepSeconds = 0;
 unsigned long inactivityMillis = 60000;
@@ -110,8 +109,104 @@ int rootMenuToggleShuffleIndex = -1;
 
 TaskHandle_t spotifyApiTask;
 
+
+void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1) {
+  const uint16_t lineHeight = img.gFont.yAdvance + lineSpacing;
+  // const uint16_t spriteHeight = img.gFont.yAdvance * maxLines + lineSpacing * (maxLines - 1);
+  const uint16_t centerX = round(maxWidth / 2.0);
+  const uint16_t len = strlen(text);
+
+  uint16_t lineNumber = 0;
+  uint16_t pos = 0;
+  int16_t totalWidth = 0;
+  uint16_t index = 0;
+  uint16_t preferredBreakpoint = 0;
+  uint16_t widthAtBreakpoint = 0;
+  bool breakpointOnSpace = false;
+  uint16_t lastDrawnPos = 0;
+
+  img.createSprite(maxWidth, img.gFont.yAdvance);
+
+  while (pos < len) {
+    uint16_t lastPos = pos;
+    uint16_t unicode = img.decodeUTF8((uint8_t *)text, &pos, len - pos);
+    int16_t width = 0;
+
+    if (img.getUnicodeIndex(unicode, &index)) {
+      if (pos == 0) width = -img.gdX[index];
+      if (pos == len - 1) {
+        width = (img.gWidth[index] + img.gdX[index]);
+      } else {
+        width = img.gxAdvance[index];
+      }
+    } else {
+      width = img.gFont.spaceWidth + 1;
+    }
+    totalWidth += width;
+
+    // Always try to break on a space or dash
+    if (unicode == ' ') {
+      preferredBreakpoint = pos;
+      widthAtBreakpoint = totalWidth - width;
+      breakpointOnSpace = true;
+    } else if (unicode == '-') {
+      preferredBreakpoint = pos;
+      widthAtBreakpoint = totalWidth;
+      breakpointOnSpace = false;
+    }
+
+    if (totalWidth >= maxWidth - width) {
+      if (preferredBreakpoint == 0) {
+        preferredBreakpoint = lastPos;
+        widthAtBreakpoint = totalWidth;
+        breakpointOnSpace = false;
+      }
+      uint16_t lineLength = preferredBreakpoint - lastDrawnPos;
+      uint16_t lineWidth = widthAtBreakpoint;
+
+      char line[lineLength + 1] = {0};
+      strncpy(line, &text[lastDrawnPos], lineLength);
+
+      img.setCursor(centerX - round(lineWidth / 2.0), 0);
+      img.printToSprite(line, lineLength);
+      img.pushSprite(tft.getCursorX(), tft.getCursorY());
+      tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
+
+      lastDrawnPos = preferredBreakpoint;
+      // It is possible that we did not draw all letters to n so we need
+      // to account for the width of the chars from `n - preferredBreakpoint`
+      // by calculating the width we did not draw yet.
+      totalWidth = totalWidth - widthAtBreakpoint;
+      if (breakpointOnSpace) totalWidth -= img.gFont.spaceWidth + 1;
+      preferredBreakpoint = 0;
+      lineNumber++;
+      if (lineNumber >= maxLines) break;
+      img.fillSprite(TFT_BLACK);
+    }
+  }
+
+  // Draw last part if needed
+  if (lastDrawnPos < len && lineNumber < maxLines) {
+    uint16_t lineLength = len - lastDrawnPos;
+    char line[lineLength + 1] = {0};
+    strncpy(line, &text[lastDrawnPos], lineLength);
+    img.setCursor(centerX - round(totalWidth / 2.0), 0);
+    img.printToSprite(line, lineLength);
+    img.pushSprite(tft.getCursorX(), tft.getCursorY());
+    tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
+    lineNumber++;
+  }
+
+  img.deleteSprite();
+
+  while (lineNumber < maxLines) {
+    tft.fillRect(tft.getCursorX(), tft.getCursorY(), maxWidth, lineHeight, TFT_BLACK);
+    tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
+    lineNumber++;
+  }
+}
+
 void setup() {
-  tft.init();
   similarMenuItems.reserve(16);
   spotifyDevices.reserve(10);
   spotifyUsers.reserve(10);
@@ -674,102 +769,6 @@ void knobLongPressStopped() {
     setMenuMode(lastMenuMode, lastMenuIndex);
   }
   longPressStartedMillis = 0;
-}
-
-void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1) {
-  const uint16_t lineHeight = img.gFont.yAdvance + lineSpacing;
-  // const uint16_t spriteHeight = img.gFont.yAdvance * maxLines + lineSpacing * (maxLines - 1);
-  const uint16_t centerX = round(maxWidth / 2.0);
-  const uint16_t len = strlen(text);
-
-  uint16_t lineNumber = 0;
-  uint16_t pos = 0;
-  int16_t totalWidth = 0;
-  uint16_t index = 0;
-  uint16_t preferredBreakpoint = 0;
-  uint16_t widthAtBreakpoint = 0;
-  bool breakpointOnSpace = false;
-  uint16_t lastDrawnPos = 0;
-
-  img.createSprite(maxWidth, img.gFont.yAdvance);
-
-  while (pos < len) {
-    uint16_t lastPos = pos;
-    uint16_t unicode = img.decodeUTF8((uint8_t *)text, &pos, len - pos);
-    int16_t width = 0;
-
-    if (img.getUnicodeIndex(unicode, &index)) {
-      if (pos == 0) width = -img.gdX[index];
-      if (pos == len - 1) {
-        width = (img.gWidth[index] + img.gdX[index]);
-      } else {
-        width = img.gxAdvance[index];
-      }
-    } else {
-      width = img.gFont.spaceWidth + 1;
-    }
-    totalWidth += width;
-
-    // Always try to break on a space or dash
-    if (unicode == ' ') {
-      preferredBreakpoint = pos;
-      widthAtBreakpoint = totalWidth - width;
-      breakpointOnSpace = true;
-    } else if (unicode == '-') {
-      preferredBreakpoint = pos;
-      widthAtBreakpoint = totalWidth;
-      breakpointOnSpace = false;
-    }
-
-    if (totalWidth >= maxWidth - width) {
-      if (preferredBreakpoint == 0) {
-        preferredBreakpoint = lastPos;
-        widthAtBreakpoint = totalWidth;
-        breakpointOnSpace = false;
-      }
-      uint16_t lineLength = preferredBreakpoint - lastDrawnPos;
-      uint16_t lineWidth = widthAtBreakpoint;
-
-      char line[lineLength + 1] = {0};
-      strncpy(line, &text[lastDrawnPos], lineLength);
-
-      img.setCursor(centerX - round(lineWidth / 2.0), 0);
-      img.printToSprite(line, lineLength);
-      img.pushSprite(tft.getCursorX(), tft.getCursorY());
-      tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
-
-      lastDrawnPos = preferredBreakpoint;
-      // It is possible that we did not draw all letters to n so we need
-      // to account for the width of the chars from `n - preferredBreakpoint`
-      // by calculating the width we did not draw yet.
-      totalWidth = totalWidth - widthAtBreakpoint;
-      if (breakpointOnSpace) totalWidth -= img.gFont.spaceWidth + 1;
-      preferredBreakpoint = 0;
-      lineNumber++;
-      if (lineNumber > maxLines) break;
-      img.fillSprite(TFT_BLACK);
-    }
-  }
-
-  // Draw last part if needed
-  if (lastDrawnPos < len && lineNumber < maxLines) {
-    uint16_t lineLength = len - lastDrawnPos;
-    char line[lineLength + 1] = {0};
-    strncpy(line, &text[lastDrawnPos], lineLength);
-    img.setCursor(centerX - round(totalWidth / 2.0), 0);
-    img.printToSprite(line, lineLength);
-    img.pushSprite(tft.getCursorX(), tft.getCursorY());
-    tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
-    lineNumber++;
-  }
-
-  img.deleteSprite();
-
-  while (lineNumber < maxLines) {
-    tft.fillRect(tft.getCursorX(), tft.getCursorY(), maxWidth, lineHeight, TFT_BLACK);
-    tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
-    lineNumber++;
-  }
 }
 
 void formatMillis(char *output, unsigned long millis) {
@@ -1563,9 +1562,8 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
       nextCurrentlyPlayingMillis = millis();
       spotifyAction = CurrentlyPlaying;
     }
+    spotifyGettingToken = false;
   }
-
-  spotifyGettingToken = false;
 }
 
 void spotifyCurrentlyPlaying() {
@@ -1652,10 +1650,8 @@ void spotifyCurrentlyPlaying() {
         inactivityMillis = 60000;
       }
       if (spotifyState.isPlaying && nextCurrentlyPlayingMillis == 0) nextCurrentlyPlayingMillis = millis() + SPOTIFY_POLL_INTERVAL;
-      if (!spotifyState.isPlaying) {
-        displayInvalidated = true;
-        displayInvalidatedPartial = true;
-      }
+      displayInvalidated = true;
+      displayInvalidatedPartial = true;
     } else {
       Serial.printf("  [%d] Heap free: %d\n", ts, ESP.getFreeHeap());
       Serial.printf("  [%d] Error %s parsing response:\n  %s\n", ts, error.c_str(), response.payload.c_str());

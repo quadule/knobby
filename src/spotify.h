@@ -63,7 +63,7 @@ RTC_DATA_ATTR time_t spotifyTokenLifetime = 0;
 RTC_DATA_ATTR time_t spotifyTokenSeconds = 0;
 uint32_t nextCurrentlyPlayingMillis = 0;
 bool spotifyGettingToken = false;
-SpotifyActions spotifyAction = Idle;
+SpotifyActions spotifyAction = CurrentlyPlaying;
 const char *spotifyPlayPlaylistId = nullptr;
 
 std::vector<SpotifyUser_t> spotifyUsers;
