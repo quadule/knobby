@@ -99,7 +99,7 @@ RTC_DATA_ATTR uint16_t menuSize = GENRE_COUNT;
 RTC_DATA_ATTR uint16_t menuIndex = 0;
 int lastKnobPosition = 0;
 float lastKnobSpeed = 0.0;
-const unsigned long extraLongPressMillis = 1500;
+const unsigned long extraLongPressMillis = 1250;
 unsigned long longPressStartedMillis = 0;
 bool knobRotatedWhileLongPressed = false;
 int rootMenuSimilarIndex = -1;
@@ -218,13 +218,6 @@ void setup() {
   }
   bootCount++;
 
-  /*
-  ADC_EN is the ADC detection enable port
-  If the USB port is used for power supply, it is turned on by default.
-  If it is powered by battery, it needs to be set to high level
-  */
-  pinMode(ADC_EN, OUTPUT);
-  digitalWrite(ADC_EN, HIGH);
   esp_adc_cal_characteristics_t adc_chars;
   esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
   //Check type of calibration value used to characterize ADC
@@ -271,7 +264,7 @@ void setup() {
     sendLogEvents = true;
     inactivityMillis = 120000;
     uint32_t ts = millis();
-    Serial.printf("\n> [%d] server.on /\n", ts);
+    Serial.printf("> [%d] server.on /\n", ts);
     if (spotifyAccessToken[0] == '\0' && !spotifyGettingToken) {
       request->redirect("http://" + nodeName + ".local/authorize");
     } else {
@@ -281,22 +274,23 @@ void setup() {
 
   server.on("/authorize", HTTP_GET, [](AsyncWebServerRequest *request) {
     uint32_t ts = millis();
-    Serial.printf("\n> [%d] server.on /\n", ts);
+    Serial.printf("> [%d] server.on /\n", ts);
     spotifyGettingToken = true;
-    char auth_url[300] = "";
-    snprintf(auth_url, sizeof(auth_url),
+    char authUrl[400];
+    snprintf(authUrl, sizeof(authUrl),
              ("https://accounts.spotify.com/authorize/"
-              "?response_type=code"
-              "&scope=user-read-private+user-read-currently-playing+user-"
-              "read-playback-state+user-modify-playback-state"
-              "&redirect_uri=http%%3A%%2F%%2F" +
+              "?response_type=code&scope="
+              "user-read-private+user-read-currently-playing+user-read-playback-state+"
+              "user-modify-playback-state+playlist-read-private+user-read-recently-played+"
+              "user-library-read+user-follow-read+user-follow-modify"
+              "&show_dialog=true&redirect_uri=http%%3A%%2F%%2F" +
               nodeName +
               ".local%%2Fcallback%%2F"
               "&client_id=%s")
                  .c_str(),
              SPOTIFY_CLIENT_ID);
-    Serial.printf("  [%d] Redirect to: %s\n", ts, auth_url);
-    request->redirect(auth_url);
+    Serial.printf("  [%d] Redirect to: %s\n", ts, authUrl);
+    request->redirect(authUrl);
   });
 
   server.on("/callback", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -534,8 +528,8 @@ void setStatusMessage(const char *message, unsigned long durationMs = 1300) {
 }
 
 void startRandomizingGenres(bool autoplay = false) {
-  unsigned long currentMillis = millis();
-  if (currentMillis > randomizingGenreEndMillis) {
+  unsigned long now = millis();
+  if (now > randomizingGenreEndMillis) {
     randomizingGenreEndMillis = millis() + 1500;
     randomizingGenreTicks = 0;
     randomizingGenreAutoplay = autoplay;
@@ -572,7 +566,6 @@ void knobRotated(ESPRotary &r) {
   lastKnobSpeed = lastInputDelta > 100 ? 0.0 : (17.0 * lastKnobSpeed + speed) / 18.0;
 
   if (menuMode == VolumeControl) {
-    // int newMenuIndex = (int)menuIndex + positionDelta;
     if (steps >= 2) steps /= 2;
     steps = min(steps, 10);
     int newMenuIndex = ((int)menuIndex + (positionDelta * steps));
@@ -659,7 +652,15 @@ void knobLongPressStarted() {
     setMenuMode(RootMenu, (uint16_t)menuMode);
   }
 
+  /*
+  ADC_EN is the ADC detection enable port
+  If the USB port is used for power supply, it is turned on by default.
+  If it is powered by battery, it needs to be set to high level
+  */
+  pinMode(ADC_EN, OUTPUT);
+  digitalWrite(ADC_EN, HIGH);
   batteryVoltage = ((float)analogRead(ADC_PIN) / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
+  adc_power_off();
 }
 
 void knobLongPressStopped() {
@@ -789,7 +790,7 @@ void updateDisplay() {
   displayInvalidatedPartial = false;
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
-  unsigned long currentMillis = millis();
+  unsigned long now = millis();
 
   if (spotifyUsers.empty()) {
     const char *hostname = (nodeName + ".local").c_str();
@@ -797,7 +798,7 @@ void updateDisplay() {
     drawCenteredText("setup at http://", textWidth);
     tft.setCursor(textPadding, lineThree);
     drawCenteredText(hostname, textWidth);
-  } else if (currentMillis < randomizingGenreEndMillis) {
+  } else if (now < randomizingGenreEndMillis) {
     randomizingGenreTicks += 1;
     genreIndex = random(getMenuSize(lastMenuMode));
     menuIndex = getMenuIndexForGenreIndex(genreIndex, lastMenuMode);
@@ -933,13 +934,13 @@ void updateDisplay() {
     bool isActivePlaylist = playlistId[0] != '\0' && strcmp(playlistId, spotifyState.playlistId) == 0;
 
     tft.setCursor(textPadding, lineOne);
-    if (currentMillis < statusMessageUntilMillis && statusMessage[0] != '\0') {
+    if (now < statusMessageUntilMillis && statusMessage[0] != '\0') {
       img.setTextColor(TFT_WHITE, TFT_BLACK);
       drawCenteredText(statusMessage, textWidth);
     } else if (isActivePlaylist && (spotifyState.isPlaying || spotifyAction == PlayPlaylist)) {
       char elapsed[11];
       uint32_t estimatedMillis = spotifyState.progressMillis;
-      if (spotifyState.isPlaying) estimatedMillis += currentMillis - spotifyState.lastUpdateMillis;
+      if (spotifyState.isPlaying) estimatedMillis += now - spotifyState.lastUpdateMillis;
       formatMillis(elapsed, estimatedMillis);
 
       img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
@@ -979,7 +980,7 @@ void updateDisplay() {
 
     tft.setCursor(textPadding, lineTwo);
     if (isActivePlaylist && spotifyState.isPlaying && spotifyState.name[0] != '\0' &&
-        (spotifyState.progressMillis + currentMillis - spotifyState.lastUpdateMillis) % 6000 < 3000) {
+        (spotifyState.progressMillis + now - spotifyState.lastUpdateMillis) % 6000 < 3000) {
       char playing[201];
       snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
       drawCenteredText(playing, textWidth, 3);
@@ -1030,23 +1031,23 @@ void loop() {
     button.tick();
   }
 
-  uint32_t currentMillis = millis();
-  struct timeval now;
-  gettimeofday(&now, NULL);
-  time_t currentSeconds = now.tv_sec;
+  uint32_t now = millis();
+  unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
+  struct timeval tod;
+  gettimeofday(&tod, NULL);
+  time_t currentSeconds = tod.tv_sec;
   time_t secondsAsleep = currentSeconds - lastSleepSeconds;
   time_t spotifyTokenAge = spotifyTokenSeconds == 0 ? 0 : currentSeconds - spotifyTokenSeconds;
   bool connected = WiFi.isConnected();
 
-  if (currentMillis - lastInputMillis > inactivityMillis) {
+  if (lastInputDelta > inactivityMillis) {
     if (!isGenreMenu(menuMode)) setMenuMode(AlphabeticList, genreIndex);
     lastSleepSeconds = currentSeconds;
     spotifyAction = Idle;
     tft.fillScreen(TFT_BLACK);
-    Serial.printf("\n> [%d] Entering deep sleep.\n", currentMillis);
     eventsSendLog("Entering deep sleep.");
+    Serial.printf("> [%d] Entering deep sleep.\n", now);
     WiFi.disconnect(true);
-    adc_power_off();
     digitalWrite(TFT_BL, LOW);
     tft.writecommand(TFT_DISPOFF);
     tft.writecommand(TFT_SLPIN);
@@ -1054,19 +1055,19 @@ void loop() {
     esp_deep_sleep_start();
   }
 
-  if (!connected && currentMillis - lastReconnectAttemptMillis > 3000) {
-    Serial.printf("> [%d] Trying to connect to network %s...\n", currentMillis, ssid);
+  if (!connected && now - lastReconnectAttemptMillis > 3000) {
+    Serial.printf("> [%d] Trying to connect to network %s...\n", now, ssid);
     WiFi.begin();
-    lastReconnectAttemptMillis = currentMillis;
+    lastReconnectAttemptMillis = now;
   }
 
   if (connected && !spotifyGettingToken && (spotifyAccessToken[0] == '\0' || spotifyTokenAge > spotifyTokenLifetime)) {
-    Serial.printf("> [%d] Need access token...\n", currentMillis);
+    Serial.printf("> [%d] Need access token...\n", now);
     spotifyGettingToken = true;
     spotifyAction = GetToken;
   }
 
-  if (currentMillis < 1000) {
+  if (now < 1000) {
     if (digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW) {
       startRandomizingGenres(true);
     } else if (secondsAsleep == 0 || secondsAsleep > 60 * 5) {
@@ -1078,12 +1079,12 @@ void loop() {
     startRandomizingGenres(true);
   }
 
-  if (statusMessage[0] != '\0' && currentMillis > statusMessageUntilMillis) {
+  if (statusMessage[0] != '\0' && now > statusMessageUntilMillis) {
     statusMessageUntilMillis = 0;
     statusMessage[0] = '\0';
     displayInvalidated = true;
     displayInvalidatedPartial = true;
-  } else if (spotifyState.isPlaying && (currentMillis - lastDisplayMillis) > 950) {
+  } else if (spotifyState.isPlaying && (now - lastDisplayMillis) > 950) {
     displayInvalidated = true;
     displayInvalidatedPartial = true;
   } else if (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2) {
@@ -1097,13 +1098,13 @@ void loop() {
     updateDisplay();
   } else {
     if (spotifyAction != Idle && spotifyAction != CurrentlyPlaying && spotifyAction != SetVolume && menuMode != RootMenu) {
-      tft.drawFastHLine(-currentMillis % tft.width(), 0, 20, TFT_BLACK);
-      tft.drawFastHLine(-(currentMillis + 20) % tft.width(), 0, 20, TFT_DARKGREY);
-      tft.drawFastHLine(-(currentMillis + 40) % tft.width(), 0, 20, TFT_BLACK);
-      tft.drawFastHLine(-(currentMillis + 60) % tft.width(), 0, 20, TFT_DARKGREY);
-      tft.drawFastHLine(-(currentMillis + 80) % tft.width(), 0, 20, TFT_BLACK);
-      tft.drawFastHLine(-(currentMillis + 100) % tft.width(), 0, 20, TFT_DARKGREY);
-      tft.drawFastHLine(-(currentMillis + 120) % tft.width(), 0, 20, TFT_BLACK);
+      tft.drawFastHLine(-now % tft.width(), 0, 20, TFT_BLACK);
+      tft.drawFastHLine(-(now + 20) % tft.width(), 0, 20, TFT_DARKGREY);
+      tft.drawFastHLine(-(now + 40) % tft.width(), 0, 20, TFT_BLACK);
+      tft.drawFastHLine(-(now + 60) % tft.width(), 0, 20, TFT_DARKGREY);
+      tft.drawFastHLine(-(now + 80) % tft.width(), 0, 20, TFT_BLACK);
+      tft.drawFastHLine(-(now + 100) % tft.width(), 0, 20, TFT_DARKGREY);
+      tft.drawFastHLine(-(now + 120) % tft.width(), 0, 20, TFT_BLACK);
     } else {
       tft.drawFastHLine(0, 0, 239, TFT_BLACK);
     }
@@ -1332,7 +1333,7 @@ void removeBookmark(uint16_t genreIndex) {
 
 HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers, const char *content = "") {
   uint32_t ts = millis();
-  Serial.printf("\n> [%d] httpRequest(%s, %d, ...)\n", ts, host, port);
+  Serial.printf("> [%d] httpRequest(%s, %d, ...)\n", ts, host, port);
 
   WiFiClientSecure client;
 
@@ -1419,8 +1420,8 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
       if ((millis() - lastAvailableMillis) > 5000) {
         response = {504, "Response timeout"};
         break;
-      } else if (totalReadSize > 0 && (millis() - lastAvailableMillis) > 100) {
-        break;
+      // } else if (totalReadSize > 0 && (millis() - lastAvailableMillis) > 100) {
+      //   break;
       } else {
         delay(1);
       }
@@ -1434,7 +1435,7 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
 HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {
   uint32_t ts = millis();
   String path = String("/v1/") + endpoint;
-  Serial.printf("\n> [%d] spotifyApiRequest(%s, %s, %s)\n", ts, method, path.c_str(), content);
+  Serial.printf("> [%d] spotifyApiRequest(%s, %s, %s)\n", ts, method, path.c_str(), content);
 
 
   spotifyHttp.begin(client, "api.spotify.com", 443, path);
@@ -1474,7 +1475,7 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
  */
 void spotifyGetToken(const char *code, GrantTypes grant_type) {
   uint32_t ts = millis();
-  Serial.printf("\n> [%d] spotifyGetToken(%s, %s)\n", ts, code,
+  Serial.printf("> [%d] spotifyGetToken(%s, %s)\n", ts, code,
                 grant_type == gt_authorization_code ? "authorization" : "refresh");
 
   bool success = false;
@@ -1517,9 +1518,9 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
       strncpy(spotifyAccessToken, json["access_token"], sizeof(spotifyAccessToken) - 1);
       if (spotifyAccessToken[0] != '\0') {
         spotifyTokenLifetime = (json["expires_in"].as<uint32_t>() - 300);
-        struct timeval now;
-        gettimeofday(&now, NULL);
-        spotifyTokenSeconds = now.tv_sec;
+        struct timeval tod;
+        gettimeofday(&tod, NULL);
+        spotifyTokenSeconds = tod.tv_sec;
         success = true;
         if (json.containsKey("refresh_token")) {
           const char *newRefreshToken = json["refresh_token"];
@@ -1549,6 +1550,8 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
       eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
       delay(5000);
     }
+  } else if (response.httpCode < 0) {
+    // retry immediately
   } else {
     Serial.printf("  [%d] %d - %s\n", (int)millis(), response.httpCode, response.payload.c_str());
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
@@ -1662,6 +1665,8 @@ void spotifyCurrentlyPlaying() {
     spotifyState.isShuffled = false;
     spotifyResetProgress();
     nextCurrentlyPlayingMillis = 0;
+  } else if (response.httpCode < 0 || response.httpCode > 500) {
+    nextCurrentlyPlayingMillis = 1; // retry immediately
   } else {
     Serial.printf("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
     eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());

@@ -61,7 +61,7 @@ String spotifyAuthCode;
 RTC_DATA_ATTR char spotifyAccessToken[300] = "";
 RTC_DATA_ATTR time_t spotifyTokenLifetime = 0;
 RTC_DATA_ATTR time_t spotifyTokenSeconds = 0;
-uint32_t nextCurrentlyPlayingMillis = 0;
+uint32_t nextCurrentlyPlayingMillis = 1;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = CurrentlyPlaying;
 const char *spotifyPlayPlaylistId = nullptr;
