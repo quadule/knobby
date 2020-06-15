@@ -6,7 +6,7 @@
 #define SPOTIFY_ID_SIZE 22
 #define SPOTIFY_WAIT_MILLIS 700
 
-const uint16_t SPOTIFY_POLL_INTERVAL = 20000;
+const uint16_t SPOTIFY_POLL_INTERVAL = 15000;
 
 typedef struct {
   int httpCode;
@@ -33,8 +33,12 @@ typedef struct {
   char albumName[64] = "";
   bool isPlaying = false;
   bool isShuffled = false;
+  bool disallowsSkippingNext = true;
+  bool disallowsSkippingPrev = true;
+  bool disallowsTogglingShuffle = true;
   uint32_t progressMillis = 0;
   uint32_t durationMillis = 0;
+  uint32_t estimatedProgressMillis = 0;
   uint32_t lastUpdateMillis = 0;
   char playlistId[SPOTIFY_ID_SIZE + 1] = "";
 } SpotifyState_t;
@@ -46,6 +50,7 @@ enum SpotifyActions {
   CurrentProfile,
   Next,
   Previous,
+  Seek,
   Toggle,
   PlayPlaylist,
   GetDevices,
@@ -75,10 +80,11 @@ bool spotifyDevicesLoaded = false;
 SpotifyDevice_t *activeSpotifyDevice = nullptr;
 RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
 
+int spotifySeekToMillis = -1;
 int spotifySetVolumeAtMillis = -1;
 int spotifySetVolumeTo = -1;
 
 WiFiClientSecure client;
 HTTPClient spotifyHttp;
 
-SpotifyState_t spotifyState = {};
+RTC_DATA_ATTR SpotifyState_t spotifyState = {};
