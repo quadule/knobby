@@ -77,6 +77,8 @@ time_t secondsAsleep = 0;
 unsigned long clickEffectMillis = 30;
 unsigned long clickEffectEndMillis = 0;
 unsigned long inactivityMillis = 60000;
+const unsigned int batteryReportIntervalMillis = 30000;
+unsigned long lastBatteryReportMillis = 0;
 unsigned long lastBatteryUpdateMillis = 0;
 unsigned long lastInputMillis = 1;
 unsigned long lastDisplayMillis = 0;
@@ -143,7 +145,7 @@ int rootMenuToggleBookmarkIndex = -1;
 int rootMenuVolumeControlIndex = -1;
 int rootMenuNowPlayingIndex = -1;
 
-TaskHandle_t spotifyApiTask;
+TaskHandle_t backgroundApiTask;
 
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1) {
   const uint16_t lineHeight = img.gFont.yAdvance + lineSpacing;
@@ -1336,12 +1338,12 @@ void setup() {
 
   if (spotifyNeedsNewAccessToken()) spotifyAction = GetToken;
 
-  xTaskCreate(spotifyApiLoop,   /* Function to implement the task */
-              "spotifyApiLoop", /* Name of the task */
+  xTaskCreate(backgroundApiLoop,   /* Function to implement the task */
+              "backgroundApiLoop", /* Name of the task */
               10000,            /* Stack size in words */
               NULL,             /* Task input parameter */
               1,                /* Priority of the task */
-              &spotifyApiTask); /* Task handle. */
+              &backgroundApiTask); /* Task handle. */
 
   if (holdingButton) {
     startRandomizingMenu(true);
@@ -1353,13 +1355,16 @@ void setup() {
   updateBatteryVoltage();
 }
 
-void spotifyApiLoop(void *params) {
+void backgroundApiLoop(void *params) {
   for (;;) {
     if (WiFi.status() == WL_CONNECTED) {
       uint32_t now = millis();
 
       switch (spotifyAction) {
         case Idle:
+          if (lastBatteryReportMillis == 0 || now - lastBatteryReportMillis > batteryReportIntervalMillis) {
+            reportBatteryVoltage();
+          }
           break;
         case GetToken:
           if (spotifyAuthCode != "") {
@@ -1371,6 +1376,8 @@ void spotifyApiLoop(void *params) {
         case CurrentlyPlaying:
           if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis) {
             spotifyCurrentlyPlaying();
+          } else if (lastBatteryReportMillis == 0 || now - lastBatteryReportMillis > batteryReportIntervalMillis) {
+            reportBatteryVoltage();
           }
           break;
         case CurrentProfile:
@@ -2185,3 +2192,20 @@ void spotifyGetPlaylistDescription() {
   }
   spotifyAction = CurrentlyPlaying;
 };
+
+void reportBatteryVoltage() {
+  char url[60];
+  String chipId = String((uint32_t)ESP.getEfuseMac(), HEX);
+  chipId.toUpperCase();
+  snprintf(url, sizeof(url), "http://192.168.1.30:8080/rest/items/Knobby_%s_Battery", chipId.c_str());
+  HTTPClient http;
+  http.begin(url);
+  int code = http.POST(String(batteryVoltage));
+  if (code > 0) {
+    Serial.printf("Code: %d\n", code);
+  } else {
+    Serial.printf("Error: %s\n", http.errorToString(code).c_str());
+  }
+  http.end();
+  lastBatteryReportMillis = millis();
+}
