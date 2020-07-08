@@ -64,7 +64,7 @@ byte ESPRotary::getDirection() {
 String ESPRotary::directionToString(byte direction) {
   if (direction == RE_LEFT) {
     return "LEFT";
-  } else if (direction == RE_RIGHT) {
+  } else {
     return "RIGHT";
     }
 }

@@ -88,3 +88,18 @@ WiFiClientSecure client;
 HTTPClient spotifyHttp;
 
 RTC_DATA_ATTR SpotifyState_t spotifyState = {};
+
+void spotifyResetProgress();
+void spotifyGetToken(const char *code, GrantTypes grant_type);
+void spotifyCurrentlyPlaying();
+void spotifyCurrentProfile();
+void spotifyNext();
+void spotifyPrevious();
+void spotifySeek();
+void spotifyToggle();
+void spotifyPlayPlaylist();
+void spotifyGetDevices();
+void spotifySetVolume();
+void spotifyToggleShuffle();
+void spotifyTransferPlayback();
+void spotifyGetPlaylistDescription();

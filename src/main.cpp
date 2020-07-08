@@ -1,37 +1,25 @@
-#include "ArduinoJson.h"
-#include "ESPAsyncWebServer.h"
-#include "ESPRotary.h"
-#include "ESPmDNS.h"
-#include "OneButton.h"
-#include "SPIFFS.h"
-#include "StreamString.h"
-#include "TFT_eSPI.h"
-#include "WiFiClientSecure.h"
-#include "base64.h"
-#include "driver/rtc_io.h"
-#include "esp_adc_cal.h"
-#include "time.h"
+#include "main.h"
 
 #define FONT_NAME "GillSans24"
 #define ICON_SIZE 24
 #define LINE_HEIGHT 27
 
- const String ICON_VOLUME_UP = "\uE900";
- const String ICON_VOLUME_OFF = "\uE901";
- const String ICON_VOLUME_MUTE = "\uE902";
- const String ICON_VOLUME_DOWN = "\uE903";
- const String ICON_AUDIOTRACK = "\uE904";
- const String ICON_LIBRARY_MUSIC = "\uE905";
- const String ICON_FAVORITE = "\uE906";
- const String ICON_FAVORITE_OUTLINE = "\uE907";
- const String ICON_SHUFFLE_ON = "\uE908";
- const String ICON_SHUFFLE = "\uE909";
- const String ICON_SKIP_PREVIOUS = "\uE90A";
- const String ICON_SKIP_NEXT = "\uE90B";
- const String ICON_PLAY_ARROW = "\uE90C";
- const String ICON_PAUSE = "\uE90D";
- const String ICON_WIFI = "\uE90E";
- const String ICON_SPOTIFY = "\uEA94";
+const String ICON_VOLUME_UP = "\uE900";
+const String ICON_VOLUME_OFF = "\uE901";
+const String ICON_VOLUME_MUTE = "\uE902";
+const String ICON_VOLUME_DOWN = "\uE903";
+const String ICON_AUDIOTRACK = "\uE904";
+const String ICON_LIBRARY_MUSIC = "\uE905";
+const String ICON_FAVORITE = "\uE906";
+const String ICON_FAVORITE_OUTLINE = "\uE907";
+const String ICON_SHUFFLE_ON = "\uE908";
+const String ICON_SHUFFLE = "\uE909";
+const String ICON_SKIP_PREVIOUS = "\uE90A";
+const String ICON_SKIP_NEXT = "\uE90B";
+const String ICON_PLAY_ARROW = "\uE90C";
+const String ICON_PAUSE = "\uE90D";
+const String ICON_WIFI = "\uE90E";
+const String ICON_SPOTIFY = "\uEA94";
 
 TFT_eSPI tft = TFT_eSPI(135, 240);
 TFT_eSprite img = TFT_eSprite(&tft);
@@ -46,17 +34,14 @@ const int textPadding = 10;
 const int textWidth = 239 - textPadding * 2;
 #define TFT_LIGHTBLACK       0x1082      /*  16,   16,  16 */
 
-#define ADC_EN          14  //ADC_EN is the ADC detection enable port
-#define ADC_PIN         34
-#define ROTARY_ENCODER_A_PIN 12
-#define ROTARY_ENCODER_B_PIN 13
+#define ADC_EN                    14  //ADC_EN is the ADC detection enable port
+#define ADC_PIN                   34
+#define LED_PIN                    9 // onboard blue LED
+#define ROTARY_ENCODER_A_PIN      12
+#define ROTARY_ENCODER_B_PIN      13
 #define ROTARY_ENCODER_BUTTON_PIN 15
 ESPRotary knob(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN, 4);
 OneButton button(ROTARY_ENCODER_BUTTON_PIN, true, true);
-
-#include "genres.h"
-#include "settings.h"
-#include "spotify.h"
 
 #define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
 
@@ -259,8 +244,9 @@ void updateBatteryVoltage() {
   */
   pinMode(ADC_EN, OUTPUT);
   digitalWrite(ADC_EN, HIGH);
+  delay(10);
   batteryVoltage = ((float)analogRead(ADC_PIN) / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
-  adc_power_off();
+  digitalWrite(ADC_EN, LOW);
   lastBatteryUpdateMillis = millis();
 }
 
@@ -364,6 +350,13 @@ uint16_t getGenreIndexForMenuIndex(uint16_t index, MenuModes mode) {
   }
 }
 
+uint16_t getIndexOfGenreIndex(const uint16_t indexes[], uint16_t indexToFind) {
+  for (uint16_t i = 0; i < GENRE_COUNT; i++) {
+    if (indexes[i] == indexToFind) return i;
+  }
+  return 0;
+}
+
 uint16_t getMenuIndexForGenreIndex(uint16_t index, MenuModes mode) {
   switch (mode) {
     case AlphabeticList:
@@ -375,13 +368,6 @@ uint16_t getMenuIndexForGenreIndex(uint16_t index, MenuModes mode) {
     default:
       return 0;
   }
-}
-
-uint16_t getIndexOfGenreIndex(const uint16_t indexes[], uint16_t indexToFind) {
-  for (uint16_t i = 0; i < GENRE_COUNT; i++) {
-    if (indexes[i] == indexToFind) return i;
-  }
-  return 0;
 }
 
 void setMenuIndex(uint16_t newMenuIndex) {
@@ -531,6 +517,7 @@ void knobClicked() {
       break;
     case VolumeControl:
       spotifySetVolumeAtMillis = millis();
+      break;
     case NowPlaying:
       switch (menuIndex) {
         case ShuffleButton:
@@ -781,7 +768,7 @@ void updateDisplay() {
     }
     tft.drawRoundRect(9, lineTwo - 15, 221, 49, 5, TFT_WHITE);
   } else if (menuMode == UserList) {
-    char header[8];
+    char header[14];
     sprintf(header, "%d / %d", menuIndex + 1, menuSize);
     tft.setCursor(textPadding, lineOne);
     img.setTextColor(TFT_DARKGREY, TFT_BLACK);
@@ -806,7 +793,7 @@ void updateDisplay() {
       tft.setCursor(textPadding, lineTwo);
       drawCenteredText("loading...", textWidth);
     } else {
-      char header[7];
+      char header[14];
       sprintf(header, "%d / %d", menuIndex + 1, menuSize);
       tft.setCursor(textPadding, lineOne);
       drawCenteredText(header, textWidth);
@@ -831,7 +818,7 @@ void updateDisplay() {
     img.fillSprite(TFT_BLACK);
     img.drawRoundRect(0, 0, width, 32, 5, TFT_WHITE);
     img.fillRoundRect(4, 4, round(2.12 * menuIndex), 24, 3, TFT_DARKGREY);
-    char label[4];
+    char label[7];
     sprintf(label, "%d%%", menuIndex);
     img.setTextColor(TFT_WHITE, TFT_BLACK);
     img.drawString(label, width / 2 - img.textWidth(label) / 2, 48);
@@ -972,7 +959,7 @@ void updateDisplay() {
       img.setTextColor(TFT_WHITE, TFT_BLACK);
       drawCenteredText(statusMessage, textWidth);
     } else if (menuSize > 0) {
-      char label[13];
+      char label[14];
       sprintf(label, "%d / %d", menuIndex + 1, menuSize);
       img.setTextColor(TFT_DARKGREY, TFT_BLACK);
       tft.setCursor(textPadding, lineOne);
@@ -984,7 +971,7 @@ void updateDisplay() {
       if (bookmarksCount == 0) {
         img.setTextColor(TFT_DARKGREY, TFT_BLACK);
       } else {
-        if (genreIndex >= 0) img.setTextColor(genreColors[genreIndex], TFT_BLACK);
+        img.setTextColor(genreColors[genreIndex], TFT_BLACK);
       }
     } else if (menuMode == CountryList) {
       img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
@@ -1061,7 +1048,16 @@ void loop() {
     digitalWrite(TFT_BL, LOW);
     tft.writecommand(TFT_DISPOFF);
     tft.writecommand(TFT_SLPIN);
+    rtc_gpio_isolate(GPIO_NUM_0); // button 1
+    rtc_gpio_isolate(GPIO_NUM_35); // button 2
+    rtc_gpio_isolate(GPIO_NUM_39);
+    rtc_gpio_isolate((gpio_num_t)ADC_PIN);
+    rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_A_PIN);
+    rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_B_PIN);
+    adc_power_off();
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
     esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
+    esp_deep_sleep_disable_rom_logging();
     esp_deep_sleep_start();
   }
 
@@ -1119,7 +1115,7 @@ void loop() {
     }
   }
 
-  if (now - lastBatteryUpdateMillis > 1000) updateBatteryVoltage();
+  if (lastInputDelta > 500) delay(5);
 }
 
 void startupAnimation(bool pickRandomGenre) {
@@ -1160,12 +1156,26 @@ void startupAnimation(bool pickRandomGenre) {
 }
 
 void setup() {
+  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_A_PIN);
+  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_B_PIN);
+  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN);
+
+  esp_pm_config_esp32_t pm_config_ls_enable = {
+    .max_freq_mhz = 240,
+    .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+    .light_sleep_enable = true
+  };
+  ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
+  ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
+  disableCore1WDT();
+
   similarMenuItems.reserve(16);
   spotifyDevices.reserve(10);
   spotifyUsers.reserve(10);
   Serial.begin(115200);
   SPIFFS.begin(true);
 
+  Serial.printf("Boot #%d, ", bootCount);
   if (bootCount == 0) {
     genreIndex = menuIndex = random(GENRE_COUNT);
   } else {
@@ -1173,6 +1183,7 @@ void setup() {
     gettimeofday(&tod, NULL);
     time_t currentSeconds = tod.tv_sec;
     secondsAsleep = currentSeconds - lastSleepSeconds;
+    Serial.printf("asleep for %ld seconds, ", secondsAsleep);
     if (spotifyState.isPlaying) {
       if (spotifyState.estimatedProgressMillis + secondsAsleep * 1000 > spotifyState.durationMillis) {
         spotifyResetProgress();
@@ -1190,14 +1201,13 @@ void setup() {
   esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
   //Check type of calibration value used to characterize ADC
   if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
-      Serial.printf("eFuse Vref:%u mV", adc_chars.vref);
+      Serial.printf("eFuse Vref: %u mV\n", adc_chars.vref);
       vref = adc_chars.vref;
   } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
       Serial.printf("Two Point --> coeff_a:%umV coeff_b:%umV\n", adc_chars.coeff_a, adc_chars.coeff_b);
   } else {
       Serial.println("Default Vref: 1100mV");
   }
-  updateBatteryVoltage();
 
   knob.setChangedHandler(knobRotated);
   button.setDebounceTicks(30);
@@ -1351,8 +1361,6 @@ void setup() {
     bool pickRandomGenre = secondsAsleep == 0 || secondsAsleep > (60 * 40);
     startupAnimation(pickRandomGenre);
   }
-
-  updateBatteryVoltage();
 }
 
 void backgroundApiLoop(void *params) {
@@ -1363,7 +1371,9 @@ void backgroundApiLoop(void *params) {
       switch (spotifyAction) {
         case Idle:
           if (lastBatteryReportMillis == 0 || now - lastBatteryReportMillis > batteryReportIntervalMillis) {
-            reportBatteryVoltage();
+            float oldVoltage = batteryVoltage;
+            updateBatteryVoltage();
+            if (batteryVoltage != oldVoltage) reportBatteryVoltage();
           }
           break;
         case GetToken:
@@ -1377,7 +1387,9 @@ void backgroundApiLoop(void *params) {
           if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis) {
             spotifyCurrentlyPlaying();
           } else if (lastBatteryReportMillis == 0 || now - lastBatteryReportMillis > batteryReportIntervalMillis) {
-            reportBatteryVoltage();
+            float oldVoltage = batteryVoltage;
+            updateBatteryVoltage();
+            if (batteryVoltage != oldVoltage) reportBatteryVoltage();
           }
           break;
         case CurrentProfile:
@@ -2200,12 +2212,11 @@ void reportBatteryVoltage() {
   snprintf(url, sizeof(url), "http://192.168.1.30:8080/rest/items/Knobby_%s_Battery", chipId.c_str());
   HTTPClient http;
   http.begin(url);
+  uint32_t now = millis();
+  Serial.printf("> [%d] POST %s %.2f\n", now, url, batteryVoltage);
   int code = http.POST(String(batteryVoltage));
-  if (code > 0) {
-    Serial.printf("Code: %d\n", code);
-  } else {
-    Serial.printf("Error: %s\n", http.errorToString(code).c_str());
-  }
+  now = millis();
+  if (code <= 0) Serial.printf("> [%d] Error: %s\n", now, http.errorToString(code).c_str());
   http.end();
-  lastBatteryReportMillis = millis();
+  lastBatteryReportMillis = now;
 }
