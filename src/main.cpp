@@ -1161,8 +1161,8 @@ void setup() {
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN);
 
   esp_pm_config_esp32_t pm_config_ls_enable = {
-    .max_freq_mhz = 240,
-    .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+    .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+    .min_freq_mhz = 80,
     .light_sleep_enable = true
   };
   ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
