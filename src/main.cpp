@@ -78,6 +78,7 @@ char statusMessage[24] = "";
 unsigned long statusMessageUntilMillis = 0;
 
 enum MenuModes {
+  VolumeControl = -2,
   RootMenu = -1,
   UserList = 0,
   DeviceList = 1,
@@ -88,8 +89,7 @@ enum MenuModes {
   PopularityList = 6,
   SimilarList = 7,
   ToggleBookmarkItem = 8,
-  VolumeControl = 9,
-  NowPlaying = 10
+  NowPlaying = 9
 };
 RTC_DATA_ATTR MenuModes menuMode = AlphabeticList;
 MenuModes lastMenuMode = AlphabeticList;
@@ -97,13 +97,14 @@ MenuModes lastPlaylistMenuMode = AlphabeticList;
 MenuModes lastFullGenreMenuMode = AlphabeticList;
 uint16_t lastMenuIndex = 0;
 const char *rootMenuItems[] = {"users",      "devices", "bookmarks",        "countries", "name",   "name ending",
-                               "popularity", "similar", "add/del bookmark", "volume", "now playing"};
+                               "popularity", "similar", "add/del bookmark", "now playing"};
 
 enum NowPlayingButtons {
-  ShuffleButton = 0,
-  BackButton = 1,
-  PlayPauseButton = 2,
-  NextButton = 3
+  VolumeButton = 0,
+  ShuffleButton = 1,
+  BackButton = 2,
+  PlayPauseButton = 3,
+  NextButton = 4
 };
 
 typedef struct {
@@ -127,7 +128,6 @@ unsigned long longPressStartedMillis = 0;
 bool knobRotatedWhileLongPressed = false;
 int rootMenuSimilarIndex = -1;
 int rootMenuToggleBookmarkIndex = -1;
-int rootMenuVolumeControlIndex = -1;
 int rootMenuNowPlayingIndex = -1;
 
 TaskHandle_t backgroundApiTask;
@@ -296,8 +296,6 @@ bool shouldShowToggleBookmark() {
   return isGenreMenu(lastMenuMode) || (lastMenuMode == SimilarList && getGenreIndexByPlaylistId(similarMenuItems[lastMenuIndex].playlistId) >= 0);
 }
 
-bool shouldShowVolumeControl() { return activeSpotifyDevice != nullptr; }
-
 bool shouldShowNowPlaying() { return spotifyState.isPlaying || spotifyState.name[0] != '\0'; }
 
 uint16_t getMenuSize(MenuModes mode) {
@@ -307,7 +305,6 @@ uint16_t getMenuSize(MenuModes mode) {
     case RootMenu:
       rootMenuSimilarIndex = shouldShowSimilarMenu() ? nextDynamicIndex++ : -1;
       rootMenuToggleBookmarkIndex = shouldShowToggleBookmark() ? nextDynamicIndex++ : -1;
-      rootMenuVolumeControlIndex = shouldShowVolumeControl() ? nextDynamicIndex++ : -1;
       rootMenuNowPlayingIndex = shouldShowNowPlaying() ? nextDynamicIndex++ : -1;
       return nextDynamicIndex;
     case UserList:
@@ -327,7 +324,7 @@ uint16_t getMenuSize(MenuModes mode) {
     case VolumeControl:
       return 101; // 0-100%
     case NowPlaying:
-      return 4; // shuffle, previous, play/pause, next
+      return 5; // volume, shuffle, previous, play/pause, next
     default:
       return 0;
   }
@@ -517,9 +514,15 @@ void knobClicked() {
       break;
     case VolumeControl:
       spotifySetVolumeAtMillis = millis();
+      setMenuMode(NowPlaying, VolumeButton);
       break;
     case NowPlaying:
       switch (menuIndex) {
+        case VolumeButton:
+          if (activeSpotifyDevice != nullptr) {
+            setMenuMode(VolumeControl, activeSpotifyDevice->volumePercent);
+          }
+          break;
         case ShuffleButton:
           if (!spotifyState.disallowsTogglingShuffle) {
             spotifyAction = ToggleShuffle;
@@ -591,7 +594,7 @@ void knobLongPressStarted() {
     setMenuMode(RootMenu, rootMenuNowPlayingIndex);
   } else if (menuMode == VolumeControl) {
     spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
-    setMenuMode(RootMenu, rootMenuVolumeControlIndex);
+    setMenuMode(RootMenu, rootMenuNowPlayingIndex);
   } else {
     setMenuMode(RootMenu, (uint16_t)menuMode);
   }
@@ -627,13 +630,6 @@ void knobLongPressStopped() {
       }
     }
     writeDataJson();
-  } else if (menuIndex == rootMenuVolumeControlIndex) {
-    if (activeSpotifyDevice != nullptr) {
-      spotifyAction = SetVolume;
-      setMenuMode(VolumeControl, activeSpotifyDevice->volumePercent);
-    } else {
-      setMenuMode(lastMenuMode, lastMenuIndex);
-    }
   } else if (menuIndex == rootMenuNowPlayingIndex) {
     nextCurrentlyPlayingMillis = lastInputMillis;
     setMenuMode(NowPlaying, PlayPauseButton);
@@ -753,8 +749,6 @@ void updateDisplay() {
       drawCenteredText(rootMenuItems[SimilarList], textWidth);
     } else if (menuIndex == rootMenuToggleBookmarkIndex) {
       drawCenteredText(isBookmarked(genreIndex) ? "del bookmark" : "add bookmark", textWidth);
-    } else if (menuIndex == rootMenuVolumeControlIndex) {
-      drawCenteredText(rootMenuItems[VolumeControl], textWidth);
     } else if (menuIndex == rootMenuNowPlayingIndex) {
       drawCenteredText(rootMenuItems[NowPlaying], textWidth);
     } else {
@@ -828,7 +822,7 @@ void updateDisplay() {
   } else if (menuMode == NowPlaying) {
     tft.setTextDatum(ML_DATUM);
     tft.setCursor(textPadding, lineOne);
-    img.createSprite(110, img.gFont.yAdvance);
+    img.createSprite(90, img.gFont.yAdvance);
     if (now < statusMessageUntilMillis && statusMessage[0] != '\0') {
       img.setTextColor(TFT_WHITE, TFT_BLACK);
       img.printToSprite(String(statusMessage));
@@ -839,11 +833,14 @@ void updateDisplay() {
       if (!spotifyState.isPlaying || spotifyState.durationMillis == 0) {
         img.printToSprite(String(elapsed));
       } else {
-        char remaining[11];
-        formatMillis(remaining, spotifyState.durationMillis - spotifyState.estimatedProgressMillis);
-        char status[12];
-        sprintf(status, "-%s", remaining);
-        img.printToSprite(String(status));
+        auto remainingMillis = spotifyState.durationMillis - spotifyState.estimatedProgressMillis;
+        if (remainingMillis > 0 && remainingMillis < (1000 * 60 * 60 * 1000)) {
+          char remaining[11];
+          formatMillis(remaining, remainingMillis);
+          char status[12];
+          sprintf(status, "-%s", remaining);
+          img.printToSprite(String(status));
+        }
       }
     }
     img.pushSprite(tft.getCursorX(), tft.getCursorY());
@@ -907,6 +904,26 @@ void updateDisplay() {
     ico.setCursor(1, 3);
     ico.printToSprite(ICON_SHUFFLE);
     ico.drawRoundRect(0, 0, width, height, 3, menuIndex == ShuffleButton ? fg : bg);
+    ico.pushSprite(tft.getCursorX(), tft.getCursorY());
+
+    tft.setCursor(tft.getCursorX() - width, lineOne - 2);
+    ico.fillRoundRect(2, 2, width - 4, height - 4, 3, bg);
+    ico.setTextColor(activeSpotifyDevice == nullptr ? disabled : fg, bg);
+    ico.setCursor(1, 3);
+    String volumeIcon;
+    if (activeSpotifyDevice != nullptr) {
+      if (activeSpotifyDevice->volumePercent > 50) {
+        volumeIcon = ICON_VOLUME_UP;
+      } else if (activeSpotifyDevice->volumePercent >= 10) {
+        volumeIcon = ICON_VOLUME_DOWN;
+      } else {
+        volumeIcon = ICON_VOLUME_MUTE;
+      }
+    } else {
+      volumeIcon = ICON_VOLUME_MUTE;
+    }
+    ico.printToSprite(volumeIcon);
+    ico.drawRoundRect(0, 0, width, height, 3, menuIndex == VolumeButton ? fg : bg);
     ico.pushSprite(tft.getCursorX(), tft.getCursorY());
 
     ico.deleteSprite();
