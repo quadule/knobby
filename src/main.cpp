@@ -229,11 +229,12 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1
 }
 
 bool spotifyNeedsNewAccessToken() {
+  if (spotifyAccessToken[0] == '\0') return true;
   struct timeval tod;
   gettimeofday(&tod, NULL);
   time_t currentSeconds = tod.tv_sec;
   time_t spotifyTokenAge = spotifyTokenSeconds == 0 ? 0 : currentSeconds - spotifyTokenSeconds;
-  return spotifyAccessToken[0] == '\0' || spotifyTokenAge > spotifyTokenLifetime;
+  return spotifyTokenAge > spotifyTokenLifetime;
 }
 
 void updateBatteryVoltage() {
@@ -1132,44 +1133,7 @@ void loop() {
     }
   }
 
-  if (lastInputDelta > 500) delay(5);
-}
-
-void startupAnimation(bool pickRandomGenre) {
-  img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-  while (millis() < 1800) {
-    tft.fillScreen(TFT_BLACK);
-    if (random(10) < 6) {
-      tft.setCursor(textPadding, 38);
-      drawCenteredText("every noise", textWidth);
-    }
-    if (random(10) < 5) {
-      tft.setCursor(textPadding, 68);
-      drawCenteredText("at once", textWidth);
-    }
-    delay(70 + random(30));
-  }
-  tft.fillScreen(TFT_BLACK);
-
-  if (pickRandomGenre) {
-    uint16_t index = 0;
-    while (millis() < 2600) {
-      static int ticks = 0;
-      ticks += 1;
-      index = random(GENRE_COUNT);
-      const char *randomGenre = genres[index];
-      uint16_t randomColor = genreColors[index];
-      uint8_t alpha = min(10 + ticks * 10, 255);
-      uint16_t fadedColor = tft.alphaBlend(alpha, randomColor, TFT_BLACK);
-      tft.setCursor(textPadding, lineTwo);
-      img.setTextColor(fadedColor, TFT_BLACK);
-      drawCenteredText(randomGenre, textWidth, 3);
-      delay(pow(ticks, 2));
-    }
-    setMenuMode(AlphabeticList, index);
-  }
-
-  displayInvalidated = true;
+  if (lastInputDelta > 500) delay(10);
 }
 
 void setup() {
@@ -1363,7 +1327,10 @@ void setup() {
     holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
   }
 
-  if (spotifyNeedsNewAccessToken()) spotifyAction = GetToken;
+  if (spotifyNeedsNewAccessToken()) {
+    spotifyGettingToken = true;
+    spotifyAction = GetToken;
+  }
 
   xTaskCreate(backgroundApiLoop,   /* Function to implement the task */
               "backgroundApiLoop", /* Name of the task */
@@ -1374,9 +1341,23 @@ void setup() {
 
   if (holdingButton) {
     startRandomizingMenu(true);
-  } else if (secondsAsleep == 0 || secondsAsleep > 60 * 10) {
-    bool pickRandomGenre = secondsAsleep == 0 || secondsAsleep > (60 * 40);
-    startupAnimation(pickRandomGenre);
+  } else if (secondsAsleep == 0 || secondsAsleep > 60 * 40) {
+    uint16_t index = 0;
+    while (millis() < 2000) {
+      static int ticks = 0;
+      ticks += 1;
+      index = random(GENRE_COUNT);
+      const char *randomGenre = genres[index];
+      uint16_t randomColor = genreColors[index];
+      uint8_t alpha = min(10 + ticks * 10, 255);
+      uint16_t fadedColor = tft.alphaBlend(alpha, randomColor, TFT_BLACK);
+      tft.setCursor(textPadding, lineTwo);
+      img.setTextColor(fadedColor, TFT_BLACK);
+      drawCenteredText(randomGenre, textWidth, 3);
+      delay(pow(ticks, 2));
+    }
+    setMenuMode(AlphabeticList, index);
+    displayInvalidated = true;
   }
 }
 
