@@ -25,10 +25,6 @@
 void backgroundApiLoop(void *params);
 void reportBatteryVoltage();
 
-void addBookmark(uint16_t genreIndex);
-bool isBookmarked(uint16_t genreIndex);
-void removeBookmark(uint16_t genreIndex);
-
 void setActiveDevice(SpotifyDevice_t *device);
 void setActiveUser(SpotifyUser_t *user);
 

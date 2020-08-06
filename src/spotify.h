@@ -28,6 +28,11 @@ typedef struct {
 } SpotifyDevice_t;
 
 typedef struct {
+  char id[41] = "";
+  char name[64] = "";
+} SpotifyPlaylist_t;
+
+typedef struct {
   char name[64] = "";
   char artistName[64] = "";
   char albumName[64] = "";
@@ -57,7 +62,8 @@ enum SpotifyActions {
   SetVolume,
   ToggleShuffle,
   TransferPlayback,
-  GetPlaylistDescription
+  GetPlaylistDescription,
+  GetPlaylists
 };
 
 enum GrantTypes { gt_authorization_code, gt_refresh_token };
@@ -79,6 +85,9 @@ std::vector<SpotifyDevice_t> spotifyDevices;
 bool spotifyDevicesLoaded = false;
 SpotifyDevice_t *activeSpotifyDevice = nullptr;
 RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
+
+std::vector<SpotifyPlaylist_t> spotifyPlaylists;
+bool spotifyPlaylistsLoaded = false;
 
 int spotifySeekToMillis = -1;
 int spotifySetVolumeAtMillis = -1;
@@ -103,3 +112,4 @@ void spotifySetVolume();
 void spotifyToggleShuffle();
 void spotifyTransferPlayback();
 void spotifyGetPlaylistDescription();
+void spotifyGetPlaylists();
