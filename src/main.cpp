@@ -721,7 +721,7 @@ void updateDisplay() {
     }
     img.setTextColor(TFT_DARKGREY, TFT_BLACK);
     tft.setCursor(textPadding, lineThree + LINE_HEIGHT);
-    if (batteryVoltage < 4.5) {
+    if (batteryVoltage > 0 && batteryVoltage < 3.75) {
       String voltage = String(batteryVoltage) + "V";
       drawCenteredText(voltage.c_str(), textWidth);
     }
