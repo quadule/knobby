@@ -2,7 +2,7 @@
 
 #define FONT_NAME "GillSans24"
 #define ICON_SIZE 24
-#define LINE_HEIGHT 27
+#define LINE_HEIGHT 26
 
 const String ICON_VOLUME_UP = "\uE900";
 const String ICON_VOLUME_OFF = "\uE901";
@@ -27,7 +27,8 @@ TFT_eSprite ico = TFT_eSprite(&tft);
 
 const int centerX = 120;
 const int lineOne = 10;
-const int lineTwo = lineOne + LINE_HEIGHT + 9;
+const int lineDivider = lineOne + LINE_HEIGHT + 2;
+const int lineTwo = lineOne + LINE_HEIGHT + 10;
 const int lineThree = lineTwo + LINE_HEIGHT;
 const int lineSpacing = 3;
 const int textPadding = 10;
@@ -732,7 +733,7 @@ void updateDisplay() {
     tft.setCursor(textPadding, lineOne);
     img.setTextColor(TFT_DARKGREY, TFT_BLACK);
     drawCenteredText(header, textWidth);
-    tft.drawFastHLine(centerX - 40, lineOne + LINE_HEIGHT, 80, TFT_LIGHTBLACK);
+    tft.drawFastHLine(centerX - 40, lineDivider, 80, TFT_LIGHTBLACK);
 
     SpotifyUser_t *user = &spotifyUsers[menuIndex];
     tft.setCursor(textPadding, lineTwo);
@@ -756,7 +757,7 @@ void updateDisplay() {
       sprintf(header, "%d / %d", menuIndex + 1, menuSize);
       tft.setCursor(textPadding, lineOne);
       drawCenteredText(header, textWidth);
-      tft.drawFastHLine(centerX - 40, lineOne + LINE_HEIGHT, 80, TFT_LIGHTBLACK);
+      tft.drawFastHLine(centerX - 40, lineDivider, 80, TFT_LIGHTBLACK);
 
       SpotifyDevice_t *device = &spotifyDevices[menuIndex];
       tft.setCursor(textPadding, lineTwo);
@@ -892,7 +893,7 @@ void updateDisplay() {
     ico.pushSprite(tft.getCursorX(), tft.getCursorY());
 
     ico.deleteSprite();
-    tft.drawFastHLine(textPadding, lineOne + LINE_HEIGHT, textWidth, TFT_LIGHTBLACK);
+    tft.drawFastHLine(textPadding, lineDivider, textWidth, TFT_LIGHTBLACK);
 
     tft.setTextDatum(MC_DATUM);
     tft.setCursor(textPadding, lineTwo);
@@ -948,7 +949,7 @@ void updateDisplay() {
       img.setTextColor(TFT_DARKGREY, TFT_BLACK);
       tft.setCursor(textPadding, lineOne);
       drawCenteredText(label, textWidth);
-      tft.drawFastHLine(centerX - 40, lineOne + LINE_HEIGHT, 80, TFT_LIGHTBLACK);
+      tft.drawFastHLine(centerX - 40, lineDivider, 80, TFT_LIGHTBLACK);
     }
 
     if (menuMode == PlaylistsList) {
