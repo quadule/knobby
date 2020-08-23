@@ -68,37 +68,39 @@ enum SpotifyActions {
 
 enum GrantTypes { gt_authorization_code, gt_refresh_token };
 
-String spotifyAuthCode;
 RTC_DATA_ATTR char spotifyAccessToken[300] = "";
+RTC_DATA_ATTR char spotifyRefreshToken[150] = "";
 RTC_DATA_ATTR time_t spotifyTokenLifetime = 0;
 RTC_DATA_ATTR time_t spotifyTokenSeconds = 0;
+RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
+RTC_DATA_ATTR SpotifyState_t spotifyState = {};
+
+WiFiClientSecure spotifyWifiClient;
+HTTPClient spotifyHttp;
+String spotifyAuthCode;
 uint32_t nextCurrentlyPlayingMillis = 1;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = CurrentlyPlaying;
 const char *spotifyPlayPlaylistId = nullptr;
-
-std::vector<SpotifyUser_t> spotifyUsers;
-SpotifyUser_t *activeSpotifyUser = nullptr;
-RTC_DATA_ATTR char spotifyRefreshToken[150] = "";
-
-std::vector<SpotifyDevice_t> spotifyDevices;
-bool spotifyDevicesLoaded = false;
-SpotifyDevice_t *activeSpotifyDevice = nullptr;
-RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
-
-std::vector<SpotifyPlaylist_t> spotifyPlaylists;
-bool spotifyPlaylistsLoaded = false;
-
 int spotifySeekToMillis = -1;
 int spotifySetVolumeAtMillis = -1;
 int spotifySetVolumeTo = -1;
 
-WiFiClientSecure client;
-HTTPClient spotifyHttp;
+std::vector<SpotifyUser_t> spotifyUsers;
+SpotifyUser_t *activeSpotifyUser = nullptr;
 
-RTC_DATA_ATTR SpotifyState_t spotifyState = {};
+std::vector<SpotifyDevice_t> spotifyDevices;
+bool spotifyDevicesLoaded = false;
+SpotifyDevice_t *activeSpotifyDevice = nullptr;
 
+std::vector<SpotifyPlaylist_t> spotifyPlaylists;
+bool spotifyPlaylistsLoaded = false;
+
+// Utility functions
+bool spotifyNeedsNewAccessToken();
 void spotifyResetProgress();
+
+// Spotify Web API methods
 void spotifyGetToken(const char *code, GrantTypes grant_type);
 void spotifyCurrentlyPlaying();
 void spotifyCurrentProfile();

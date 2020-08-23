@@ -1,431 +1,364 @@
 #include "main.h"
 
-#define FONT_NAME "GillSans24"
-#define ICON_SIZE 24
-#define LINE_HEIGHT 26
+void setup() {
+  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_A_PIN);
+  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_B_PIN);
+  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN);
 
-const String ICON_VOLUME_UP = "\uE900";
-const String ICON_VOLUME_OFF = "\uE901";
-const String ICON_VOLUME_MUTE = "\uE902";
-const String ICON_VOLUME_DOWN = "\uE903";
-const String ICON_AUDIOTRACK = "\uE904";
-const String ICON_LIBRARY_MUSIC = "\uE905";
-const String ICON_FAVORITE = "\uE906";
-const String ICON_FAVORITE_OUTLINE = "\uE907";
-const String ICON_SHUFFLE_ON = "\uE908";
-const String ICON_SHUFFLE = "\uE909";
-const String ICON_SKIP_PREVIOUS = "\uE90A";
-const String ICON_SKIP_NEXT = "\uE90B";
-const String ICON_PLAY_ARROW = "\uE90C";
-const String ICON_PAUSE = "\uE90D";
-const String ICON_WIFI = "\uE90E";
-const String ICON_SPOTIFY = "\uEA94";
+  esp_pm_config_esp32_t pm_config_ls_enable = {
+    .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+    .min_freq_mhz = 80,
+    .light_sleep_enable = true
+  };
+  ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
+  ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
 
-TFT_eSPI tft = TFT_eSPI(135, 240);
-TFT_eSprite img = TFT_eSprite(&tft);
-TFT_eSprite ico = TFT_eSprite(&tft);
+  similarMenuItems.reserve(16);
+  spotifyDevices.reserve(10);
+  spotifyUsers.reserve(10);
+  spotifyPlaylists.reserve(100);
+  Serial.begin(115200);
+  SPIFFS.begin(true);
+  tft.init();
+  tft.setRotation(3);
+  tft.loadFont(FONT_NAME);
+  img.loadFont(FONT_NAME);
+  ico.loadFont("icomoon24");
+  tft.fillScreen(TFT_BLACK);
 
-const int centerX = 120;
-const int lineOne = 10;
-const int lineDivider = lineOne + LINE_HEIGHT + 2;
-const int lineTwo = lineOne + LINE_HEIGHT + 10;
-const int lineThree = lineTwo + LINE_HEIGHT;
-const int lineSpacing = 3;
-const int textPadding = 10;
-const int textWidth = 239 - textPadding * 2;
-#define TFT_LIGHTBLACK       0x1082      /*  16,   16,  16 */
+  Serial.printf("Boot #%d, ", bootCount);
+  if (bootCount == 0) {
+    genreIndex = menuIndex = random(GENRE_COUNT);
+  } else {
+    struct timeval tod;
+    gettimeofday(&tod, NULL);
+    time_t currentSeconds = tod.tv_sec;
+    secondsAsleep = currentSeconds - lastSleepSeconds;
+    Serial.printf("asleep for %ld seconds, ", secondsAsleep);
+    if (secondsAsleep > 60 * 10 ||
+        (spotifyState.isPlaying &&
+            (spotifyState.estimatedProgressMillis + secondsAsleep * 1000 > spotifyState.durationMillis))) {
+      spotifyResetProgress();
+    }
+    nextCurrentlyPlayingMillis = 1;
+  }
+  bootCount++;
 
-#define ADC_EN                    14  //ADC_EN is the ADC detection enable port
-#define ADC_PIN                   34
-#define LED_PIN                    9 // onboard blue LED
-#define ROTARY_ENCODER_A_PIN      12
-#define ROTARY_ENCODER_B_PIN      13
-#define ROTARY_ENCODER_BUTTON_PIN 15
-ESPRotary knob(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN, 4);
-OneButton button(ROTARY_ENCODER_BUTTON_PIN, true, true);
+  esp_adc_cal_characteristics_t adc_chars;
+  esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
+  //Check type of calibration value used to characterize ADC
+  if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
+      Serial.printf("eFuse Vref: %u mV\n", adc_chars.vref);
+      vref = adc_chars.vref;
+  } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
+      Serial.printf("Two Point --> coeff_a:%umV coeff_b:%umV\n", adc_chars.coeff_a, adc_chars.coeff_b);
+  } else {
+      Serial.println("Default Vref: 1100mV");
+  }
 
-#define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
+  knob.setChangedHandler(knobRotated);
+  button.setDebounceTicks(30);
+  button.setClickTicks(360);
+  button.setPressTicks(360);
+  button.attachClick(knobClicked);
+  button.attachDoubleClick(knobDoubleClicked);
+  button.attachLongPressStart(knobLongPressStarted);
+  button.attachLongPressStop(knobLongPressStopped);
 
-enum EventsLogTypes { log_line, log_raw };
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoConnect(true);
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(ssid, password);
+  WiFi.setHostname(nodeName.c_str());
 
-AsyncWebServer server(80);
-AsyncEventSource events("/events");
+  if (MDNS.begin(nodeName.c_str())) {
+    MDNS.addService("http", "tcp", 80);
+    Serial.printf("mDNS responder started, visit http://%s.local\n", nodeName.c_str());
+  } else {
+    Serial.println("Error setting up MDNS responder!");
+  }
 
-int vref = 1100;
-RTC_DATA_ATTR float batteryVoltage = 0.0;
-const String nodeName = "knobby";
-RTC_DATA_ATTR unsigned int bootCount = 0;
-RTC_DATA_ATTR time_t bootSeconds = 0;
-bool sendLogEvents = false;
-RTC_DATA_ATTR uint16_t genreIndex = 0;
-RTC_DATA_ATTR time_t lastSleepSeconds = 0;
-time_t secondsAsleep = 0;
-const unsigned long clickEffectMillis = 30;
-unsigned long clickEffectEndMillis = 0;
-unsigned long inactivityMillis = 60000;
-unsigned long lastBatteryUpdateMillis = 0;
-unsigned long lastInputMillis = 1;
-unsigned long lastDisplayMillis = 0;
-unsigned long lastReconnectAttemptMillis = 0;
-unsigned long randomizingMenuEndMillis = 0;
-unsigned long randomizingMenuTicks = 0;
-bool inputLocked = false;
-bool randomizingMenuAutoplay = false;
-bool displayInvalidated = true;
-bool displayInvalidatedPartial = false;
-char statusMessage[24] = "";
-unsigned long statusMessageUntilMillis = 0;
+  // Initialize HTTP server handlers
+  events.onConnect([](AsyncEventSourceClient *client) { Serial.printf("\n> [%d] events.onConnect\n", (int)millis()); });
+  server.addHandler(&events);
 
-enum MenuModes {
-  VolumeControl = -2,
-  RootMenu = -1,
-  UserList = 0,
-  DeviceList = 1,
-  PlaylistsList = 2,
-  CountryList = 3,
-  AlphabeticList = 4,
-  AlphabeticSuffixList = 5,
-  PopularityList = 6,
-  SimilarList = 7,
-  NowPlaying = 8
-};
-RTC_DATA_ATTR MenuModes menuMode = AlphabeticList;
-RTC_DATA_ATTR MenuModes lastMenuMode = AlphabeticList;
-RTC_DATA_ATTR MenuModes lastPlaylistMenuMode = AlphabeticList;
-RTC_DATA_ATTR MenuModes lastFullGenreMenuMode = AlphabeticList;
-RTC_DATA_ATTR uint16_t lastMenuIndex = 0;
-const char *rootMenuItems[] = {"users",       "devices",    "playlists", "countries",        "name",
-                               "name ending", "popularity", "similar",   "now playing"};
-
-enum NowPlayingButtons {
-  VolumeButton = 0,
-  ShuffleButton = 1,
-  BackButton = 2,
-  PlayPauseButton = 3,
-  NextButton = 4
-};
-
-typedef struct {
-  char playlistId[SPOTIFY_ID_SIZE + 1];
-  char name[18];
-} SimilarItem_t;
-std::vector<SimilarItem_t> similarMenuItems;
-RTC_DATA_ATTR int playingGenreIndex = -1;
-int similarMenuGenreIndex = -1;
-
-RTC_DATA_ATTR uint16_t menuSize = GENRE_COUNT;
-RTC_DATA_ATTR uint16_t menuIndex = 0;
-RTC_DATA_ATTR int lastKnobPosition = 0;
-float lastKnobSpeed = 0.0;
-const unsigned long extraLongPressMillis = 1150;
-unsigned long longPressStartedMillis = 0;
-bool knobRotatedWhileLongPressed = false;
-int rootMenuSimilarIndex = -1;
-int rootMenuNowPlayingIndex = -1;
-
-TaskHandle_t backgroundApiTask;
-
-void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1) {
-  const uint16_t lineHeight = img.gFont.yAdvance + lineSpacing;
-  const uint16_t centerX = round(maxWidth / 2.0);
-  const uint16_t len = strlen(text);
-
-  uint16_t lineNumber = 0;
-  uint16_t pos = 0;
-  int16_t totalWidth = 0;
-  uint16_t index = 0;
-  uint16_t preferredBreakpoint = 0;
-  uint16_t widthAtBreakpoint = 0;
-  bool breakpointOnSpace = false;
-  uint16_t lastDrawnPos = 0;
-
-  img.createSprite(maxWidth, img.gFont.yAdvance);
-
-  while (pos < len) {
-    uint16_t lastPos = pos;
-    uint16_t unicode = img.decodeUTF8((uint8_t *)text, &pos, len - pos);
-    int16_t width = 0;
-
-    if (img.getUnicodeIndex(unicode, &index)) {
-      if (pos == 0) width = -img.gdX[index];
-      if (pos == len - 1) {
-        width = (img.gWidth[index] + img.gdX[index]);
-      } else {
-        width = img.gxAdvance[index];
-      }
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    sendLogEvents = true;
+    inactivityMillis = 120000;
+    uint32_t ts = millis();
+    Serial.printf("> [%d] server.on /\n", ts);
+    if (spotifyAccessToken[0] == '\0' && !spotifyGettingToken) {
+      request->redirect("http://" + nodeName + ".local/authorize");
     } else {
-      width = img.gFont.spaceWidth + 1;
+      request->send(SPIFFS, "/index.html");
     }
-    totalWidth += width;
+  });
 
-    // Always try to break on a space or dash
-    if (unicode == ' ') {
-      preferredBreakpoint = pos;
-      widthAtBreakpoint = totalWidth - width;
-      breakpointOnSpace = true;
-    } else if (unicode == '-' || unicode == '/') {
-      preferredBreakpoint = pos;
-      widthAtBreakpoint = totalWidth;
-      breakpointOnSpace = false;
-    }
+  server.on("/authorize", HTTP_GET, [](AsyncWebServerRequest *request) {
+    uint32_t ts = millis();
+    Serial.printf("> [%d] server.on /\n", ts);
+    spotifyGettingToken = true;
+    char authUrl[400];
+    snprintf(authUrl, sizeof(authUrl),
+             ("https://accounts.spotify.com/authorize/"
+              "?response_type=code&scope="
+              "user-read-private+user-read-currently-playing+user-read-playback-state+"
+              "user-modify-playback-state+playlist-read-private+user-read-recently-played+"
+              "user-library-read+user-follow-read+user-follow-modify"
+              "&show_dialog=true&redirect_uri=http%%3A%%2F%%2F" +
+              nodeName +
+              ".local%%2Fcallback%%2F"
+              "&client_id=%s")
+                 .c_str(),
+             SPOTIFY_CLIENT_ID);
+    Serial.printf("  [%d] Redirect to: %s\n", ts, authUrl);
+    request->redirect(authUrl);
+  });
 
-    if (totalWidth >= maxWidth - width) {
-      if (preferredBreakpoint == 0) {
-        preferredBreakpoint = lastPos;
-        widthAtBreakpoint = totalWidth;
-        breakpointOnSpace = false;
+  server.on("/callback", HTTP_GET, [](AsyncWebServerRequest *request) {
+    spotifyAuthCode = "";
+    uint8_t paramsNr = request->params();
+    for (uint8_t i = 0; i < paramsNr; i++) {
+      AsyncWebParameter *p = request->getParam(i);
+      if (p->name() == "code") {
+        spotifyAuthCode = p->value();
+        spotifyAction = GetToken;
+        break;
       }
-      uint16_t lineLength = preferredBreakpoint - lastDrawnPos;
-      uint16_t lineWidth = widthAtBreakpoint;
-
-      char line[lineLength + 1] = {0};
-      strncpy(line, &text[lastDrawnPos], lineLength);
-
-      img.setCursor(centerX - round(lineWidth / 2.0), 0);
-      img.printToSprite(line, lineLength);
-      img.pushSprite(tft.getCursorX(), tft.getCursorY());
-      tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
-
-      lastDrawnPos = preferredBreakpoint;
-      // It is possible that we did not draw all letters to n so we need
-      // to account for the width of the chars from `n - preferredBreakpoint`
-      // by calculating the width we did not draw yet.
-      totalWidth = totalWidth - widthAtBreakpoint;
-      if (breakpointOnSpace) totalWidth -= img.gFont.spaceWidth + 1;
-      preferredBreakpoint = 0;
-      lineNumber++;
-      if (lineNumber >= maxLines) break;
-      img.fillSprite(TFT_BLACK);
     }
+    if (spotifyAction == GetToken) {
+      request->redirect("/");
+    } else {
+      request->send(204);
+    }
+  });
+
+  server.on("/heap", HTTP_GET,
+            [](AsyncWebServerRequest *request) { request->send(200, "text/plain", String(ESP.getFreeHeap())); });
+
+  server.on("/resetusers", HTTP_GET, [](AsyncWebServerRequest *request) {
+    spotifyAccessToken[0] = '\0';
+    spotifyRefreshToken[0] = '\0';
+    SPIFFS.remove("/data.json");
+    spotifyAction = Idle;
+    request->send(200, "text/plain", "Tokens deleted, restarting");
+    uint32_t start = millis();
+    while (true) {
+      if (millis() - start > 500) ESP.restart();
+      yield();
+    }
+  });
+
+  server.on("/toggleevents", HTTP_GET, [](AsyncWebServerRequest *request) {
+    sendLogEvents = !sendLogEvents;
+    request->send(200, "text/plain", sendLogEvents ? "1" : "0");
+  });
+
+  server.onNotFound([](AsyncWebServerRequest *request) { request->send(404); });
+
+  server.begin();
+
+  readDataJson();
+
+  spotifyHttp.setUserAgent("Knobby/1.0");
+  spotifyHttp.setConnectTimeout(4000);
+  spotifyHttp.setTimeout(4000);
+  spotifyHttp.setReuse(true);
+
+  bool holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
+  if (holdingButton) {
+    delay(30);
+    holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
   }
 
-  // Draw last part if needed
-  if (lastDrawnPos < len && lineNumber < maxLines) {
-    uint16_t lineLength = len - lastDrawnPos;
-    char line[lineLength + 1] = {0};
-    strncpy(line, &text[lastDrawnPos], lineLength);
-    img.setCursor(centerX - round(totalWidth / 2.0), 0);
-    img.printToSprite(line, lineLength);
-    img.pushSprite(tft.getCursorX(), tft.getCursorY());
-    tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
-    lineNumber++;
+  if (spotifyNeedsNewAccessToken()) {
+    spotifyGettingToken = true;
+    spotifyAction = GetToken;
   }
 
-  img.deleteSprite();
+  xTaskCreate(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask);
 
-  while (lineNumber < maxLines) {
-    tft.fillRect(tft.getCursorX(), tft.getCursorY(), maxWidth, lineHeight, TFT_BLACK);
-    tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
-    lineNumber++;
+  if (holdingButton) {
+    startRandomizingMenu(true);
+  } else if (secondsAsleep == 0 || secondsAsleep > 60 * 40) {
+    startRandomizingMenu(false);
   }
 }
 
-bool spotifyNeedsNewAccessToken() {
-  if (spotifyAccessToken[0] == '\0') return true;
+void loop() {
+  uint32_t now = millis();
+  unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
+
+  if (!inputLocked || lastInputDelta > 3000) {
+    knob.loop();
+    button.tick();
+  }
+
   struct timeval tod;
   gettimeofday(&tod, NULL);
   time_t currentSeconds = tod.tv_sec;
-  time_t spotifyTokenAge = spotifyTokenSeconds == 0 ? 0 : currentSeconds - spotifyTokenSeconds;
-  return spotifyTokenAge > spotifyTokenLifetime;
-}
+  bool connected = WiFi.isConnected();
 
-void updateBatteryVoltage() {
-  /*
-  ADC_EN is the ADC detection enable port
-  If the USB port is used for power supply, it is turned on by default.
-  If it is powered by battery, it needs to be set to high level
-  */
-  pinMode(ADC_EN, OUTPUT);
-  digitalWrite(ADC_EN, HIGH);
-  delay(10);
-  batteryVoltage = ((float)analogRead(ADC_PIN) / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
-  digitalWrite(ADC_EN, LOW);
-  lastBatteryUpdateMillis = millis();
-}
-
-int getGenreIndexByName(const char *genreName) {
-  for (size_t i = 0; i < GENRE_COUNT; i++) {
-    if (strcmp(genreName, genres[i]) == 0) return i;
+  if (lastInputDelta > inactivityMillis) {
+    // don't sleep on transient menus
+    if (menuMode == SimilarList || menuMode == PlaylistsList || (!isPlaylistMenu(menuMode) && menuMode != NowPlaying)) setMenuMode(AlphabeticList, genreIndex);
+    lastSleepSeconds = currentSeconds;
+    spotifyAction = Idle;
+    tft.fillScreen(TFT_BLACK);
+    eventsSendLog("Entering deep sleep.");
+    Serial.printf("> [%d] Entering deep sleep.\n", now);
+    WiFi.disconnect(true);
+    digitalWrite(TFT_BL, LOW);
+    tft.writecommand(TFT_DISPOFF);
+    tft.writecommand(TFT_SLPIN);
+    rtc_gpio_isolate(GPIO_NUM_0); // button 1
+    rtc_gpio_isolate(GPIO_NUM_35); // button 2
+    rtc_gpio_isolate(GPIO_NUM_39);
+    rtc_gpio_isolate((gpio_num_t)ADC_PIN);
+    rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_A_PIN);
+    rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_B_PIN);
+    adc_power_off();
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
+    esp_deep_sleep_disable_rom_logging();
+    esp_deep_sleep_start();
   }
-  return -1;
-}
 
-int getGenreIndexByPlaylistId(const char *playlistId) {
-  for (size_t i = 0; i < GENRE_COUNT; i++) {
-    int result = strncmp(playlistId, genrePlaylists[i], SPOTIFY_ID_SIZE);
-    if (result == 0) return i;
+  if (!connected && now - lastReconnectAttemptMillis > 3000) {
+    Serial.printf("> [%d] Trying to connect to network %s...\n", now, ssid);
+    WiFi.begin();
+    lastReconnectAttemptMillis = now;
   }
-  return -1;
-}
 
-bool isGenreMenu(MenuModes mode) {
-  return mode == AlphabeticList || mode == AlphabeticSuffixList || mode == PopularityList || mode == SimilarList;
-}
-
-bool isPlaylistMenu(MenuModes mode) {
-  return isGenreMenu(mode) || mode == PlaylistsList || mode == CountryList;
-}
-
-unsigned long longPressedMillis() {
-  return longPressStartedMillis == 0 ? 0 : millis() - longPressStartedMillis;
-}
-
-unsigned long extraLongPressedMillis() {
-  long extraMillis = (long)longPressedMillis() - extraLongPressMillis;
-  return extraMillis < 0 ? 0 : extraMillis;
-}
-
-bool shouldShowRandom() {
-  if (randomizingMenuEndMillis > 0 || knobRotatedWhileLongPressed) return false;
-  return longPressedMillis() > extraLongPressMillis && lastMenuMode != SimilarList &&
-         (lastMenuMode == NowPlaying || isGenreMenu(lastMenuMode));
-}
-
-bool shouldShowSimilarMenu() {
-  return lastMenuMode == SimilarList || isGenreMenu(lastMenuMode);
-}
-
-uint16_t getMenuSize(MenuModes mode) {
-  int nextDynamicIndex = SimilarList;
-
-  switch (mode) {
-    case RootMenu:
-      rootMenuSimilarIndex = shouldShowSimilarMenu() ? nextDynamicIndex++ : -1;
-      rootMenuNowPlayingIndex = nextDynamicIndex++;
-      return nextDynamicIndex;
-    case UserList:
-      return spotifyUsers.size();
-    case DeviceList:
-      return spotifyDevices.size();
-    case PlaylistsList:
-      return spotifyPlaylists.size();
-    case CountryList:
-      return COUNTRY_COUNT;
-    case AlphabeticList:
-    case AlphabeticSuffixList:
-    case PopularityList:
-      return GENRE_COUNT;
-    case SimilarList:
-      return similarMenuItems.size();
-    case VolumeControl:
-      return 101; // 0-100%
-    case NowPlaying:
-      return 5; // volume, shuffle, previous, play/pause, next
-    default:
-      return 0;
+  if (connected && !spotifyGettingToken && spotifyNeedsNewAccessToken()) {
+    Serial.printf("> [%d] Need access token...\n", now);
+    spotifyGettingToken = true;
+    spotifyAction = GetToken;
   }
-}
 
-uint16_t getGenreIndexForMenuIndex(uint16_t index, MenuModes mode) {
-  switch (mode) {
-    case AlphabeticList:
-      return index;
-    case AlphabeticSuffixList:
-      return genreIndexes_suffix[index];
-    case PopularityList:
-      return genreIndexes_popularity[index];
-    case PlaylistsList:
-      return max(0, getGenreIndexByPlaylistId(spotifyPlaylists[index].id));
-    case SimilarList:
-      return max(0, getGenreIndexByPlaylistId(similarMenuItems[index].playlistId));
-    default:
-      return 0;
+  if (shouldShowRandom() && getExtraLongPressedMillis() >= extraLongPressMillis) {
+    longPressStartedMillis = 0;
+    startRandomizingMenu(true);
   }
-}
 
-uint16_t getIndexOfGenreIndex(const uint16_t indexes[], uint16_t indexToFind) {
-  for (uint16_t i = 0; i < GENRE_COUNT; i++) {
-    if (indexes[i] == indexToFind) return i;
+  if (spotifyState.isPlaying && now > spotifyState.lastUpdateMillis) {
+    spotifyState.estimatedProgressMillis = spotifyState.progressMillis + (now - spotifyState.lastUpdateMillis);
   }
-  return 0;
-}
 
-uint16_t getMenuIndexForGenreIndex(uint16_t index, MenuModes mode) {
-  switch (mode) {
-    case AlphabeticList:
-      return index;
-    case AlphabeticSuffixList:
-      return getIndexOfGenreIndex(genreIndexes_suffix, index);
-    case PopularityList:
-      return getIndexOfGenreIndex(genreIndexes_popularity, index);
-    default:
-      return 0;
+  if (!displayInvalidated) {
+    if (statusMessage[0] != '\0' && now > statusMessageUntilMillis) {
+      statusMessageUntilMillis = 0;
+      statusMessage[0] = '\0';
+      displayInvalidated = true;
+      displayInvalidatedPartial = true;
+    } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
+      clickEffectEndMillis = 0;
+      displayInvalidated = true;
+      displayInvalidatedPartial = true;
+    } else if (lastInputMillis > lastDisplayMillis || (spotifyState.isPlaying && now - lastDisplayMillis > 950) ||
+               (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2)) {
+      displayInvalidated = true;
+      displayInvalidatedPartial = true;
+    }
   }
+
+  if (displayInvalidated) {
+    updateDisplay();
+  } else {
+    if (spotifyAction != Idle && spotifyAction != CurrentlyPlaying && spotifyAction != SetVolume && menuMode != RootMenu) {
+      tft.drawFastHLine(-now % tft.width(), 0, 20, TFT_BLACK);
+      tft.drawFastHLine(-(now + 20) % tft.width(), 0, 20, TFT_DARKGREY);
+      tft.drawFastHLine(-(now + 40) % tft.width(), 0, 20, TFT_BLACK);
+      tft.drawFastHLine(-(now + 60) % tft.width(), 0, 20, TFT_DARKGREY);
+      tft.drawFastHLine(-(now + 80) % tft.width(), 0, 20, TFT_BLACK);
+      tft.drawFastHLine(-(now + 100) % tft.width(), 0, 20, TFT_DARKGREY);
+      tft.drawFastHLine(-(now + 120) % tft.width(), 0, 20, TFT_BLACK);
+    } else {
+      tft.drawFastHLine(0, 0, 239, TFT_BLACK);
+    }
+  }
+
+  if (lastInputDelta > 500 && randomizingMenuEndMillis == 0) delay(25);
 }
 
-void setMenuIndex(uint16_t newMenuIndex) {
-  menuIndex = menuSize == 0 ? 0 : newMenuIndex % menuSize;
+void backgroundApiLoop(void *params) {
+  for (;;) {
+    if (WiFi.status() == WL_CONNECTED) {
+      uint32_t now = millis();
 
-  int newGenreIndex = -1;
-  switch (menuMode) {
-    case AlphabeticList:
-    case AlphabeticSuffixList:
-    case PopularityList:
-      if (menuSize > 0) genreIndex = getGenreIndexForMenuIndex(menuIndex, menuMode);
-      break;
-    case SimilarList:
-      if (menuSize > 0) {
-        if (similarMenuItems[menuIndex].name[0] == '\0') {
-          newGenreIndex = getGenreIndexByPlaylistId(similarMenuItems[menuIndex].playlistId);
-          if (newGenreIndex < 0) {
-            genreIndex = similarMenuGenreIndex;
+      switch (spotifyAction) {
+        case Idle:
+          break;
+        case GetToken:
+          if (spotifyAuthCode != "") {
+            spotifyGetToken(spotifyAuthCode.c_str(), gt_authorization_code);
+          } else if (spotifyRefreshToken[0] != '\0') {
+            spotifyGetToken(spotifyRefreshToken, gt_refresh_token);
           } else {
-            genreIndex = newGenreIndex;
+            spotifyGettingToken = false;
+            spotifyAction = Idle;
           }
-        } else {
-          genreIndex = max(0, similarMenuGenreIndex);
-        }
+          break;
+        case CurrentlyPlaying:
+          if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis) {
+            spotifyCurrentlyPlaying();
+          }
+          break;
+        case CurrentProfile:
+          spotifyCurrentProfile();
+          break;
+        case Next:
+          spotifyNext();
+          break;
+        case Previous:
+          spotifyPrevious();
+          break;
+        case Seek:
+          spotifySeek();
+          break;
+        case Toggle:
+          spotifyToggle();
+          break;
+        case PlayPlaylist:
+          spotifyPlayPlaylist();
+          break;
+        case GetDevices:
+          spotifyGetDevices();
+          displayInvalidated = true;
+          displayInvalidatedPartial = true;
+          break;
+        case SetVolume:
+          if (spotifySetVolumeAtMillis > 0 && millis() >= spotifySetVolumeAtMillis) spotifySetVolume();
+          break;
+        case ToggleShuffle:
+          spotifyToggleShuffle();
+          break;
+        case TransferPlayback:
+          spotifyTransferPlayback();
+          break;
+        case GetPlaylistDescription:
+          spotifyGetPlaylistDescription();
+          break;
+        case GetPlaylists:
+          spotifyGetPlaylists();
+          break;
       }
-      break;
-    default:
-      break;
-  }
-  displayInvalidated = true;
-  displayInvalidatedPartial = true;
-}
-
-void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
-  MenuModes oldMode = menuMode;
-  menuMode = newMode;
-  menuSize = getMenuSize(newMode);
-  setMenuIndex(newMenuIndex);
-  displayInvalidatedPartial = oldMode == newMode;
-}
-
-void setStatusMessage(const char *message, unsigned long durationMs = 1300) {
-  strncpy(statusMessage, message, sizeof(statusMessage) - 1);
-  statusMessageUntilMillis = millis() + durationMs;
-  displayInvalidated = true;
-  displayInvalidatedPartial = true;
-}
-
-void startRandomizingMenu(bool autoplay = false) {
-  unsigned long now = millis();
-  if (now > randomizingMenuEndMillis) {
-    inputLocked = true;
-    randomizingMenuEndMillis = now + 850;
-    randomizingMenuTicks = 0;
-    randomizingMenuAutoplay = autoplay;
-    setMenuMode(lastFullGenreMenuMode, 0);
+    }
+    if (lastInputMillis - millis() > 500) {
+      delay(50);
+    } else {
+      delay(10);
+    }
   }
 }
 
-void playPlaylist(const char *playlistId) {
-  spotifyResetProgress();
-  spotifyPlayPlaylistId = playlistId;
-  strncpy(spotifyState.playlistId, playlistId, SPOTIFY_ID_SIZE);
-  if (spotifyAction != GetToken) spotifyAction = PlayPlaylist;
-  setStatusMessage("play");
-  setMenuMode(NowPlaying, PlayPauseButton);
-}
-
-void knobRotated(ESPRotary &r) {
+void knobRotated(ESPRotary &knob) {
   unsigned long now = millis();
   unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
   lastInputMillis = now;
   if (button.isLongPressed()) knobRotatedWhileLongPressed = true;
 
-  int newPosition = r.getPosition();
+  int newPosition = knob.getPosition();
   int positionDelta = newPosition - lastKnobPosition;
   lastKnobPosition = newPosition;
 
@@ -555,7 +488,7 @@ void knobLongPressStarted() {
     if (isPlaylistMenu(menuMode)) lastPlaylistMenuMode = menuMode;
     if (isGenreMenu(menuMode) && menuMode != SimilarList) lastFullGenreMenuMode = menuMode;
   }
-  getMenuSize(RootMenu);
+  checkMenuSize(RootMenu);
   if (menuMode == NowPlaying) {
     switch (lastPlaylistMenuMode) {
       case SimilarList:
@@ -586,7 +519,7 @@ void knobLongPressStarted() {
 
 void knobLongPressStopped() {
   lastInputMillis = millis();
-  getMenuSize(RootMenu);
+  checkMenuSize(RootMenu);
   if (shouldShowRandom()) {
     startRandomizingMenu();
   } else if (menuIndex == rootMenuSimilarIndex) {
@@ -656,18 +589,6 @@ void knobLongPressStopped() {
   longPressStartedMillis = 0;
 }
 
-int formatMillis(char *output, unsigned long millis) {
-  unsigned int seconds = millis / 1000 % 60;
-  unsigned int minutes = millis / (1000 * 60) % 60;
-  unsigned int hours = millis / (1000 * 60 * 60);
-
-  if (hours == 0) {
-    return sprintf(output, "%d:%02d", minutes, seconds);
-  } else {
-    return sprintf(output, "%d:%02d:%02d", hours, minutes, seconds);
-  }
-}
-
 void updateDisplay() {
   displayInvalidated = false;
   if (!displayInvalidatedPartial) tft.fillScreen(TFT_BLACK);
@@ -684,7 +605,7 @@ void updateDisplay() {
     drawCenteredText(hostname, textWidth);
   } else if (now < randomizingMenuEndMillis) {
     randomizingMenuTicks++;
-    setMenuIndex(random(getMenuSize(lastFullGenreMenuMode)));
+    setMenuIndex(random(checkMenuSize(lastFullGenreMenuMode)));
     img.setTextColor(genreColors[genreIndex], TFT_BLACK);
     tft.setCursor(textPadding, lineTwo);
     drawCenteredText(genres[genreIndex], textWidth, 3);
@@ -705,7 +626,7 @@ void updateDisplay() {
     tft.setCursor(textPadding, lineTwo);
     img.setTextColor(TFT_WHITE, TFT_BLACK);
     if (shouldShowRandom()) {
-      double pressedProgress = min(1.0, (double)extraLongPressedMillis() / (double)extraLongPressMillis);
+      double pressedProgress = min(1.0, (double)getExtraLongPressedMillis() / (double)extraLongPressMillis);
       tft.drawFastHLine(0, 0, (int)(pressedProgress * 239), TFT_WHITE);
       drawCenteredText("random", textWidth);
     } else if (menuIndex == rootMenuSimilarIndex) {
@@ -959,12 +880,309 @@ void updateDisplay() {
   lastDisplayMillis = millis();
 }
 
-void eventsSendLog(const char *logData, EventsLogTypes type = log_line) {
+void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines) {
+  const uint16_t lineHeight = img.gFont.yAdvance + lineSpacing;
+  const uint16_t centerX = round(maxWidth / 2.0);
+  const uint16_t len = strlen(text);
+
+  uint16_t lineNumber = 0;
+  uint16_t pos = 0;
+  int16_t totalWidth = 0;
+  uint16_t index = 0;
+  uint16_t preferredBreakpoint = 0;
+  uint16_t widthAtBreakpoint = 0;
+  bool breakpointOnSpace = false;
+  uint16_t lastDrawnPos = 0;
+
+  img.createSprite(maxWidth, img.gFont.yAdvance);
+
+  while (pos < len) {
+    uint16_t lastPos = pos;
+    uint16_t unicode = img.decodeUTF8((uint8_t *)text, &pos, len - pos);
+    int16_t width = 0;
+
+    if (img.getUnicodeIndex(unicode, &index)) {
+      if (pos == 0) width = -img.gdX[index];
+      if (pos == len - 1) {
+        width = (img.gWidth[index] + img.gdX[index]);
+      } else {
+        width = img.gxAdvance[index];
+      }
+    } else {
+      width = img.gFont.spaceWidth + 1;
+    }
+    totalWidth += width;
+
+    // Always try to break on a space or dash
+    if (unicode == ' ') {
+      preferredBreakpoint = pos;
+      widthAtBreakpoint = totalWidth - width;
+      breakpointOnSpace = true;
+    } else if (unicode == '-' || unicode == '/') {
+      preferredBreakpoint = pos;
+      widthAtBreakpoint = totalWidth;
+      breakpointOnSpace = false;
+    }
+
+    if (totalWidth >= maxWidth - width) {
+      if (preferredBreakpoint == 0) {
+        preferredBreakpoint = lastPos;
+        widthAtBreakpoint = totalWidth;
+        breakpointOnSpace = false;
+      }
+      uint16_t lineLength = preferredBreakpoint - lastDrawnPos;
+      uint16_t lineWidth = widthAtBreakpoint;
+
+      char line[lineLength + 1] = {0};
+      strncpy(line, &text[lastDrawnPos], lineLength);
+
+      img.setCursor(centerX - round(lineWidth / 2.0), 0);
+      img.printToSprite(line, lineLength);
+      img.pushSprite(tft.getCursorX(), tft.getCursorY());
+      tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
+
+      lastDrawnPos = preferredBreakpoint;
+      // It is possible that we did not draw all letters to n so we need
+      // to account for the width of the chars from `n - preferredBreakpoint`
+      // by calculating the width we did not draw yet.
+      totalWidth = totalWidth - widthAtBreakpoint;
+      if (breakpointOnSpace) totalWidth -= img.gFont.spaceWidth + 1;
+      preferredBreakpoint = 0;
+      lineNumber++;
+      if (lineNumber >= maxLines) break;
+      img.fillSprite(TFT_BLACK);
+    }
+  }
+
+  // Draw last part if needed
+  if (lastDrawnPos < len && lineNumber < maxLines) {
+    uint16_t lineLength = len - lastDrawnPos;
+    char line[lineLength + 1] = {0};
+    strncpy(line, &text[lastDrawnPos], lineLength);
+    img.setCursor(centerX - round(totalWidth / 2.0), 0);
+    img.printToSprite(line, lineLength);
+    img.pushSprite(tft.getCursorX(), tft.getCursorY());
+    tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
+    lineNumber++;
+  }
+
+  img.deleteSprite();
+
+  while (lineNumber < maxLines) {
+    tft.fillRect(tft.getCursorX(), tft.getCursorY(), maxWidth, lineHeight, TFT_BLACK);
+    tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
+    lineNumber++;
+  }
+}
+
+void updateBatteryVoltage() {
+  /*
+  ADC_EN is the ADC detection enable port
+  If the USB port is used for power supply, it is turned on by default.
+  If it is powered by battery, it needs to be set to high level
+  */
+  pinMode(ADC_EN, OUTPUT);
+  digitalWrite(ADC_EN, HIGH);
+  delay(10);
+  batteryVoltage = ((float)analogRead(ADC_PIN) / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
+  digitalWrite(ADC_EN, LOW);
+  lastBatteryUpdateMillis = millis();
+}
+
+int getGenreIndexByName(const char *genreName) {
+  for (size_t i = 0; i < GENRE_COUNT; i++) {
+    if (strcmp(genreName, genres[i]) == 0) return i;
+  }
+  return -1;
+}
+
+int getGenreIndexByPlaylistId(const char *playlistId) {
+  for (size_t i = 0; i < GENRE_COUNT; i++) {
+    int result = strncmp(playlistId, genrePlaylists[i], SPOTIFY_ID_SIZE);
+    if (result == 0) return i;
+  }
+  return -1;
+}
+
+bool isGenreMenu(MenuModes mode) {
+  return mode == AlphabeticList || mode == AlphabeticSuffixList || mode == PopularityList || mode == SimilarList;
+}
+
+bool isPlaylistMenu(MenuModes mode) {
+  return isGenreMenu(mode) || mode == PlaylistsList || mode == CountryList;
+}
+
+unsigned long getLongPressedMillis() {
+  return longPressStartedMillis == 0 ? 0 : millis() - longPressStartedMillis;
+}
+
+unsigned long getExtraLongPressedMillis() {
+  long extraMillis = (long)getLongPressedMillis() - extraLongPressMillis;
+  return extraMillis < 0 ? 0 : extraMillis;
+}
+
+bool shouldShowRandom() {
+  if (randomizingMenuEndMillis > 0 || knobRotatedWhileLongPressed) return false;
+  return getLongPressedMillis() > extraLongPressMillis && lastMenuMode != SimilarList &&
+         (lastMenuMode == NowPlaying || isGenreMenu(lastMenuMode));
+}
+
+bool shouldShowSimilarMenu() {
+  return lastMenuMode == SimilarList || isGenreMenu(lastMenuMode);
+}
+
+uint16_t checkMenuSize(MenuModes mode) {
+  int nextDynamicIndex = SimilarList;
+
+  switch (mode) {
+    case RootMenu:
+      rootMenuSimilarIndex = shouldShowSimilarMenu() ? nextDynamicIndex++ : -1;
+      rootMenuNowPlayingIndex = nextDynamicIndex++;
+      return nextDynamicIndex;
+    case UserList:
+      return spotifyUsers.size();
+    case DeviceList:
+      return spotifyDevices.size();
+    case PlaylistsList:
+      return spotifyPlaylists.size();
+    case CountryList:
+      return COUNTRY_COUNT;
+    case AlphabeticList:
+    case AlphabeticSuffixList:
+    case PopularityList:
+      return GENRE_COUNT;
+    case SimilarList:
+      return similarMenuItems.size();
+    case VolumeControl:
+      return 101; // 0-100%
+    case NowPlaying:
+      return 5; // volume, shuffle, previous, play/pause, next
+    default:
+      return 0;
+  }
+}
+
+uint16_t getGenreIndexForMenuIndex(uint16_t index, MenuModes mode) {
+  switch (mode) {
+    case AlphabeticList:
+      return index;
+    case AlphabeticSuffixList:
+      return genreIndexes_suffix[index];
+    case PopularityList:
+      return genreIndexes_popularity[index];
+    case PlaylistsList:
+      return max(0, getGenreIndexByPlaylistId(spotifyPlaylists[index].id));
+    case SimilarList:
+      return max(0, getGenreIndexByPlaylistId(similarMenuItems[index].playlistId));
+    default:
+      return 0;
+  }
+}
+
+uint16_t getIndexOfGenreIndex(const uint16_t indexes[], uint16_t indexToFind) {
+  for (uint16_t i = 0; i < GENRE_COUNT; i++) {
+    if (indexes[i] == indexToFind) return i;
+  }
+  return 0;
+}
+
+uint16_t getMenuIndexForGenreIndex(uint16_t index, MenuModes mode) {
+  switch (mode) {
+    case AlphabeticList:
+      return index;
+    case AlphabeticSuffixList:
+      return getIndexOfGenreIndex(genreIndexes_suffix, index);
+    case PopularityList:
+      return getIndexOfGenreIndex(genreIndexes_popularity, index);
+    default:
+      return 0;
+  }
+}
+
+void setMenuIndex(uint16_t newMenuIndex) {
+  menuIndex = menuSize == 0 ? 0 : newMenuIndex % menuSize;
+
+  int newGenreIndex = -1;
+  switch (menuMode) {
+    case AlphabeticList:
+    case AlphabeticSuffixList:
+    case PopularityList:
+      if (menuSize > 0) genreIndex = getGenreIndexForMenuIndex(menuIndex, menuMode);
+      break;
+    case SimilarList:
+      if (menuSize > 0) {
+        if (similarMenuItems[menuIndex].name[0] == '\0') {
+          newGenreIndex = getGenreIndexByPlaylistId(similarMenuItems[menuIndex].playlistId);
+          if (newGenreIndex < 0) {
+            genreIndex = similarMenuGenreIndex;
+          } else {
+            genreIndex = newGenreIndex;
+          }
+        } else {
+          genreIndex = max(0, similarMenuGenreIndex);
+        }
+      }
+      break;
+    default:
+      break;
+  }
+  displayInvalidated = true;
+  displayInvalidatedPartial = true;
+}
+
+void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
+  MenuModes oldMode = menuMode;
+  menuMode = newMode;
+  menuSize = checkMenuSize(newMode);
+  setMenuIndex(newMenuIndex);
+  displayInvalidatedPartial = oldMode == newMode;
+}
+
+void setStatusMessage(const char *message, unsigned long durationMs) {
+  strncpy(statusMessage, message, sizeof(statusMessage) - 1);
+  statusMessageUntilMillis = millis() + durationMs;
+  displayInvalidated = true;
+  displayInvalidatedPartial = true;
+}
+
+void startRandomizingMenu(bool autoplay) {
+  unsigned long now = millis();
+  if (now > randomizingMenuEndMillis) {
+    inputLocked = true;
+    randomizingMenuEndMillis = now + 850;
+    randomizingMenuTicks = 0;
+    randomizingMenuAutoplay = autoplay;
+    setMenuMode(lastFullGenreMenuMode, 0);
+  }
+}
+
+void playPlaylist(const char *playlistId) {
+  spotifyResetProgress();
+  spotifyPlayPlaylistId = playlistId;
+  strncpy(spotifyState.playlistId, playlistId, SPOTIFY_ID_SIZE);
+  if (spotifyAction != GetToken) spotifyAction = PlayPlaylist;
+  setStatusMessage("play");
+  setMenuMode(NowPlaying, PlayPauseButton);
+}
+
+int formatMillis(char *output, unsigned long millis) {
+  unsigned int seconds = millis / 1000 % 60;
+  unsigned int minutes = millis / (1000 * 60) % 60;
+  unsigned int hours = millis / (1000 * 60 * 60);
+
+  if (hours == 0) {
+    return sprintf(output, "%d:%02d", minutes, seconds);
+  } else {
+    return sprintf(output, "%d:%02d:%02d", hours, minutes, seconds);
+  }
+}
+
+void eventsSendLog(const char *logData, EventsLogTypes type) {
   if (!sendLogEvents) return;
   events.send(logData, type == log_line ? "line" : "raw");
 }
 
-void eventsSendInfo(const char *msg, const char *payload = "") {
+void eventsSendInfo(const char *msg, const char *payload) {
   if (!sendLogEvents) return;
 
   DynamicJsonDocument json(512);
@@ -978,7 +1196,7 @@ void eventsSendInfo(const char *msg, const char *payload = "") {
   events.send(info.c_str(), "info");
 }
 
-void eventsSendError(int code, const char *msg, const char *payload = "") {
+void eventsSendError(int code, const char *msg, const char *payload) {
   if (!sendLogEvents) return;
 
   DynamicJsonDocument json(512);
@@ -991,373 +1209,6 @@ void eventsSendError(int code, const char *msg, const char *payload = "") {
   String error;
   serializeJson(json, error);
   events.send(error.c_str(), "error");
-}
-
-void loop() {
-  uint32_t now = millis();
-  unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
-
-  if (!inputLocked || lastInputDelta > 3000) {
-    knob.loop();
-    button.tick();
-  }
-
-  struct timeval tod;
-  gettimeofday(&tod, NULL);
-  time_t currentSeconds = tod.tv_sec;
-  bool connected = WiFi.isConnected();
-
-  if (lastInputDelta > inactivityMillis) {
-    // don't sleep on transient menus
-    if (menuMode == SimilarList || menuMode == PlaylistsList || (!isPlaylistMenu(menuMode) && menuMode != NowPlaying)) setMenuMode(AlphabeticList, genreIndex);
-    lastSleepSeconds = currentSeconds;
-    spotifyAction = Idle;
-    tft.fillScreen(TFT_BLACK);
-    eventsSendLog("Entering deep sleep.");
-    Serial.printf("> [%d] Entering deep sleep.\n", now);
-    WiFi.disconnect(true);
-    digitalWrite(TFT_BL, LOW);
-    tft.writecommand(TFT_DISPOFF);
-    tft.writecommand(TFT_SLPIN);
-    rtc_gpio_isolate(GPIO_NUM_0); // button 1
-    rtc_gpio_isolate(GPIO_NUM_35); // button 2
-    rtc_gpio_isolate(GPIO_NUM_39);
-    rtc_gpio_isolate((gpio_num_t)ADC_PIN);
-    rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_A_PIN);
-    rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_B_PIN);
-    adc_power_off();
-    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-    esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
-    esp_deep_sleep_disable_rom_logging();
-    esp_deep_sleep_start();
-  }
-
-  if (!connected && now - lastReconnectAttemptMillis > 3000) {
-    Serial.printf("> [%d] Trying to connect to network %s...\n", now, ssid);
-    WiFi.begin();
-    lastReconnectAttemptMillis = now;
-  }
-
-  if (connected && !spotifyGettingToken && spotifyNeedsNewAccessToken()) {
-    Serial.printf("> [%d] Need access token...\n", now);
-    spotifyGettingToken = true;
-    spotifyAction = GetToken;
-  }
-
-  if (shouldShowRandom() && extraLongPressedMillis() >= extraLongPressMillis) {
-    longPressStartedMillis = 0;
-    startRandomizingMenu(true);
-  }
-
-  if (spotifyState.isPlaying && now > spotifyState.lastUpdateMillis) {
-    spotifyState.estimatedProgressMillis = spotifyState.progressMillis + (now - spotifyState.lastUpdateMillis);
-  }
-
-  if (!displayInvalidated) {
-    if (statusMessage[0] != '\0' && now > statusMessageUntilMillis) {
-      statusMessageUntilMillis = 0;
-      statusMessage[0] = '\0';
-      displayInvalidated = true;
-      displayInvalidatedPartial = true;
-    } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
-      clickEffectEndMillis = 0;
-      displayInvalidated = true;
-      displayInvalidatedPartial = true;
-    } else if (lastInputMillis > lastDisplayMillis || (spotifyState.isPlaying && now - lastDisplayMillis > 950) ||
-               (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2)) {
-      displayInvalidated = true;
-      displayInvalidatedPartial = true;
-    }
-  }
-
-  if (displayInvalidated) {
-    updateDisplay();
-  } else {
-    if (spotifyAction != Idle && spotifyAction != CurrentlyPlaying && spotifyAction != SetVolume && menuMode != RootMenu) {
-      tft.drawFastHLine(-now % tft.width(), 0, 20, TFT_BLACK);
-      tft.drawFastHLine(-(now + 20) % tft.width(), 0, 20, TFT_DARKGREY);
-      tft.drawFastHLine(-(now + 40) % tft.width(), 0, 20, TFT_BLACK);
-      tft.drawFastHLine(-(now + 60) % tft.width(), 0, 20, TFT_DARKGREY);
-      tft.drawFastHLine(-(now + 80) % tft.width(), 0, 20, TFT_BLACK);
-      tft.drawFastHLine(-(now + 100) % tft.width(), 0, 20, TFT_DARKGREY);
-      tft.drawFastHLine(-(now + 120) % tft.width(), 0, 20, TFT_BLACK);
-    } else {
-      tft.drawFastHLine(0, 0, 239, TFT_BLACK);
-    }
-  }
-
-  if (lastInputDelta > 500 && randomizingMenuEndMillis == 0) delay(25);
-}
-
-void setup() {
-  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_A_PIN);
-  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_B_PIN);
-  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN);
-
-  esp_pm_config_esp32_t pm_config_ls_enable = {
-    .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-    .min_freq_mhz = 80,
-    .light_sleep_enable = true
-  };
-  ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
-  ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
-
-  similarMenuItems.reserve(16);
-  spotifyDevices.reserve(10);
-  spotifyUsers.reserve(10);
-  spotifyPlaylists.reserve(100);
-  Serial.begin(115200);
-  SPIFFS.begin(true);
-  tft.init();
-  tft.setRotation(3);
-  tft.loadFont(FONT_NAME);
-  img.loadFont(FONT_NAME);
-  ico.loadFont("icomoon24");
-  tft.fillScreen(TFT_BLACK);
-
-  Serial.printf("Boot #%d, ", bootCount);
-  if (bootCount == 0) {
-    genreIndex = menuIndex = random(GENRE_COUNT);
-  } else {
-    struct timeval tod;
-    gettimeofday(&tod, NULL);
-    time_t currentSeconds = tod.tv_sec;
-    secondsAsleep = currentSeconds - lastSleepSeconds;
-    Serial.printf("asleep for %ld seconds, ", secondsAsleep);
-    if (secondsAsleep > 60 * 10 ||
-        (spotifyState.isPlaying &&
-            (spotifyState.estimatedProgressMillis + secondsAsleep * 1000 > spotifyState.durationMillis))) {
-      spotifyResetProgress();
-    }
-    nextCurrentlyPlayingMillis = 1;
-  }
-  bootCount++;
-
-  esp_adc_cal_characteristics_t adc_chars;
-  esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
-  //Check type of calibration value used to characterize ADC
-  if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
-      Serial.printf("eFuse Vref: %u mV\n", adc_chars.vref);
-      vref = adc_chars.vref;
-  } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
-      Serial.printf("Two Point --> coeff_a:%umV coeff_b:%umV\n", adc_chars.coeff_a, adc_chars.coeff_b);
-  } else {
-      Serial.println("Default Vref: 1100mV");
-  }
-
-  knob.setChangedHandler(knobRotated);
-  button.setDebounceTicks(30);
-  button.setClickTicks(360);
-  button.setPressTicks(360);
-  button.attachClick(knobClicked);
-  button.attachDoubleClick(knobDoubleClicked);
-  button.attachLongPressStart(knobLongPressStarted);
-  button.attachLongPressStop(knobLongPressStopped);
-
-  WiFi.mode(WIFI_STA);
-  WiFi.setAutoConnect(true);
-  WiFi.setAutoReconnect(true);
-  WiFi.begin(ssid, password);
-  WiFi.setHostname(nodeName.c_str());
-
-  if (MDNS.begin(nodeName.c_str())) {
-    MDNS.addService("http", "tcp", 80);
-    Serial.printf("mDNS responder started, visit http://%s.local\n", nodeName.c_str());
-  } else {
-    Serial.println("Error setting up MDNS responder!");
-  }
-
-  // Initialize HTTP server handlers
-  events.onConnect([](AsyncEventSourceClient *client) { Serial.printf("\n> [%d] events.onConnect\n", (int)millis()); });
-  server.addHandler(&events);
-
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    sendLogEvents = true;
-    inactivityMillis = 120000;
-    uint32_t ts = millis();
-    Serial.printf("> [%d] server.on /\n", ts);
-    if (spotifyAccessToken[0] == '\0' && !spotifyGettingToken) {
-      request->redirect("http://" + nodeName + ".local/authorize");
-    } else {
-      request->send(SPIFFS, "/index.html");
-    }
-  });
-
-  server.on("/authorize", HTTP_GET, [](AsyncWebServerRequest *request) {
-    uint32_t ts = millis();
-    Serial.printf("> [%d] server.on /\n", ts);
-    spotifyGettingToken = true;
-    char authUrl[400];
-    snprintf(authUrl, sizeof(authUrl),
-             ("https://accounts.spotify.com/authorize/"
-              "?response_type=code&scope="
-              "user-read-private+user-read-currently-playing+user-read-playback-state+"
-              "user-modify-playback-state+playlist-read-private+user-read-recently-played+"
-              "user-library-read+user-follow-read+user-follow-modify"
-              "&show_dialog=true&redirect_uri=http%%3A%%2F%%2F" +
-              nodeName +
-              ".local%%2Fcallback%%2F"
-              "&client_id=%s")
-                 .c_str(),
-             SPOTIFY_CLIENT_ID);
-    Serial.printf("  [%d] Redirect to: %s\n", ts, authUrl);
-    request->redirect(authUrl);
-  });
-
-  server.on("/callback", HTTP_GET, [](AsyncWebServerRequest *request) {
-    spotifyAuthCode = "";
-    uint8_t paramsNr = request->params();
-    for (uint8_t i = 0; i < paramsNr; i++) {
-      AsyncWebParameter *p = request->getParam(i);
-      if (p->name() == "code") {
-        spotifyAuthCode = p->value();
-        spotifyAction = GetToken;
-        break;
-      }
-    }
-    if (spotifyAction == GetToken) {
-      request->redirect("/");
-    } else {
-      request->send(204);
-    }
-  });
-
-  server.on("/next", HTTP_GET, [](AsyncWebServerRequest *request) {
-    spotifyAction = Next;
-    request->send(204);
-  });
-
-  server.on("/previous", HTTP_GET, [](AsyncWebServerRequest *request) {
-    spotifyAction = Previous;
-    request->send(204);
-  });
-
-  server.on("/toggle", HTTP_GET, [](AsyncWebServerRequest *request) {
-    spotifyAction = Toggle;
-    request->send(204);
-  });
-
-  server.on("/heap", HTTP_GET,
-            [](AsyncWebServerRequest *request) { request->send(200, "text/plain", String(ESP.getFreeHeap())); });
-
-  server.on("/resetusers", HTTP_GET, [](AsyncWebServerRequest *request) {
-    spotifyAccessToken[0] = '\0';
-    spotifyRefreshToken[0] = '\0';
-    SPIFFS.remove("/data.json");
-    spotifyAction = Idle;
-    request->send(200, "text/plain", "Tokens deleted, restarting");
-    uint32_t start = millis();
-    while (true) {
-      if (millis() - start > 500) ESP.restart();
-      yield();
-    }
-  });
-
-  server.on("/toggleevents", HTTP_GET, [](AsyncWebServerRequest *request) {
-    sendLogEvents = !sendLogEvents;
-    request->send(200, "text/plain", sendLogEvents ? "1" : "0");
-  });
-
-  server.onNotFound([](AsyncWebServerRequest *request) { request->send(404); });
-
-  server.begin();
-
-  readDataJson();
-
-  spotifyHttp.setUserAgent("Knobby/1.0");
-  spotifyHttp.setConnectTimeout(4000);
-  spotifyHttp.setTimeout(4000);
-  spotifyHttp.setReuse(true);
-
-  bool holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
-  if (holdingButton) {
-    delay(30);
-    holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
-  }
-
-  if (spotifyNeedsNewAccessToken()) {
-    spotifyGettingToken = true;
-    spotifyAction = GetToken;
-  }
-
-  xTaskCreate(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask);
-
-  if (holdingButton) {
-    startRandomizingMenu(true);
-  } else if (secondsAsleep == 0 || secondsAsleep > 60 * 40) {
-    startRandomizingMenu(false);
-  }
-}
-
-void backgroundApiLoop(void *params) {
-  for (;;) {
-    if (WiFi.status() == WL_CONNECTED) {
-      uint32_t now = millis();
-
-      switch (spotifyAction) {
-        case Idle:
-          break;
-        case GetToken:
-          if (spotifyAuthCode != "") {
-            spotifyGetToken(spotifyAuthCode.c_str(), gt_authorization_code);
-          } else if (spotifyRefreshToken[0] != '\0') {
-            spotifyGetToken(spotifyRefreshToken, gt_refresh_token);
-          } else {
-            spotifyGettingToken = false;
-            spotifyAction = Idle;
-          }
-          break;
-        case CurrentlyPlaying:
-          if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis) {
-            spotifyCurrentlyPlaying();
-          }
-          break;
-        case CurrentProfile:
-          spotifyCurrentProfile();
-          break;
-        case Next:
-          spotifyNext();
-          break;
-        case Previous:
-          spotifyPrevious();
-          break;
-        case Seek:
-          spotifySeek();
-          break;
-        case Toggle:
-          spotifyToggle();
-          break;
-        case PlayPlaylist:
-          spotifyPlayPlaylist();
-          break;
-        case GetDevices:
-          spotifyGetDevices();
-          displayInvalidated = true;
-          displayInvalidatedPartial = true;
-          break;
-        case SetVolume:
-          if (spotifySetVolumeAtMillis > 0 && millis() >= spotifySetVolumeAtMillis) spotifySetVolume();
-          break;
-        case ToggleShuffle:
-          spotifyToggleShuffle();
-          break;
-        case TransferPlayback:
-          spotifyTransferPlayback();
-          break;
-        case GetPlaylistDescription:
-          spotifyGetPlaylistDescription();
-          break;
-        case GetPlaylists:
-          spotifyGetPlaylists();
-          break;
-      }
-    }
-    if (lastInputMillis - millis() > 500) {
-      delay(50);
-    } else {
-      delay(10);
-    }
-  }
 }
 
 void setActiveUser(SpotifyUser_t *user) {
@@ -1552,7 +1403,7 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
   Serial.printf("> [%d] spotifyApiRequest(%s, %s, %s)\n", ts, method, path.c_str(), content);
 
 
-  spotifyHttp.begin(client, "api.spotify.com", 443, path);
+  spotifyHttp.begin(spotifyWifiClient, "api.spotify.com", 443, path);
   spotifyHttp.addHeader("Authorization", "Bearer " + String(spotifyAccessToken));
     if(strlen(content) == 0) spotifyHttp.addHeader("Content-Length", "0");
 
@@ -1579,6 +1430,15 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
 
   HTTP_response_t response = {code, payload};
   return response;
+}
+
+bool spotifyNeedsNewAccessToken() {
+  if (spotifyAccessToken[0] == '\0') return true;
+  struct timeval tod;
+  gettimeofday(&tod, NULL);
+  time_t currentSeconds = tod.tv_sec;
+  time_t spotifyTokenAge = spotifyTokenSeconds == 0 ? 0 : currentSeconds - spotifyTokenSeconds;
+  return spotifyTokenAge > spotifyTokenLifetime;
 }
 
 /**
