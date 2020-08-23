@@ -63,8 +63,6 @@ time_t secondsAsleep = 0;
 const unsigned long clickEffectMillis = 30;
 unsigned long clickEffectEndMillis = 0;
 unsigned long inactivityMillis = 60000;
-const unsigned int batteryReportIntervalMillis = 60000;
-unsigned long lastBatteryReportMillis = 0;
 unsigned long lastBatteryUpdateMillis = 0;
 unsigned long lastInputMillis = 1;
 unsigned long lastDisplayMillis = 0;
@@ -1298,11 +1296,6 @@ void backgroundApiLoop(void *params) {
 
       switch (spotifyAction) {
         case Idle:
-          if (lastBatteryReportMillis == 0 || now - lastBatteryReportMillis > batteryReportIntervalMillis) {
-            float oldVoltage = batteryVoltage;
-            updateBatteryVoltage();
-            if (batteryVoltage != oldVoltage) reportBatteryVoltage();
-          }
           break;
         case GetToken:
           if (spotifyAuthCode != "") {
@@ -1317,10 +1310,6 @@ void backgroundApiLoop(void *params) {
         case CurrentlyPlaying:
           if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis) {
             spotifyCurrentlyPlaying();
-          } else if (lastBatteryReportMillis == 0 || now - lastBatteryReportMillis > batteryReportIntervalMillis) {
-            float oldVoltage = batteryVoltage;
-            updateBatteryVoltage();
-            if (batteryVoltage != oldVoltage) reportBatteryVoltage();
           }
           break;
         case CurrentProfile:
@@ -2149,20 +2138,4 @@ void spotifyGetPlaylists() {
   }
 
   spotifyAction = CurrentlyPlaying;
-}
-
-void reportBatteryVoltage() {
-  char url[60];
-  String chipId = String((uint32_t)ESP.getEfuseMac(), HEX);
-  chipId.toUpperCase();
-  snprintf(url, sizeof(url), "http://192.168.1.30:8080/rest/items/Knobby_%s_Battery", chipId.c_str());
-  HTTPClient http;
-  http.begin(url);
-  uint32_t now = millis();
-  Serial.printf("> [%d] POST %s %.2f\n", now, url, batteryVoltage);
-  int code = http.POST(String(batteryVoltage));
-  now = millis();
-  if (code <= 0) Serial.printf("> [%d] Error: %s\n", now, http.errorToString(code).c_str());
-  http.end();
-  lastBatteryReportMillis = now;
 }

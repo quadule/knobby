@@ -23,7 +23,6 @@
 #include "spotify.h"
 
 void backgroundApiLoop(void *params);
-void reportBatteryVoltage();
 
 void setActiveDevice(SpotifyDevice_t *device);
 void setActiveUser(SpotifyUser_t *user);
