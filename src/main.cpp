@@ -52,18 +52,18 @@ AsyncWebServer server(80);
 AsyncEventSource events("/events");
 
 int vref = 1100;
-float batteryVoltage = 0.0;
-String nodeName = "knobby";
+RTC_DATA_ATTR float batteryVoltage = 0.0;
+const String nodeName = "knobby";
 RTC_DATA_ATTR unsigned int bootCount = 0;
 RTC_DATA_ATTR time_t bootSeconds = 0;
 bool sendLogEvents = false;
 RTC_DATA_ATTR uint16_t genreIndex = 0;
 RTC_DATA_ATTR time_t lastSleepSeconds = 0;
 time_t secondsAsleep = 0;
-unsigned long clickEffectMillis = 30;
+const unsigned long clickEffectMillis = 30;
 unsigned long clickEffectEndMillis = 0;
 unsigned long inactivityMillis = 60000;
-const unsigned int batteryReportIntervalMillis = 30000;
+const unsigned int batteryReportIntervalMillis = 60000;
 unsigned long lastBatteryReportMillis = 0;
 unsigned long lastBatteryUpdateMillis = 0;
 unsigned long lastInputMillis = 1;
@@ -92,10 +92,10 @@ enum MenuModes {
   NowPlaying = 8
 };
 RTC_DATA_ATTR MenuModes menuMode = AlphabeticList;
-MenuModes lastMenuMode = AlphabeticList;
-MenuModes lastPlaylistMenuMode = AlphabeticList;
-MenuModes lastFullGenreMenuMode = AlphabeticList;
-uint16_t lastMenuIndex = 0;
+RTC_DATA_ATTR MenuModes lastMenuMode = AlphabeticList;
+RTC_DATA_ATTR MenuModes lastPlaylistMenuMode = AlphabeticList;
+RTC_DATA_ATTR MenuModes lastFullGenreMenuMode = AlphabeticList;
+RTC_DATA_ATTR uint16_t lastMenuIndex = 0;
 const char *rootMenuItems[] = {"users",       "devices",    "playlists", "countries",        "name",
                                "name ending", "popularity", "similar",   "now playing"};
 
@@ -112,14 +112,14 @@ typedef struct {
   char name[18];
 } SimilarItem_t;
 std::vector<SimilarItem_t> similarMenuItems;
-int playingGenreIndex = -1;
+RTC_DATA_ATTR int playingGenreIndex = -1;
 int similarMenuGenreIndex = -1;
 
 RTC_DATA_ATTR uint16_t menuSize = GENRE_COUNT;
 RTC_DATA_ATTR uint16_t menuIndex = 0;
-int lastKnobPosition = 0;
+RTC_DATA_ATTR int lastKnobPosition = 0;
 float lastKnobSpeed = 0.0;
-const unsigned long extraLongPressMillis = 1250;
+const unsigned long extraLongPressMillis = 1150;
 unsigned long longPressStartedMillis = 0;
 bool knobRotatedWhileLongPressed = false;
 int rootMenuSimilarIndex = -1;
@@ -129,7 +129,6 @@ TaskHandle_t backgroundApiTask;
 
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1) {
   const uint16_t lineHeight = img.gFont.yAdvance + lineSpacing;
-  // const uint16_t spriteHeight = img.gFont.yAdvance * maxLines + lineSpacing * (maxLines - 1);
   const uint16_t centerX = round(maxWidth / 2.0);
   const uint16_t len = strlen(text);
 
@@ -406,7 +405,7 @@ void startRandomizingMenu(bool autoplay = false) {
   unsigned long now = millis();
   if (now > randomizingMenuEndMillis) {
     inputLocked = true;
-    randomizingMenuEndMillis = now + 1500;
+    randomizingMenuEndMillis = now + 850;
     randomizingMenuTicks = 0;
     randomizingMenuAutoplay = autoplay;
     setMenuMode(lastFullGenreMenuMode, 0);
@@ -686,12 +685,13 @@ void updateDisplay() {
     tft.setCursor(textPadding, lineThree);
     drawCenteredText(hostname, textWidth);
   } else if (now < randomizingMenuEndMillis) {
-    randomizingMenuTicks += 1;
+    randomizingMenuTicks++;
     setMenuIndex(random(getMenuSize(lastFullGenreMenuMode)));
     img.setTextColor(genreColors[genreIndex], TFT_BLACK);
     tft.setCursor(textPadding, lineTwo);
     drawCenteredText(genres[genreIndex], textWidth, 3);
-    delay(pow(randomizingMenuTicks, 2));
+    auto endTickMillis = millis() + pow(randomizingMenuTicks, 3);
+    while (millis() < endTickMillis) delay(10);
     if (millis() >= randomizingMenuEndMillis) {
       inputLocked = false;
       randomizingMenuEndMillis = 0;
@@ -700,10 +700,9 @@ void updateDisplay() {
         playPlaylist(genrePlaylists[genreIndex]);
         playingGenreIndex = genreIndex;
       }
-    } else {
-      displayInvalidated = true;
-      displayInvalidatedPartial = randomizingMenuTicks > 1;
     }
+    displayInvalidated = true;
+    displayInvalidatedPartial = true;
   } else if (menuMode == RootMenu) {
     tft.setCursor(textPadding, lineTwo);
     img.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -711,7 +710,6 @@ void updateDisplay() {
       double pressedProgress = min(1.0, (double)extraLongPressedMillis() / (double)extraLongPressMillis);
       tft.drawFastHLine(0, 0, (int)(pressedProgress * 239), TFT_WHITE);
       drawCenteredText("random", textWidth);
-      delay(10);
     } else if (menuIndex == rootMenuSimilarIndex) {
       drawCenteredText(rootMenuItems[SimilarList], textWidth);
     } else if (menuIndex == rootMenuNowPlayingIndex) {
@@ -998,13 +996,14 @@ void eventsSendError(int code, const char *msg, const char *payload = "") {
 }
 
 void loop() {
-  if (!inputLocked) {
+  uint32_t now = millis();
+  unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
+
+  if (!inputLocked || lastInputDelta > 3000) {
     knob.loop();
     button.tick();
   }
 
-  uint32_t now = millis();
-  unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
   struct timeval tod;
   gettimeofday(&tod, NULL);
   time_t currentSeconds = tod.tv_sec;
@@ -1047,12 +1046,12 @@ void loop() {
     spotifyAction = GetToken;
   }
 
-  if (shouldShowRandom() && extraLongPressedMillis() > extraLongPressMillis) {
+  if (shouldShowRandom() && extraLongPressedMillis() >= extraLongPressMillis) {
     longPressStartedMillis = 0;
     startRandomizingMenu(true);
   }
 
-  if (spotifyState.isPlaying) {
+  if (spotifyState.isPlaying && now > spotifyState.lastUpdateMillis) {
     spotifyState.estimatedProgressMillis = spotifyState.progressMillis + (now - spotifyState.lastUpdateMillis);
   }
 
@@ -1089,7 +1088,7 @@ void loop() {
     }
   }
 
-  if (lastInputDelta > 500) delay(10);
+  if (lastInputDelta > 500 && randomizingMenuEndMillis == 0) delay(25);
 }
 
 void setup() {
@@ -1104,7 +1103,6 @@ void setup() {
   };
   ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
   ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
-  disableCore1WDT();
 
   similarMenuItems.reserve(16);
   spotifyDevices.reserve(10);
@@ -1112,6 +1110,12 @@ void setup() {
   spotifyPlaylists.reserve(100);
   Serial.begin(115200);
   SPIFFS.begin(true);
+  tft.init();
+  tft.setRotation(3);
+  tft.loadFont(FONT_NAME);
+  img.loadFont(FONT_NAME);
+  ico.loadFont("icomoon24");
+  tft.fillScreen(TFT_BLACK);
 
   Serial.printf("Boot #%d, ", bootCount);
   if (bootCount == 0) {
@@ -1122,13 +1126,9 @@ void setup() {
     time_t currentSeconds = tod.tv_sec;
     secondsAsleep = currentSeconds - lastSleepSeconds;
     Serial.printf("asleep for %ld seconds, ", secondsAsleep);
-    if (spotifyState.isPlaying) {
-      if (spotifyState.estimatedProgressMillis + secondsAsleep * 1000 > spotifyState.durationMillis) {
-        spotifyResetProgress();
-      } else {
-        spotifyState.estimatedProgressMillis += secondsAsleep * 1000;
-      }
-    } else if (secondsAsleep > 60 * 10) {
+    if (secondsAsleep > 60 * 10 ||
+        (spotifyState.isPlaying &&
+            (spotifyState.estimatedProgressMillis + secondsAsleep * 1000 > spotifyState.durationMillis))) {
       spotifyResetProgress();
     }
     nextCurrentlyPlayingMillis = 1;
@@ -1149,19 +1149,12 @@ void setup() {
 
   knob.setChangedHandler(knobRotated);
   button.setDebounceTicks(30);
-  button.setClickTicks(350);
-  button.setPressTicks(350);
+  button.setClickTicks(360);
+  button.setPressTicks(360);
   button.attachClick(knobClicked);
   button.attachDoubleClick(knobDoubleClicked);
   button.attachLongPressStart(knobLongPressStarted);
   button.attachLongPressStop(knobLongPressStopped);
-
-  tft.init();
-  tft.setRotation(3);
-  tft.loadFont(FONT_NAME);
-  img.loadFont(FONT_NAME);
-  ico.loadFont("icomoon24");
-  tft.fillScreen(TFT_BLACK);
 
   WiFi.mode(WIFI_STA);
   WiFi.setAutoConnect(true);
@@ -1273,14 +1266,14 @@ void setup() {
 
   readDataJson();
 
-  spotifyHttp.setUserAgent("knobby");
+  spotifyHttp.setUserAgent("Knobby/1.0");
   spotifyHttp.setConnectTimeout(4000);
   spotifyHttp.setTimeout(4000);
   spotifyHttp.setReuse(true);
 
   bool holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
   if (holdingButton) {
-    delay(50);
+    delay(30);
     holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
   }
 
@@ -1289,32 +1282,12 @@ void setup() {
     spotifyAction = GetToken;
   }
 
-  xTaskCreate(backgroundApiLoop,   /* Function to implement the task */
-              "backgroundApiLoop", /* Name of the task */
-              10000,            /* Stack size in words */
-              NULL,             /* Task input parameter */
-              1,                /* Priority of the task */
-              &backgroundApiTask); /* Task handle. */
+  xTaskCreate(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask);
 
   if (holdingButton) {
     startRandomizingMenu(true);
   } else if (secondsAsleep == 0 || secondsAsleep > 60 * 40) {
-    uint16_t index = 0;
-    while (millis() < 2000) {
-      static int ticks = 0;
-      ticks += 1;
-      index = random(GENRE_COUNT);
-      const char *randomGenre = genres[index];
-      uint16_t randomColor = genreColors[index];
-      uint8_t alpha = min(10 + ticks * 10, 255);
-      uint16_t fadedColor = tft.alphaBlend(alpha, randomColor, TFT_BLACK);
-      tft.setCursor(textPadding, lineTwo);
-      img.setTextColor(fadedColor, TFT_BLACK);
-      drawCenteredText(randomGenre, textWidth, 3);
-      delay(pow(ticks, 2));
-    }
-    setMenuMode(AlphabeticList, index);
-    displayInvalidated = true;
+    startRandomizingMenu(false);
   }
 }
 
@@ -1390,7 +1363,11 @@ void backgroundApiLoop(void *params) {
           break;
       }
     }
-    delay(10);
+    if (lastInputMillis - millis() > 500) {
+      delay(50);
+    } else {
+      delay(10);
+    }
   }
 }
 
@@ -1570,10 +1547,8 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
       if ((millis() - lastAvailableMillis) > 5000) {
         response = {504, "Response timeout"};
         break;
-      // } else if (totalReadSize > 0 && (millis() - lastAvailableMillis) > 100) {
-      //   break;
       } else {
-        delay(1);
+        delay(10);
       }
     }
   }
@@ -1741,6 +1716,7 @@ void spotifyCurrentlyPlaying() {
       JsonObject context = json["context"];
       if (context.isNull()) {
         spotifyState.playlistId[0] = '\0';
+        playingGenreIndex = -1;
       } else {
         if (strcmp(context["type"], "playlist") == 0) {
           const char *id = strrchr(context["uri"], ':') + 1;
