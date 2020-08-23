@@ -288,15 +288,13 @@ bool shouldShowSimilarMenu() {
   return lastMenuMode == SimilarList || isGenreMenu(lastMenuMode);
 }
 
-bool shouldShowNowPlaying() { return spotifyState.isPlaying || spotifyState.name[0] != '\0'; }
-
 uint16_t getMenuSize(MenuModes mode) {
   int nextDynamicIndex = SimilarList;
 
   switch (mode) {
     case RootMenu:
       rootMenuSimilarIndex = shouldShowSimilarMenu() ? nextDynamicIndex++ : -1;
-      rootMenuNowPlayingIndex = shouldShowNowPlaying() ? nextDynamicIndex++ : -1;
+      rootMenuNowPlayingIndex = nextDynamicIndex++;
       return nextDynamicIndex;
     case UserList:
       return spotifyUsers.size();
@@ -605,7 +603,8 @@ void knobLongPressStopped() {
     }
   } else if (menuIndex == rootMenuNowPlayingIndex) {
     nextCurrentlyPlayingMillis = lastInputMillis;
-    setMenuMode(NowPlaying, PlayPauseButton);
+    setMenuMode(NowPlaying, lastMenuMode == NowPlaying ? lastMenuIndex : (uint16_t)PlayPauseButton);
+    if (spotifyAction != GetToken) spotifyAction = CurrentlyPlaying;
   } else {
     uint16_t newMenuIndex = lastMenuIndex;
 
@@ -1348,6 +1347,9 @@ void backgroundApiLoop(void *params) {
             spotifyGetToken(spotifyAuthCode.c_str(), gt_authorization_code);
           } else if (spotifyRefreshToken[0] != '\0') {
             spotifyGetToken(spotifyRefreshToken, gt_refresh_token);
+          } else {
+            spotifyGettingToken = false;
+            spotifyAction = Idle;
           }
           break;
         case CurrentlyPlaying:
@@ -1829,7 +1831,7 @@ void spotifyCurrentlyPlaying() {
         inactivityMillis = 60000;
       }
       if (spotifyState.isPlaying && nextCurrentlyPlayingMillis == 0) {
-        nextCurrentlyPlayingMillis = millis() + (spotifyState.durationMillis == 0 ? 1000 : SPOTIFY_POLL_INTERVAL);
+        nextCurrentlyPlayingMillis = millis() + (spotifyState.durationMillis == 0 ? 2000 : SPOTIFY_POLL_INTERVAL);
       }
       if (spotifyState.isPlaying && lastInputMillis <= 1 && menuMode != NowPlaying && millis() < 10000) {
         setMenuMode(NowPlaying, PlayPauseButton);
