@@ -795,18 +795,7 @@ void updateDisplay() {
       char elapsed[11];
       formatMillis(elapsed, spotifyState.estimatedProgressMillis);
       img.setTextColor(spotifyState.isPlaying ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
-      if (!spotifyState.isPlaying || spotifyState.durationMillis == 0) {
-        img.printToSprite(String(elapsed));
-      } else {
-        auto remainingMillis = spotifyState.durationMillis - spotifyState.estimatedProgressMillis;
-        if (remainingMillis > 0 && remainingMillis < (99 * 60 * 60 * 1000)) {
-          char remaining[11];
-          formatMillis(remaining, remainingMillis);
-          char status[12];
-          sprintf(status, "-%s", remaining);
-          img.printToSprite(String(status));
-        }
-      }
+      img.printToSprite(String(elapsed));
     }
     img.pushSprite(tft.getCursorX(), tft.getCursorY());
     img.deleteSprite();
