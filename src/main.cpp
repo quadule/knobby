@@ -861,19 +861,20 @@ void updateDisplay() {
     ico.pushSprite(tft.getCursorX(), tft.getCursorY());
 
     tft.setCursor(tft.getCursorX() - width, lineOne - 2);
-    ico.fillRoundRect(2, 2, width - 4, height - 4, 3, spotifyState.isShuffled ? fg : bg);
+    ico.fillSprite(bg);
     if (spotifyState.isShuffled) {
       ico.setTextColor(bg, fg);
+      ico.fillRoundRect(2, 2, width - 4, height - 4, 3, fg);
     } else {
       ico.setTextColor(spotifyState.disallowsTogglingShuffle ? disabled : fg, bg);
     }
     ico.setCursor(1, 3);
     ico.printToSprite(ICON_SHUFFLE);
-    ico.drawRoundRect(0, 0, width, height, 3, menuIndex == ShuffleButton ? fg : bg);
+    if (menuIndex == ShuffleButton) ico.drawRoundRect(0, 0, width, height, 3, fg);
     ico.pushSprite(tft.getCursorX(), tft.getCursorY());
 
     tft.setCursor(tft.getCursorX() - width, lineOne - 2);
-    ico.fillRoundRect(2, 2, width - 4, height - 4, 3, bg);
+    ico.fillSprite(bg);
     ico.setTextColor(activeSpotifyDevice == nullptr ? disabled : fg, bg);
     ico.setCursor(1, 3);
     String volumeIcon;
@@ -889,7 +890,7 @@ void updateDisplay() {
       volumeIcon = ICON_VOLUME_MUTE;
     }
     ico.printToSprite(volumeIcon);
-    ico.drawRoundRect(0, 0, width, height, 3, menuIndex == VolumeButton ? fg : bg);
+    if (menuIndex == VolumeButton) ico.drawRoundRect(0, 0, width, height, 3, fg);
     ico.pushSprite(tft.getCursorX(), tft.getCursorY());
 
     ico.deleteSprite();
