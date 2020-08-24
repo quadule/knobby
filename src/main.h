@@ -152,6 +152,7 @@ void setActiveUser(SpotifyUser_t *user);
 void setMenuIndex(uint16_t newMenuIndex);
 void setMenuMode(MenuModes newMode, uint16_t newMenuIndex);
 void setStatusMessage(const char *message, unsigned long durationMs = 1300);
+void startDeepSleep();
 void startRandomizingMenu(bool autoplay = false);
 void updateBatteryVoltage();
 void updateDisplay();
