@@ -111,6 +111,7 @@ float lastKnobSpeed = 0.0;
 bool randomizingMenuAutoplay = false;
 time_t secondsAsleep = 0;
 bool sendLogEvents = false;
+bool showingProgressBar = false;
 char statusMessage[24] = "";
 int rootMenuNowPlayingIndex = -1;
 int rootMenuSimilarIndex = -1;

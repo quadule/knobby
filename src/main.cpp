@@ -237,6 +237,7 @@ void loop() {
     updateDisplay();
   } else {
     if (spotifyAction != Idle && spotifyAction != CurrentlyPlaying && spotifyAction != SetVolume && menuMode != RootMenu) {
+      showingProgressBar = true;
       tft.drawFastHLine(-now % tft.width(), 0, 20, TFT_BLACK);
       tft.drawFastHLine(-(now + 20) % tft.width(), 0, 20, TFT_DARKGREY);
       tft.drawFastHLine(-(now + 40) % tft.width(), 0, 20, TFT_BLACK);
@@ -244,8 +245,9 @@ void loop() {
       tft.drawFastHLine(-(now + 80) % tft.width(), 0, 20, TFT_BLACK);
       tft.drawFastHLine(-(now + 100) % tft.width(), 0, 20, TFT_DARKGREY);
       tft.drawFastHLine(-(now + 120) % tft.width(), 0, 20, TFT_BLACK);
-    } else {
+    } else if (showingProgressBar) {
       tft.drawFastHLine(0, 0, 239, TFT_BLACK);
+      showingProgressBar = false;
     }
   }
 
