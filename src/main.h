@@ -80,7 +80,6 @@ const String ICON_SPOTIFY = "\uEA94";
 
 RTC_DATA_ATTR float batteryVoltage = 0.0;
 RTC_DATA_ATTR unsigned int bootCount = 0;
-RTC_DATA_ATTR int lastKnobPosition = 0;
 RTC_DATA_ATTR time_t bootSeconds = 0;
 RTC_DATA_ATTR time_t lastSleepSeconds = 0;
 RTC_DATA_ATTR MenuModes menuMode = AlphabeticList;
@@ -106,6 +105,7 @@ AsyncWebServer server(80);
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
 bool inputLocked = false;
+int lastKnobPosition = 0;
 bool knobRotatedWhileLongPressed = false;
 float lastKnobSpeed = 0.0;
 bool randomizingMenuAutoplay = false;

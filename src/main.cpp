@@ -29,7 +29,8 @@ void setup() {
 
   Serial.printf("Boot #%d, ", bootCount);
   if (bootCount == 0) {
-    genreIndex = menuIndex = random(GENRE_COUNT);
+    genreIndex = random(GENRE_COUNT);
+    setMenuMode(AlphabeticList, genreIndex);
   } else {
     struct timeval tod;
     gettimeofday(&tod, NULL);
