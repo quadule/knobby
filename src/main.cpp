@@ -1499,11 +1499,11 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
               user.selected = true;
               spotifyUsers.push_back(user);
               setActiveUser(&spotifyUsers.back());
-              writeDataJson();
               activeSpotifyDevice = nullptr;
               activeSpotifyDeviceId[0] = '\0';
-              spotifyDevices.clear();
               spotifyDevicesLoaded = false;
+              spotifyDevices.clear();
+              writeDataJson();
             };
           }
         }
@@ -1839,7 +1839,15 @@ void spotifyGetDevices() {
         }
       }
       spotifyDevicesLoaded = true;
-      if (menuMode == DeviceList) {
+      // save the new default device when adding a user
+      if (activeSpotifyDevice != nullptr && activeSpotifyUser->selectedDeviceId[0] == '\0') {
+        setActiveDevice(activeSpotifyDevice);
+        writeDataJson();
+        delay(100);
+        WiFi.disconnect(true);
+        esp_sleep_enable_timer_wakeup(100);
+        esp_deep_sleep_start();
+      } else if (menuMode == DeviceList) {
         setMenuMode(DeviceList, activeDeviceIndex < 0 ? 0 : activeDeviceIndex);
       }
     }
