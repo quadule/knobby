@@ -224,7 +224,8 @@ void loop() {
       clickEffectEndMillis = 0;
       displayInvalidated = true;
       displayInvalidatedPartial = true;
-    } else if (lastInputMillis > lastDisplayMillis || (spotifyState.isPlaying && now - lastDisplayMillis > 950) ||
+    } else if ((randomizingMenuEndMillis > 0 && now < randomizingMenuEndMillis) || lastInputMillis > lastDisplayMillis ||
+               (spotifyState.isPlaying && now - lastDisplayMillis > 950) ||
                (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2)) {
       displayInvalidated = true;
       displayInvalidatedPartial = true;
@@ -578,12 +579,10 @@ void updateDisplay() {
       randomizingMenuEndMillis = 0;
       button.reset();
       if (randomizingMenuAutoplay) {
-        playPlaylist(genrePlaylists[genreIndex]);
         playingGenreIndex = genreIndex;
+        playPlaylist(genrePlaylists[genreIndex]);
       }
     }
-    displayInvalidated = true;
-    displayInvalidatedPartial = true;
   } else if (menuMode == RootMenu) {
     tft.setCursor(textPadding, lineTwo);
     img.setTextColor(TFT_WHITE, TFT_BLACK);
