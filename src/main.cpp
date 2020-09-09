@@ -182,14 +182,11 @@ void setup() {
 }
 
 void loop() {
+  knob.loop();
+  button.tick();
+
   uint32_t now = millis();
   unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
-
-  if (!inputLocked || lastInputDelta > 3000) {
-    knob.loop();
-    button.tick();
-  }
-
   bool connected = WiFi.isConnected();
 
   if (lastInputDelta > inactivityMillis) {
@@ -578,7 +575,6 @@ void updateDisplay() {
     auto endTickMillis = millis() + pow(randomizingMenuTicks, 3);
     while (millis() < endTickMillis) delay(10);
     if (millis() >= randomizingMenuEndMillis) {
-      inputLocked = false;
       randomizingMenuEndMillis = 0;
       button.reset();
       if (randomizingMenuAutoplay) {
@@ -1141,7 +1137,6 @@ void startDeepSleep() {
 void startRandomizingMenu(bool autoplay) {
   unsigned long now = millis();
   if (now > randomizingMenuEndMillis) {
-    inputLocked = true;
     randomizingMenuEndMillis = now + 850;
     randomizingMenuTicks = 0;
     randomizingMenuAutoplay = autoplay;

@@ -104,7 +104,6 @@ AsyncWebServer server(80);
 
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
-bool inputLocked = false;
 int lastKnobPosition = 0;
 bool knobRotatedWhileLongPressed = false;
 float lastKnobSpeed = 0.0;
