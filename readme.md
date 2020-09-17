@@ -1,7 +1,7 @@
 # knobby
 **🎵 A little remote to remind you that there's a lot of music out there.**
 
-* Spin the knob and explore over 4,700 microgenres and 150 countries with playlists from [everynoise.com](http://everynoise.com) and your library
+* Spin the knob and explore over 4,800 microgenres and 150 countries with playlists from [everynoise.com](http://everynoise.com) and your library
 * Control playback and see what's playing on any Spotify Connect device
 * Switch between multiple Spotify accounts and devices
 
