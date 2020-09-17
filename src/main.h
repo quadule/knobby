@@ -1,8 +1,8 @@
 #include <Arduino.h>
 
 #include "ArduinoJson.h"
+#include "ESP32Encoder.h"
 #include "ESPAsyncWebServer.h"
-#include "ESPRotary.h"
 #include "ESPmDNS.h"
 #include "OneButton.h"
 #include "SPIFFS.h"
@@ -24,15 +24,15 @@
 enum MenuModes {
   VolumeControl = -2,
   RootMenu = -1,
-  UserList = 0,
-  DeviceList = 1,
-  PlaylistsList = 2,
-  CountryList = 3,
-  AlphabeticList = 4,
-  AlphabeticSuffixList = 5,
-  PopularityList = 6,
-  SimilarList = 7,
-  NowPlaying = 8
+  DeviceList = 0,
+  PlaylistList = 1,
+  CountryList = 2,
+  AlphabeticList = 3,
+  AlphabeticSuffixList = 4,
+  PopularityList = 5,
+  SimilarList = 6,
+  NowPlaying = 7,
+  UserList = 8
 };
 enum NowPlayingButtons { VolumeButton = 0, ShuffleButton = 1, BackButton = 2, PlayPauseButton = 3, NextButton = 4 };
 enum EventsLogTypes { log_line, log_raw };
@@ -48,14 +48,14 @@ typedef struct {
 #define TFT_LIGHTBLACK 0x1082 /*  16,   16,  16 */
 #define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
 
-const char *rootMenuItems[] = {"users",       "devices",    "playlists", "countries",  "name",
-                               "name ending", "popularity", "similar",   "now playing"};
+const char *rootMenuItems[] = {"devices",    "playlists", "countries",   "name", "name ending",
+                               "popularity", "similar",   "now playing", "users"};
 const int centerX = 120;
 const unsigned long clickEffectMillis = 30;
 const unsigned long extraLongPressMillis = 1150;
 const int lineOne = 10;
 const int lineDivider = lineOne + LINE_HEIGHT + 2;
-const int lineTwo = lineOne + LINE_HEIGHT + 10;
+const int lineTwo = lineOne + LINE_HEIGHT + 11;
 const int lineThree = lineTwo + LINE_HEIGHT;
 const int lineSpacing = 3;
 const int textPadding = 10;
@@ -90,12 +90,13 @@ RTC_DATA_ATTR MenuModes lastMenuMode = AlphabeticList;
 RTC_DATA_ATTR uint16_t lastMenuIndex = 0;
 RTC_DATA_ATTR MenuModes lastFullGenreMenuMode = AlphabeticList;
 RTC_DATA_ATTR MenuModes lastPlaylistMenuMode = AlphabeticList;
+RTC_DATA_ATTR int playingCountryIndex = -1;
 RTC_DATA_ATTR int playingGenreIndex = -1;
 
 TFT_eSPI tft = TFT_eSPI(135, 240);
 TFT_eSprite img = TFT_eSprite(&tft);
 TFT_eSprite ico = TFT_eSprite(&tft);
-ESPRotary knob(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN, 4);
+ESP32Encoder knob;
 OneButton button(ROTARY_ENCODER_BUTTON_PIN, true, true);
 
 TaskHandle_t backgroundApiTask;
@@ -104,26 +105,27 @@ AsyncWebServer server(80);
 
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
-int lastKnobPosition = 0;
+int lastKnobCount = 0;
 bool knobRotatedWhileLongPressed = false;
-float lastKnobSpeed = 0.0;
 bool randomizingMenuAutoplay = false;
 time_t secondsAsleep = 0;
-bool sendLogEvents = false;
+bool sendLogEvents = true;
 bool showingProgressBar = false;
 char statusMessage[24] = "";
 int rootMenuNowPlayingIndex = -1;
 int rootMenuSimilarIndex = -1;
+int rootMenuUsersIndex = -1;
 int similarMenuGenreIndex = -1;
 std::vector<SimilarItem_t> similarMenuItems;
 int vref = 1100;
 unsigned long clickEffectEndMillis = 0;
-unsigned long inactivityMillis = 60000;
+unsigned long inactivityMillis = 90000;
 unsigned long lastBatteryUpdateMillis = 0;
 unsigned long lastDisplayMillis = 0;
 unsigned long lastInputMillis = 1;
 unsigned long lastReconnectAttemptMillis = 0;
 unsigned long longPressStartedMillis = 0;
+unsigned long nowPlayingDisplayMillis = 0;
 unsigned long randomizingMenuEndMillis = 0;
 unsigned long randomizingMenuTicks = 0;
 unsigned long statusMessageUntilMillis = 0;
@@ -132,7 +134,7 @@ unsigned long statusMessageUntilMillis = 0;
 void setup();
 void loop();
 void backgroundApiLoop(void *params);
-void knobRotated(ESPRotary &knob);
+void knobRotated();
 void knobClicked();
 void knobDoubleClicked();
 void knobLongPressStarted();
@@ -146,7 +148,7 @@ bool readDataJson();
 bool writeDataJson();
 uint16_t checkMenuSize(MenuModes mode);
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1);
-void playPlaylist(const char *playlistId);
+void playPlaylist(const char *playlistId, const char *name = "");
 void setActiveDevice(SpotifyDevice_t *device);
 void setActiveUser(SpotifyUser_t *user);
 void setMenuIndex(uint16_t newMenuIndex);
@@ -169,3 +171,4 @@ unsigned long getLongPressedMillis();
 unsigned long getExtraLongPressedMillis();
 bool shouldShowRandom();
 bool shouldShowSimilarMenu();
+bool shouldShowUsersMenu();

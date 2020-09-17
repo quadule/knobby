@@ -64,6 +64,8 @@ typedef struct {
   char name[64] = "";
   char artistName[64] = "";
   char albumName[64] = "";
+  char trackId[SPOTIFY_ID_SIZE + 1] = "";
+  char contextName[64] = "";
   bool isPlaying = false;
   bool isShuffled = false;
   bool disallowsSkippingNext = true;
@@ -126,7 +128,7 @@ bool spotifyPlaylistsLoaded = false;
 
 // Utility functions
 bool spotifyNeedsNewAccessToken();
-void spotifyResetProgress();
+void spotifyResetProgress(bool keepContext = false);
 
 // Spotify Web API methods
 void spotifyGetToken(const char *code, GrantTypes grant_type);
