@@ -14,6 +14,7 @@
 #include "esp_adc_cal.h"
 #include "esp_pm.h"
 #include "esp_system.h"
+#include "esp_task_wdt.h"
 #include "esp_wifi.h"
 #include "genres.h"
 #include "sdkconfig.h"

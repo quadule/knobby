@@ -14,7 +14,8 @@ void setup() {
   };
   ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
   ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
-  // disableCore1WDT();
+  disableCore1WDT();
+  esp_task_wdt_init(10, true);
 
   similarMenuItems.reserve(16);
   spotifyDevices.reserve(10);
@@ -265,10 +266,11 @@ void loop() {
 
   if ((spotifyAction == Idle || spotifyAction == CurrentlyPlaying) && lastInputDelta > 500 &&
       randomizingMenuEndMillis == 0 && !shouldShowRandom()) {
-    delay(50);
+    delay(30);
   } else {
     yield();
   }
+  esp_task_wdt_reset();
 }
 
 void backgroundApiLoop(void *params) {
@@ -1348,7 +1350,7 @@ HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers
   WiFiClientSecure client;
   client.setCACert(spotifyCACertificate);
 
-  if (!client.connect(host, port)) {
+  if (!client.connect(host, port, 4000)) {
     return {503, "Service unavailable (unable to connect)"};
   }
 
