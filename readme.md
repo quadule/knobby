@@ -1,20 +1,21 @@
 # knobby
 **🎵 A little remote to remind you that there's a lot of music out there.**
 
-* Spin the knob and explore over 4,800 microgenres and 150 countries with playlists from [everynoise.com](http://everynoise.com) and your library
+* Spin the knob and explore across 5,000 microgenres and 150 countries with playlists from [everynoise.com](http://everynoise.com) and your own library
 * Control playback and see what's playing on any Spotify Connect device
 * Switch between multiple Spotify accounts and devices
 
-<a href="photos/knobby1.jpg?raw=true"><img src="photos/thumb.knobby1.jpg?raw=true" width="180" height="240" alt="knobby with coin"></a>
+<img src="photos/demo.gif?raw=true" width="427" height="240" alt="demo of genre selection">
+
+<a href="photos/knobby3.jpg?raw=true"><img src="photos/thumb.knobby3.jpg?raw=true" width="180" height="240" alt="knobby with coin"></a>
 <a href="photos/knobby2.jpg?raw=true"><img src="photos/thumb.knobby2.jpg?raw=true" width="360" height="240" alt="knobby side view"></a>
-<a href="photos/knobby4.jpg?raw=true"><img src="photos/thumb.knobby4.jpg?raw=true" width="180" height="240" alt="knobby playing"></a>
 
 ## Hardware
 
 * LilyGO TTGO T-Display ESP32 board with ST7789 240x135 display
 * Bourns PEC11R-4215F-S0024 rotary encoder
 * MakerFocus 1000mAh LiPo battery
-* [Case and knob](/case) printed in Hatchbox wood PLA, sanded, stained and lacquered
+* [3D printed case and knob](/case)
 
 Connect the rotary encoder A and B pins to GPIO 12 and 13 and the button pin to GPIO 15.
 
