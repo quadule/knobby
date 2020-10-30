@@ -3,6 +3,7 @@
 #include "ArduinoJson.h"
 #include "ESP32Encoder.h"
 #include "ESPAsyncWebServer.h"
+#include "ESPAsync_WiFiManager.h"
 #include "ESPmDNS.h"
 #include "OneButton.h"
 #include "SPIFFS.h"
@@ -79,6 +80,10 @@ const String ICON_PAUSE = "\uE90D";
 const String ICON_WIFI = "\uE90E";
 const String ICON_SPOTIFY = "\uEA94";
 
+String configPassword;
+String wifiSSID;
+String wifiPassword;
+
 RTC_DATA_ATTR float batteryVoltage = 0.0;
 RTC_DATA_ATTR unsigned int bootCount = 0;
 RTC_DATA_ATTR time_t bootSeconds = 0;
@@ -93,6 +98,7 @@ RTC_DATA_ATTR MenuModes lastFullGenreMenuMode = AlphabeticList;
 RTC_DATA_ATTR MenuModes lastPlaylistMenuMode = AlphabeticList;
 RTC_DATA_ATTR int playingCountryIndex = -1;
 RTC_DATA_ATTR int playingGenreIndex = -1;
+RTC_DATA_ATTR bool forceStartConfigPortalOnBoot = false;
 
 TFT_eSPI tft = TFT_eSPI(135, 240);
 TFT_eSprite img = TFT_eSprite(&tft);
@@ -103,6 +109,8 @@ OneButton button(ROTARY_ENCODER_BUTTON_PIN, true, true);
 TaskHandle_t backgroundApiTask;
 AsyncEventSource events("/events");
 AsyncWebServer server(80);
+DNSServer dnsServer;
+ESPAsync_WiFiManager *wifiManager;
 
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
@@ -119,6 +127,7 @@ int rootMenuUsersIndex = -1;
 int similarMenuGenreIndex = -1;
 std::vector<SimilarItem_t> similarMenuItems;
 int vref = 1100;
+long lastConnectedMillis = -1;
 unsigned long clickEffectEndMillis = 0;
 unsigned long inactivityMillis = 90000;
 unsigned long lastBatteryUpdateMillis = 0;
@@ -130,6 +139,7 @@ unsigned long nowPlayingDisplayMillis = 0;
 unsigned long randomizingMenuEndMillis = 0;
 unsigned long randomizingMenuTicks = 0;
 unsigned long statusMessageUntilMillis = 0;
+unsigned long wifiConnectTimeoutMillis = 45000;
 
 // Events
 void setup();
@@ -149,7 +159,10 @@ bool readDataJson();
 bool writeDataJson();
 uint16_t checkMenuSize(MenuModes mode);
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1);
+void drawDivider(bool selected);
+void drawWifiSetup();
 void playPlaylist(const char *playlistId, const char *name = "");
+void saveAndSleep();
 void setActiveDevice(SpotifyDevice_t *device);
 void setActiveUser(SpotifyUser_t *user);
 void setMenuIndex(uint16_t newMenuIndex);

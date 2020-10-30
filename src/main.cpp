@@ -24,7 +24,6 @@ void setup() {
   SPIFFS.begin(true);
   tft.init();
   tft.setRotation(3);
-  tft.loadFont(FONT_NAME);
   img.loadFont(FONT_NAME);
   ico.loadFont("icomoon24");
   tft.fillScreen(TFT_BLACK);
@@ -71,16 +70,39 @@ void setup() {
   button.attachLongPressStart(knobLongPressStarted);
   button.attachLongPressStop(knobLongPressStopped);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.setAutoConnect(true);
-  WiFi.setAutoReconnect(true);
-  WiFi.begin(ssid, password);
-  WiFi.setHostname(nodeName.c_str());
+  readDataJson();
 
-  wifi_config_t current_conf;
-  esp_wifi_get_config(WIFI_IF_STA, &current_conf);
-  current_conf.sta.listen_interval = 10;
-  esp_wifi_set_config(WIFI_IF_STA, &current_conf);
+  if (configPassword.isEmpty()) {
+    unsigned char randomBytes[8];
+    for (auto i=0; i<8; i++) randomBytes[i] = random(256);
+    configPassword = base64::encode((const uint8_t *)&randomBytes, 8).substring(0, 8);
+    configPassword.toLowerCase();
+    configPassword.replace('1', '!');
+    configPassword.replace('l', '@');
+    configPassword.replace('+', '?');
+    configPassword.replace('/', '&');
+    writeDataJson();
+  }
+
+  if (forceStartConfigPortalOnBoot || wifiSSID.isEmpty()) {
+    if (forceStartConfigPortalOnBoot) {
+      forceStartConfigPortalOnBoot = false;
+    } else {
+      Serial.println("No saved wifi settings, starting config portal.");
+    }
+    drawWifiSetup();
+    wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
+    wifiManager->setConfigPortalTimeout(180);
+    wifiManager->setSaveConfigCallback(saveAndSleep);
+    wifiManager->startConfigPortal("knobby", configPassword.c_str());
+  } else {
+    Serial.printf("Connecting to saved wifi SSID: %s...\n", wifiSSID.c_str());
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoConnect(true);
+    WiFi.setAutoReconnect(true);
+    WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
+    WiFi.setHostname(nodeName.c_str());
+  }
 
   if (MDNS.begin(nodeName.c_str())) {
     MDNS.addService("http", "tcp", 80);
@@ -164,8 +186,6 @@ void setup() {
 
   server.begin();
 
-  readDataJson();
-
   spotifyWifiClient.setCACert(spotifyCACertificate);
   spotifyHttp.setUserAgent("Knobby/1.0");
   spotifyHttp.setConnectTimeout(4000);
@@ -207,14 +227,34 @@ void loop() {
     startDeepSleep();
   }
 
-  if (!connected && now - lastReconnectAttemptMillis > 3000) {
-    Serial.printf("> [%d] Trying to connect to network %s...\n", now, ssid);
-    WiFi.begin();
+  if (connected && lastReconnectAttemptMillis > lastConnectedMillis) {
+    if (lastReconnectAttemptMillis > 0) {
+      setStatusMessage("reconnected", 1000);
+    } else {
+      setStatusMessage("", 0);
+    }
+    displayInvalidatedPartial = false;
+    lastConnectedMillis = now;
+
+    wifi_config_t current_conf;
+    esp_wifi_get_config(WIFI_IF_STA, &current_conf);
+    current_conf.sta.listen_interval = 10;
+    esp_wifi_set_config(WIFI_IF_STA, &current_conf);
+  } else if (!connected && now - lastReconnectAttemptMillis > 3000) {
     lastReconnectAttemptMillis = now;
+    if (lastConnectedMillis < 0 && now > 5000) setStatusMessage("connecting to wifi", 1000);
+    if (lastConnectedMillis < 0 && now >= wifiConnectTimeoutMillis) {
+      Serial.printf("> [%d] No wifi after %d seconds, starting config portal.\n", now, (int)wifiConnectTimeoutMillis / 1000);
+      forceStartConfigPortalOnBoot = true;
+      gpio_hold_dis((gpio_num_t)TFT_BL);
+      esp_sleep_enable_timer_wakeup(100);
+      esp_deep_sleep_start();
+    } else {
+      WiFi.begin();
+    }
   }
 
   if (connected && !spotifyGettingToken && spotifyNeedsNewAccessToken()) {
-    Serial.printf("> [%d] Need access token...\n", now);
     spotifyGettingToken = true;
     spotifyAction = GetToken;
   }
@@ -592,6 +632,17 @@ void drawDivider(bool selected) {
   }
 }
 
+void drawWifiSetup() {
+  tft.setCursor(textPadding, lineOne);
+  drawCenteredText("join to setup", textWidth, 1);
+  drawDivider(false);
+  tft.setCursor(textPadding, lineTwo);
+  drawCenteredText("wifi: knobby", textWidth, 1);
+  tft.setCursor(textPadding, lineThree);
+  String line = "pass: " + configPassword;
+  drawCenteredText(line.c_str(), textWidth, 1);
+}
+
 void updateDisplay() {
   displayInvalidated = false;
   if (!displayInvalidatedPartial) tft.fillScreen(TFT_BLACK);
@@ -601,10 +652,11 @@ void updateDisplay() {
   unsigned long now = millis();
 
   if (spotifyUsers.empty()) {
-    tft.setCursor(textPadding, lineTwo);
-    drawCenteredText("setup at http://", textWidth);
-    tft.setCursor(textPadding, lineThree);
-    drawCenteredText((nodeName + ".local").c_str(), textWidth);
+    tft.setCursor(textPadding, lineOne);
+    drawCenteredText("spotify log in", textWidth);
+    drawDivider(true);
+    tft.setCursor(0, lineTwo);
+    drawCenteredText(("http://" + nodeName + ".local").c_str(), 239);
   } else if (now < randomizingMenuEndMillis) {
     randomizingMenuTicks++;
     setMenuIndex(random(checkMenuSize(lastFullGenreMenuMode)));
@@ -1162,6 +1214,17 @@ void setStatusMessage(const char *message, unsigned long durationMs) {
   displayInvalidatedPartial = true;
 }
 
+void saveAndSleep() {
+  forceStartConfigPortalOnBoot = false;
+  wifiSSID = wifiManager->WiFi_SSID();
+  wifiPassword = wifiManager->WiFi_Pass();
+  writeDataJson();
+  WiFi.disconnect(true);
+  gpio_hold_dis((gpio_num_t)TFT_BL);
+  esp_sleep_enable_timer_wakeup(100);
+  esp_deep_sleep_start();
+}
+
 void startDeepSleep() {
   // don't sleep on transient menus
   if (menuMode == SimilarList || menuMode == PlaylistList || (!isPlaylistMenu(menuMode) && menuMode != NowPlaying)) setMenuMode(AlphabeticList, genreIndex);
@@ -1290,9 +1353,14 @@ bool readDataJson() {
     Serial.printf("Failed to read data.json: %s\n", error.c_str());
     return false;
   } else {
+    Serial.print("Loading data.json: ");
     serializeJson(doc, Serial);
     Serial.println();
   }
+
+  configPassword = doc["configPassword"] | "";
+  wifiSSID = doc["wifiSSID"] | WiFi.SSID();
+  wifiPassword = doc["wifiPassword"] | WiFi.psk();
 
   JsonArray usersArray = doc["users"];
   spotifyUsers.clear();
@@ -1321,6 +1389,10 @@ bool writeDataJson() {
   File f = SPIFFS.open("/data.json", "w+");
   DynamicJsonDocument doc(5000);
 
+  doc["configPassword"] = configPassword;
+  doc["wifiSSID"] = wifiSSID;
+  doc["wifiPassword"] = wifiPassword;
+
   JsonArray usersArray = doc.createNestedArray("users");
 
   for (SpotifyUser_t user : spotifyUsers) {
@@ -1338,6 +1410,7 @@ bool writeDataJson() {
     Serial.printf("Failed to write data.json: %d\n", bytes);
     return false;
   }
+  Serial.print("Saving data.json: ");
   serializeJson(doc, Serial);
   Serial.println();
   return true;

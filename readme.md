@@ -22,7 +22,7 @@ Connect the rotary encoder A and B pins to GPIO 12 and 13 and the button pin to 
 ## Setup
 
 1. [Register an application for the Spotify API](https://developer.spotify.com/dashboard/) and configure `http://knobby.local/callback` as a redirect URI
-2. Copy `src/settings.h.example` to `settings.h` and fill in your API and wi-fi credentials
+2. Copy `src/settings.h.example` to `settings.h` and fill in your API credentials
 3. Build and upload with [PlatformIO](https://platformio.org/): `platformio run && platformio run --target upload && platformio run --target uploadfs`
 4. Visit http://knobby.local to authorize your Spotify account
 
