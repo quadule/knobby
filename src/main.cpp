@@ -29,8 +29,11 @@ void setup() {
   tft.fillScreen(TFT_BLACK);
   gpio_hold_en((gpio_num_t)TFT_BL);
 
-  Serial.printf("\nBoot #%d, ", bootCount);
   if (bootCount == 0) {
+    delay(1000);
+    Serial.print("\n\r\n");
+    Serial.flush();
+    log_i("Boot #%d", bootCount);
     genreIndex = random(GENRE_COUNT);
     setMenuMode(AlphabeticList, genreIndex);
   } else {
@@ -38,7 +41,7 @@ void setup() {
     gettimeofday(&tod, NULL);
     time_t currentSeconds = tod.tv_sec;
     secondsAsleep = currentSeconds - lastSleepSeconds;
-    Serial.printf("asleep for %ld seconds, ", secondsAsleep);
+    log_i("Boot #%d, asleep for %ld seconds", bootCount, secondsAsleep);
     if (secondsAsleep > 60 * 10 ||
         (spotifyState.isPlaying &&
          (spotifyState.estimatedProgressMillis + secondsAsleep * 1000 > spotifyState.durationMillis))) {
@@ -52,12 +55,12 @@ void setup() {
   esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
   //Check type of calibration value used to characterize ADC
   if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
-    Serial.printf("eFuse Vref: %u mV\n", adc_chars.vref);
+    log_d("eFuse Vref: %u mV", adc_chars.vref);
     vref = adc_chars.vref;
   } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
-    Serial.printf("Two Point --> coeff_a:%umV coeff_b:%umV\n", adc_chars.coeff_a, adc_chars.coeff_b);
+    log_d("Two Point --> coeff_a:%umV coeff_b:%umV", adc_chars.coeff_a, adc_chars.coeff_b);
   } else {
-    Serial.println("Default Vref: 1100mV");
+    log_d("Default Vref: 1100mV");
   }
 
   ESP32Encoder::useInternalWeakPullResistors = UP;
@@ -88,7 +91,7 @@ void setup() {
     if (forceStartConfigPortalOnBoot) {
       forceStartConfigPortalOnBoot = false;
     } else {
-      Serial.println("No saved wifi settings, starting config portal.");
+      log_w("No saved wifi settings, starting config portal.");
     }
     drawWifiSetup();
     wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
@@ -97,7 +100,7 @@ void setup() {
     wifiManager->autoConnect("knobby", configPassword.c_str());
     tft.fillScreen(TFT_BLACK);
   } else {
-    Serial.printf("Connecting to saved wifi SSID: %s...\n", wifiSSID.c_str());
+    log_i("Connecting to saved wifi SSID: %s...", wifiSSID.c_str());
     WiFi.mode(WIFI_STA);
     WiFi.setAutoConnect(true);
     WiFi.setAutoReconnect(true);
@@ -107,19 +110,19 @@ void setup() {
 
   if (MDNS.begin(nodeName.c_str())) {
     MDNS.addService("http", "tcp", 80);
-    Serial.printf("mDNS responder started, visit http://%s.local\n", nodeName.c_str());
+    log_i("mDNS responder started, visit http://%s.local", nodeName.c_str());
   } else {
-    Serial.println("Error setting up MDNS responder!");
+    log_e("Error setting up MDNS responder!");
   }
 
   // Initialize HTTP server handlers
-  events.onConnect([](AsyncEventSourceClient *client) { Serial.printf("\n> [%d] events.onConnect\n", (int)millis()); });
+  events.onConnect([](AsyncEventSourceClient *client) { log_i("[%d] events.onConnect", (int)millis()); });
   server.addHandler(&events);
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     inactivityMillis = 1000 * 60 * 3;
     uint32_t ts = millis();
-    Serial.printf("> [%d] server.on /\n", ts);
+    log_i("[%d] server.on /", ts);
     if (spotifyAccessToken[0] == '\0') {
       request->redirect("http://" + nodeName + ".local/authorize");
     } else {
@@ -129,7 +132,7 @@ void setup() {
 
   server.on("/authorize", HTTP_GET, [](AsyncWebServerRequest *request) {
     uint32_t ts = millis();
-    Serial.printf("> [%d] server.on /\n", ts);
+    log_i("[%d] server.on /authorize", ts);
     spotifyGettingToken = true;
     const String authUrl =
         "https://accounts.spotify.com/authorize/?response_type=code&scope="
@@ -165,6 +168,8 @@ void setup() {
             [](AsyncWebServerRequest *request) { request->send(200, "text/plain", String(ESP.getFreeHeap())); });
 
   server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request) {
+    uint32_t ts = millis();
+    log_i("[%d] server.on /reset", ts);
     SPIFFS.remove("/data.json");
     spotifyAction = Idle;
     spotifyAccessToken[0] = '\0';
@@ -176,6 +181,12 @@ void setup() {
     gpio_hold_dis((gpio_num_t)TFT_BL);
     esp_sleep_enable_timer_wakeup(1000);
     esp_deep_sleep_start();
+  });
+
+  server.on("/sleep", HTTP_GET, [](AsyncWebServerRequest *request) {
+    uint32_t ts = millis();
+    log_i("[%d] server.on /sleep", ts);
+    startDeepSleep();
   });
 
   server.on("/toggleevents", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -250,7 +261,7 @@ void loop() {
     lastReconnectAttemptMillis = now;
     if (lastConnectedMillis < 0 && now > 5000) setStatusMessage("connecting to wifi", 1000);
     if (lastConnectedMillis < 0 && now >= wifiConnectTimeoutMillis) {
-      Serial.printf("> [%d] No wifi after %d seconds, starting config portal.\n", now, (int)wifiConnectTimeoutMillis / 1000);
+      log_w("[%d] No wifi after %d seconds, starting config portal.", now, (int)wifiConnectTimeoutMillis / 1000);
       forceStartConfigPortalOnBoot = true;
       gpio_hold_dis((gpio_num_t)TFT_BL);
       esp_sleep_enable_timer_wakeup(100);
@@ -1245,8 +1256,7 @@ void startDeepSleep() {
   lastSleepSeconds = tod.tv_sec;
   spotifyAction = Idle;
   tft.fillScreen(TFT_BLACK);
-  eventsSendLog("Entering deep sleep.");
-  Serial.printf("> [%d] Entering deep sleep.\n", (uint32_t)millis());
+  log_i("[%d] Entering deep sleep.", (uint32_t)millis());
   WiFi.disconnect(true);
   gpio_hold_dis((gpio_num_t)TFT_BL);
   digitalWrite(TFT_BL, LOW);
@@ -1306,35 +1316,6 @@ void eventsSendLog(const char *logData, EventsLogTypes type) {
   events.send(logData, type == log_line ? "line" : "raw");
 }
 
-void eventsSendInfo(const char *msg, const char *payload) {
-  if (!sendLogEvents) return;
-
-  DynamicJsonDocument json(512);
-  json["msg"] = msg;
-  if (strlen(payload)) {
-    json["payload"] = payload;
-  }
-
-  String info;
-  serializeJson(json, info);
-  events.send(info.c_str(), "info");
-}
-
-void eventsSendError(int code, const char *msg, const char *payload) {
-  if (!sendLogEvents) return;
-
-  DynamicJsonDocument json(512);
-  json["code"] = code;
-  json["msg"] = msg;
-  if (strlen(payload)) {
-    json["payload"] = payload;
-  }
-
-  String error;
-  serializeJson(json, error);
-  events.send(error.c_str(), "error");
-}
-
 void setActiveUser(SpotifyUser_t *user) {
   activeSpotifyUser = user;
   strncpy(spotifyRefreshToken, activeSpotifyUser->refreshToken, sizeof(spotifyRefreshToken) - 1);
@@ -1366,7 +1347,7 @@ bool readDataJson() {
   f.close();
 
   if (error) {
-    Serial.printf("Failed to read data.json: %s\n", error.c_str());
+    log_e("Failed to read data.json: %s", error.c_str());
     return false;
   } else {
     Serial.print("Loading data.json: ");
@@ -1423,7 +1404,7 @@ bool writeDataJson() {
   size_t bytes = serializeJson(doc, f);
   f.close();
   if (bytes <= 0) {
-    Serial.printf("Failed to write data.json: %d\n", bytes);
+    log_e("Failed to write data.json: %d", bytes);
     return false;
   }
   Serial.print("Saving data.json: ");
@@ -1436,7 +1417,7 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
   uint32_t ts = millis();
   spotifyApiRequestStartedMillis = ts;
   String path = String("/v1/") + endpoint;
-  Serial.printf("> [%d] spotifyApiRequest(%s, %s, %s)\n", ts, method, path.c_str(), content);
+  log_i("[%d] %s %s %s", ts, method, path.c_str(), content);
 
   spotifyHttp.begin(spotifyWifiClient, "api.spotify.com", 443, path);
   spotifyHttp.addHeader("Authorization", "Bearer " + String(spotifyAccessToken));
@@ -1451,13 +1432,13 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
   }
 
   if (code == 401) {
-    Serial.println("401 Unauthorized, clearing spotifyAccessToken");
+    log_e("401 Unauthorized, clearing spotifyAccessToken");
     spotifyAccessToken[0] = '\0';
   } else if (code == 204 || spotifyHttp.getSize() == 0) {
-    // Serial.println("empty response, returning");
+    // log_e("empty response, returning");
   } else {
     if (!payload.reserve(spotifyHttp.getSize() + 1)) {
-      Serial.printf("not enough memory to reserve a string! need: %d", (spotifyHttp.getSize() + 1));
+      log_e("not enough memory to reserve a string! need: %d", (spotifyHttp.getSize() + 1));
     }
     spotifyHttp.writeToStream(&payload);
   }
@@ -1485,12 +1466,11 @@ bool spotifyNeedsNewAccessToken() {
  */
 void spotifyGetToken(const char *code, GrantTypes grant_type) {
   uint32_t ts = millis();
-  Serial.printf("> [%d] spotifyGetToken(%s, %s)\n", ts, code,
-                grant_type == gt_authorization_code ? "authorization" : "refresh");
-
+  const char *method = "POST";
+  const char *path = "/api/token";
+  char requestContent[768];
   bool success = false;
 
-  char requestContent[768];
   if (grant_type == gt_authorization_code) {
     snprintf(requestContent, sizeof(requestContent),
              "grant_type=authorization_code&redirect_uri=http%%3A%%2F%%2F%s.local%%2Fcallback&code=%s",
@@ -1500,6 +1480,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
              "grant_type=refresh_token&refresh_token=%s",
              code);
   }
+  log_i("[%d] %s %s %s", ts, method, path, requestContent);
 
   HTTPClient http;
   StreamString payload;
@@ -1507,19 +1488,19 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
   http.setConnectTimeout(4000);
   http.setTimeout(4000);
   http.setReuse(false);
-  http.begin(spotifyWifiClient, "accounts.spotify.com", 443, "/api/token");
+  http.begin(spotifyWifiClient, "accounts.spotify.com", 443, path);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
   http.setAuthorization(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET);
 
-  int httpCode = http.sendRequest("POST", (uint8_t *)requestContent, strlen(requestContent));
+  int httpCode = http.sendRequest(method, (uint8_t *)requestContent, strlen(requestContent));
   if (httpCode == 401) {
-    Serial.println("401 Unauthorized, clearing spotifyAccessToken");
+    log_e("401 Unauthorized, clearing spotifyAccessToken");
     spotifyAccessToken[0] = '\0';
   } else if (httpCode == 204 || http.getSize() == 0) {
-    Serial.println("empty response, returning");
+    log_e("empty response, returning");
   } else {
     if (!payload.reserve(http.getSize() + 1)) {
-      Serial.printf("not enough memory to reserve a string! need: %d", (http.getSize() + 1));
+      log_e("not enough memory to reserve a string! need: %d", (http.getSize() + 1));
     }
     http.writeToStream(&payload);
   }
@@ -1561,15 +1542,13 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
         }
       }
     } else {
-      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", (int)millis(), payload.c_str());
-      eventsSendError(500, "Unable to parse response payload", payload.c_str());
+      log_e("[%d] Unable to parse response payload: %s", (int)millis(), payload.c_str());
       delay(4000);
     }
   } else if (httpCode < 0) {
     // retry immediately
   } else {
-    Serial.printf("  [%d] %d - %s\n", (int)millis(), httpCode, payload.c_str());
-    eventsSendError(httpCode, "Spotify error", payload.c_str());
+    log_e("[%d] %d - %s", (int)millis(), httpCode, payload.c_str());
     Serial.flush();
     inactivityMillis = 15000;
     delay(8000);
@@ -1703,9 +1682,8 @@ void spotifyCurrentlyPlaying() {
         displayInvalidatedPartial = true;
       }
     } else {
-      Serial.printf("  [%d] Heap free: %d\n", ts, ESP.getFreeHeap());
-      Serial.printf("  [%d] Error %s parsing response:\n  %s\n", ts, error.c_str(), response.payload.c_str());
-      eventsSendError(500, error.c_str(), response.payload.c_str());
+      log_e("[%d] Heap free: %d", ts, ESP.getFreeHeap());
+      log_e("[%d] Error %s parsing response: %s", ts, error.c_str(), response.payload.c_str());
     }
   } else if (response.httpCode == 204) {
     spotifyAction = Idle;
@@ -1715,8 +1693,8 @@ void spotifyCurrentlyPlaying() {
   } else if (response.httpCode < 0 || response.httpCode > 500) {
     nextCurrentlyPlayingMillis = 1; // retry immediately
   } else {
-    Serial.printf("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    log_e("[%d] %d - %s", ts, response.httpCode, response.payload.c_str());
+    log_e("[%d] %d - %s", ts, response.httpCode, response.payload.c_str());
     delay(4000);
   }
 }
@@ -1742,12 +1720,10 @@ void spotifyCurrentProfile() {
       writeDataJson();
       if (menuMode == UserList) setMenuMode(UserList, spotifyUsers.size() - 1);
     } else {
-      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", ts, response.payload.c_str());
-      eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
+      log_e("[%d] Unable to parse response payload:\n  %s", ts, response.payload.c_str());
     }
   } else {
-    Serial.printf("  [%d] %d - %s\n", ts, response.httpCode, response.payload.c_str());
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    log_e("[%d] %d - %s", ts, response.httpCode, response.payload.c_str());
   }
 
   spotifyAction = spotifyDevicesLoaded ? CurrentlyPlaying : GetDevices;
@@ -1760,7 +1736,7 @@ void spotifyNext() {
     spotifyState.isPlaying = true;
     spotifyState.disallowsSkippingPrev = false;
   } else {
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
   }
   spotifyAction = CurrentlyPlaying;
 };
@@ -1772,7 +1748,7 @@ void spotifyPrevious() {
     spotifyState.isPlaying = true;
     spotifyState.disallowsSkippingNext = false;
   } else {
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
   }
   spotifyAction = CurrentlyPlaying;
 };
@@ -1791,7 +1767,7 @@ void spotifySeek() {
     displayInvalidated = true;
     displayInvalidatedPartial = true;
   } else {
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
     spotifyResetProgress(true);
   }
   spotifyAction = CurrentlyPlaying;
@@ -1822,7 +1798,7 @@ void spotifyToggle() {
     displayInvalidated = true;
     displayInvalidatedPartial = true;
   } else {
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
     spotifyResetProgress(true);
     nextCurrentlyPlayingMillis = millis();
     spotifyAction = CurrentlyPlaying;
@@ -1848,7 +1824,7 @@ void spotifyPlayPlaylist() {
     spotifyState.isPlaying = true;
     strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, SPOTIFY_ID_SIZE);
   } else {
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
   }
   spotifyAction = CurrentlyPlaying;
   spotifyPlayPlaylistId = nullptr;
@@ -1955,7 +1931,7 @@ void spotifyToggleShuffle() {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
     spotifyState.isShuffled = !spotifyState.isShuffled;
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
   }
   spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
 };
@@ -1969,7 +1945,7 @@ void spotifyTransferPlayback() {
   if (response.httpCode == 204) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
   }
   spotifyAction = CurrentlyPlaying;
 };
@@ -2019,7 +1995,7 @@ void spotifyGetPlaylistDescription() {
       setMenuMode(SimilarList, 0);
     }
   } else {
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
   }
   spotifyAction = CurrentlyPlaying;
 };
@@ -2066,7 +2042,7 @@ void spotifyGetPlaylists() {
       }
     } else {
       nextOffset = -1;
-      eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
+      log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
     }
   }
 

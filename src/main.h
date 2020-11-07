@@ -153,8 +153,6 @@ void knobLongPressStopped();
 
 // Actions
 void eventsSendLog(const char *logData, EventsLogTypes type = log_line);
-void eventsSendInfo(const char *msg, const char *payload = "");
-void eventsSendError(int code, const char *msg, const char *payload = "");
 bool readDataJson();
 bool writeDataJson();
 uint16_t checkMenuSize(MenuModes mode);
