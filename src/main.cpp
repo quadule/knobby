@@ -1417,106 +1417,6 @@ bool writeDataJson() {
   return true;
 }
 
-HTTP_response_t httpRequest(const char *host, uint16_t port, const char *headers, const char *content = "") {
-  uint32_t ts = millis();
-  Serial.printf("> [%d] httpRequest(%s, %d, ...)\n", ts, host, port);
-
-  WiFiClientSecure client;
-  client.setCACert(spotifyCACertificate);
-
-  if (!client.connect(host, port, 4000)) {
-    return {503, "Service unavailable (unable to connect)"};
-  }
-
-  /*
-   * Send HTTP request
-   */
-
-  // Serial.printf("  [%d] Request:\n%s%s\n", ts, headers, content);
-  eventsSendLog(">>>> REQUEST");
-  eventsSendLog(headers);
-  eventsSendLog(content);
-
-  client.print(headers);
-  if (strlen(content)) {
-    client.print(content);
-  }
-
-  /*
-   * Get HTTP response
-   */
-
-  uint32_t timeout = millis();
-  while (!client.available()) {
-    if (millis() - timeout > 4000) {
-      client.stop();
-      return {503, "Service unavailable (timeout)"};
-    }
-    yield();
-  }
-
-  // Serial.printf("  [%d] Response:\n", ts);
-  eventsSendLog("<<<< RESPONSE");
-
-  HTTP_response_t response = {0, ""};
-  boolean EOH = false;
-  uint32_t contentLength = 0;
-  uint16_t buffSize = 1024;
-  uint32_t readSize = 0;
-  uint32_t totalReadSize = 0;
-  uint32_t lastAvailableMillis = millis();
-  char buff[buffSize];
-
-  while (client.connected()) {
-    int availableSize = client.available();
-    if (availableSize) {
-      lastAvailableMillis = millis();
-
-      if (!EOH) {
-        // Read response headers
-        readSize = client.readBytesUntil('\n', buff, buffSize);
-        buff[readSize - 1] = '\0';  // replace \r with \0
-        eventsSendLog(buff);
-        if (startsWith(buff, "HTTP/1.")) {
-          buff[12] = '\0';
-          response.httpCode = atoi(&buff[9]);
-          if (response.httpCode == 204) {
-            break;
-          }
-        } else if (startsWith(buff, "Content-Length:")) {
-          contentLength = atoi(&buff[16]);
-          if (contentLength == 0) {
-            break;
-          }
-          response.payload.reserve(contentLength + 1);
-        } else if (buff[0] == '\0') {
-          // End of headers
-          EOH = true;
-          eventsSendLog("");
-        }
-      } else {
-        // Read response content
-        readSize = client.readBytes(buff, min(buffSize - 1, availableSize));
-        buff[readSize] = '\0';
-        eventsSendLog(buff, log_raw);
-        response.payload += buff;
-        totalReadSize += readSize;
-        if (contentLength != 0 && totalReadSize >= contentLength) break;
-      }
-    } else {
-      if ((millis() - lastAvailableMillis) > 4000) {
-        response = {504, "Response timeout"};
-        break;
-      } else {
-        delay(10);
-      }
-    }
-  }
-  client.stop();
-
-  return response;
-}
-
 HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {
   uint32_t ts = millis();
   String path = String("/v1/") + endpoint;
@@ -1573,35 +1473,44 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
 
   bool success = false;
 
-  char requestContent[512];
+  char requestContent[768];
   if (grant_type == gt_authorization_code) {
     snprintf(requestContent, sizeof(requestContent),
-             ("grant_type=authorization_code&redirect_uri=http%%3A%%2F%%2F" + nodeName + ".local%%2Fcallback&code=%s")
-                 .c_str(),
-             code);
+             "grant_type=authorization_code&redirect_uri=http%%3A%%2F%%2F%s.local%%2Fcallback&code=%s",
+             nodeName.c_str(), code);
   } else {
-    snprintf(requestContent, sizeof(requestContent), "grant_type=refresh_token&refresh_token=%s", code);
+    snprintf(requestContent, sizeof(requestContent),
+             "grant_type=refresh_token&refresh_token=%s",
+             code);
   }
 
-  uint8_t basicAuthSize = sizeof(SPOTIFY_CLIENT_ID) + sizeof(SPOTIFY_CLIENT_SECRET);
-  char basicAuth[basicAuthSize];
-  snprintf(basicAuth, basicAuthSize, "%s:%s", SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET);
+  HTTPClient http;
+  StreamString payload;
+  http.setUserAgent("Knobby/1.0");
+  http.setConnectTimeout(4000);
+  http.setTimeout(4000);
+  http.setReuse(false);
+  http.begin(spotifyWifiClient, "accounts.spotify.com", 443, "/api/token");
+  http.addHeader("Content-Type", "application/x-www-form-urlencoded");
+  http.setAuthorization(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET);
 
-  char requestHeaders[768];
-  snprintf(requestHeaders, sizeof(requestHeaders),
-           "POST /api/token HTTP/1.1\r\n"
-           "Host: accounts.spotify.com\r\n"
-           "Authorization: Basic %s\r\n"
-           "Content-Length: %d\r\n"
-           "Content-Type: application/x-www-form-urlencoded\r\n"
-           "Connection: close\r\n\r\n",
-           base64::encode(basicAuth).c_str(), strlen(requestContent));
+  int httpCode = http.sendRequest("POST", (uint8_t *)requestContent, strlen(requestContent));
+  if (httpCode == 401) {
+    Serial.println("401 Unauthorized, clearing spotifyAccessToken");
+    spotifyAccessToken[0] = '\0';
+  } else if (httpCode == 204 || http.getSize() == 0) {
+    Serial.println("empty response, returning");
+  } else {
+    if (!payload.reserve(http.getSize() + 1)) {
+      Serial.printf("not enough memory to reserve a string! need: %d", (http.getSize() + 1));
+    }
+    http.writeToStream(&payload);
+  }
+  http.end();
 
-  HTTP_response_t response = httpRequest("accounts.spotify.com", 443, requestHeaders, requestContent);
-
-  if (response.httpCode == 200) {
-    DynamicJsonDocument json(768);
-    DeserializationError error = deserializeJson(json, response.payload.c_str());
+  if (httpCode == 200) {
+    DynamicJsonDocument json(1536);
+    DeserializationError error = deserializeJson(json, payload.c_str());
 
     if (!error) {
       spotifyAuthCode = "";
@@ -1616,14 +1525,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
           const char *newRefreshToken = json["refresh_token"];
           if (strcmp(newRefreshToken, spotifyRefreshToken) != 0) {
             strncpy(spotifyRefreshToken, newRefreshToken, sizeof(spotifyRefreshToken) - 1);
-            bool found = false;
-            for (SpotifyUser_t user : spotifyUsers) {
-              if (strcmp(user.refreshToken, spotifyRefreshToken) == 0) {
-                found = true;
-                break;
-              }
-            }
-            if (!found) {
+            if (grant_type == gt_authorization_code) {
               SpotifyUser_t user;
               strncpy(user.refreshToken, spotifyRefreshToken, sizeof(user.refreshToken) - 1);
               user.selected = true;
@@ -1633,21 +1535,27 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
               activeSpotifyDeviceId[0] = '\0';
               spotifyDevicesLoaded = false;
               spotifyDevices.clear();
-            };
+            } else if (grant_type == gt_refresh_token && activeSpotifyUser != nullptr &&
+                       strcmp(activeSpotifyUser->refreshToken, spotifyRefreshToken) != 0) {
+              strncpy(activeSpotifyUser->refreshToken, spotifyRefreshToken, sizeof(activeSpotifyUser->refreshToken));
+              writeDataJson();
+            }
           }
         }
       }
     } else {
-      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", (int)millis(), response.payload.c_str());
-      eventsSendError(500, "Unable to parse response payload", response.payload.c_str());
+      Serial.printf("  [%d] Unable to parse response payload:\n  %s\n", (int)millis(), payload.c_str());
+      eventsSendError(500, "Unable to parse response payload", payload.c_str());
       delay(4000);
     }
-  } else if (response.httpCode < 0) {
+  } else if (httpCode < 0) {
     // retry immediately
   } else {
-    Serial.printf("  [%d] %d - %s\n", (int)millis(), response.httpCode, response.payload.c_str());
-    eventsSendError(response.httpCode, "Spotify error", response.payload.c_str());
-    delay(4000);
+    Serial.printf("  [%d] %d - %s\n", (int)millis(), httpCode, payload.c_str());
+    eventsSendError(httpCode, "Spotify error", payload.c_str());
+    Serial.flush();
+    inactivityMillis = 15000;
+    delay(8000);
   }
 
   if (success) {
