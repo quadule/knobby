@@ -426,6 +426,7 @@ void knobClicked() {
         spotifyAccessToken[0] = '\0';
         spotifyDevicesLoaded = false;
         spotifyDevices.clear();
+        spotifyResetProgress();
         setActiveUser(&spotifyUsers[menuIndex]);
         writeDataJson();
         displayInvalidated = true;
@@ -877,19 +878,20 @@ void updateDisplay() {
           (spotifyState.durationMillis == 0 || spotifyState.estimatedProgressMillis % 6000 > 3000)) {
         img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
         drawCenteredText(genres[playingGenreIndex], textWidth, 3);
-        nowPlayingDisplayMillis = millis();
       } else if (spotifyState.contextName[0] != '\0' &&
                  (spotifyState.durationMillis == 0 || spotifyState.estimatedProgressMillis % 6000 > 3000)) {
         if (spotifyAction == PlayPlaylist && now < clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
         drawCenteredText(spotifyState.contextName, textWidth, 3);
-        nowPlayingDisplayMillis = millis();
       } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
         char playing[201];
         snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
         if (playingGenreIndex >= 0) img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
         drawCenteredText(playing, textWidth, 3);
-        nowPlayingDisplayMillis = millis();
+      } else if (spotifyApiRequestStartedMillis < 0) {
+        img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
+        drawCenteredText("- none -", textWidth, 3);
       }
+      nowPlayingDisplayMillis = millis();
     }
   } else {
     const char *text;
@@ -1264,7 +1266,10 @@ void startRandomizingMenu(bool autoplay) {
     randomizingMenuEndMillis = now + 850;
     randomizingMenuTicks = 0;
     randomizingMenuAutoplay = autoplay;
-    if (randomizingMenuAutoplay) spotifyResetProgress();
+    if (randomizingMenuAutoplay) {
+      if (spotifyAction != GetToken) spotifyAction = Idle;
+      spotifyResetProgress();
+    }
     setMenuMode(lastFullGenreMenuMode, 0);
   }
 }
@@ -1854,6 +1859,7 @@ void spotifyResetProgress(bool keepContext) {
   spotifyState.isPlaying = false;
   nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   if (!keepContext) {
+    nowPlayingDisplayMillis = 0;
     playingCountryIndex = -1;
     playingGenreIndex = -1;
     spotifyState.contextName[0] = '\0';
