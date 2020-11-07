@@ -432,12 +432,10 @@ void knobClicked() {
       }
       break;
     case DeviceList:
-      if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
-        SpotifyDevice_t *previousDevice = activeSpotifyDevice;
+      if (spotifyDevicesLoaded && !spotifyDevices.empty() && activeSpotifyDevice != &spotifyDevices[menuIndex]) {
         setActiveDevice(&spotifyDevices[menuIndex]);
         writeDataJson();
-        if (spotifyState.isPlaying && !spotifyGettingToken && previousDevice != nullptr &&
-            previousDevice != &spotifyDevices[menuIndex]) {
+        if (spotifyState.isPlaying && !spotifyGettingToken) {
           spotifyAction = TransferPlayback;
         }
       }
