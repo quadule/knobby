@@ -87,17 +87,23 @@ void setup() {
     writeDataJson();
   }
 
-  if (forceStartConfigPortalOnBoot || wifiSSID.isEmpty()) {
+  if (forceStartConfigPortalOnBoot || wifiSSID.isEmpty() || spotifyClientId.isEmpty() || spotifyClientSecret.isEmpty()) {
     if (forceStartConfigPortalOnBoot) {
       forceStartConfigPortalOnBoot = false;
     } else {
-      log_w("No saved wifi settings, starting config portal.");
+      log_w("Missing required configuration, starting portal.");
     }
     drawWifiSetup();
     wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
+    wifiManager->addParameter(&spotifyClientIdParam);
+    wifiManager->addParameter(&spotifyClientSecretParam);
     wifiManager->setConfigPortalTimeout(180);
     wifiManager->setSaveConfigCallback(saveAndSleep);
-    wifiManager->autoConnect("knobby", configPassword.c_str());
+    if (spotifyClientId.isEmpty() || spotifyClientSecret.isEmpty()) {
+      wifiManager->startConfigPortal("knobby", configPassword.c_str());
+    } else {
+      wifiManager->autoConnect("knobby", configPassword.c_str());
+    }
     tft.fillScreen(TFT_BLACK);
   } else {
     log_i("Connecting to saved wifi SSID: %s...", wifiSSID.c_str());
@@ -140,7 +146,7 @@ void setup() {
         "user-modify-playback-state+playlist-read-private+"
         "user-library-read+user-follow-read+user-follow-modify"
         "&show_dialog=true&redirect_uri=http%3A%2F%2F" +
-        nodeName + ".local%2Fcallback&client_id=" + String(SPOTIFY_CLIENT_ID);
+        nodeName + ".local%2Fcallback&client_id=" + spotifyClientId;
     request->redirect(authUrl);
   });
 
@@ -170,11 +176,8 @@ void setup() {
   server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request) {
     uint32_t ts = millis();
     log_i("[%d] server.on /reset", ts);
+    forceStartConfigPortalOnBoot = true;
     SPIFFS.remove("/data.json");
-    spotifyAction = Idle;
-    spotifyAccessToken[0] = '\0';
-    spotifyRefreshToken[0] = '\0';
-    activeSpotifyDeviceId[0] = '\0';
     request->send(200, "text/plain", "Tokens deleted, restarting.");
     delay(1000);
     WiFi.disconnect(true);
@@ -215,7 +218,9 @@ void setup() {
     spotifyAction = GetToken;
   }
 
-  xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
+  if (!spotifyClientId.isEmpty() && !spotifyClientSecret.isEmpty()) {
+    xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
+  }
 
   if (holdingButton) {
     startRandomizingMenu(true);
@@ -1239,11 +1244,12 @@ void setStatusMessage(const char *message, unsigned long durationMs) {
 
 void saveAndSleep() {
   forceStartConfigPortalOnBoot = false;
+  spotifyClientId = spotifyClientIdParam.getValue();
+  spotifyClientSecret = spotifyClientSecretParam.getValue();
   wifiSSID = wifiManager->WiFi_SSID();
   wifiPassword = wifiManager->WiFi_Pass();
   writeDataJson();
   WiFi.disconnect(true);
-  gpio_hold_dis((gpio_num_t)TFT_BL);
   esp_sleep_enable_timer_wakeup(100);
   esp_deep_sleep_start();
 }
@@ -1356,6 +1362,8 @@ bool readDataJson() {
   }
 
   configPassword = doc["configPassword"] | "";
+  spotifyClientId = doc["spotifyClientId"] | "";
+  spotifyClientSecret = doc["spotifyClientSecret"] | "";
   wifiSSID = doc["wifiSSID"] | WiFi.SSID();
   wifiPassword = doc["wifiPassword"] | WiFi.psk();
 
@@ -1387,6 +1395,8 @@ bool writeDataJson() {
   DynamicJsonDocument doc(5000);
 
   doc["configPassword"] = configPassword;
+  doc["spotifyClientId"] = spotifyClientId;
+  doc["spotifyClientSecret"] = spotifyClientSecret;
   doc["wifiSSID"] = wifiSSID;
   doc["wifiPassword"] = wifiPassword;
 
@@ -1490,7 +1500,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
   http.setReuse(false);
   http.begin(spotifyWifiClient, "accounts.spotify.com", 443, path);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-  http.setAuthorization(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET);
+  http.setAuthorization(spotifyClientId.c_str(), spotifyClientSecret.c_str());
 
   int httpCode = http.sendRequest(method, (uint8_t *)requestContent, strlen(requestContent));
   if (httpCode == 401) {
@@ -1693,7 +1703,6 @@ void spotifyCurrentlyPlaying() {
   } else if (response.httpCode < 0 || response.httpCode > 500) {
     nextCurrentlyPlayingMillis = 1; // retry immediately
   } else {
-    log_e("[%d] %d - %s", ts, response.httpCode, response.payload.c_str());
     log_e("[%d] %d - %s", ts, response.httpCode, response.payload.c_str());
     delay(4000);
   }

@@ -111,6 +111,8 @@ AsyncEventSource events("/events");
 AsyncWebServer server(80);
 DNSServer dnsServer;
 ESPAsync_WiFiManager *wifiManager;
+ESPAsync_WMParameter spotifyClientIdParam("spotifyClientId", "Spotify Client ID", spotifyClientId.c_str(), 40);
+ESPAsync_WMParameter spotifyClientSecretParam("spotifyClientSecret", "Spotify Client Secret", spotifyClientSecret.c_str(), 40);
 
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;

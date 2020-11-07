@@ -109,6 +109,8 @@ WiFiClientSecure spotifyWifiClient;
 HTTPClient spotifyHttp;
 long spotifyApiRequestStartedMillis = -1;
 String spotifyAuthCode;
+String spotifyClientId;
+String spotifyClientSecret;
 uint32_t nextCurrentlyPlayingMillis = 1;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = CurrentlyPlaying;

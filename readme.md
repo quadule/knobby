@@ -1,7 +1,7 @@
 # knobby
 **🎵 A little remote to remind you that there's a lot of music out there.**
 
-* Spin the knob and explore across 5,000 microgenres and 150 countries with playlists from [everynoise.com](http://everynoise.com) and your own library
+* Spin the knob and explore over 5,000 music genres and 150+ countries with playlists from [everynoise.com](http://everynoise.com) and your own library
 * Control playback and see what's playing on any Spotify Connect device
 * Switch between multiple Spotify accounts and devices
 
@@ -22,15 +22,18 @@ Connect the rotary encoder A and B pins to GPIO 12 and 13 and the button pin to 
 ## Setup
 
 1. [Register an application for the Spotify API](https://developer.spotify.com/dashboard/) and configure `http://knobby.local/callback` as a redirect URI
-2. Copy `src/settings.h.example` to `settings.h` and fill in your API credentials
+2. Edit `data/data.json` and enter your wifi network information and Spotify app details (if you want; it can also be configured later)
 3. Build and upload with [PlatformIO](https://platformio.org/): `platformio run && platformio run --target upload && platformio run --target uploadfs`
 4. Visit http://knobby.local to authorize your Spotify account
+
+If data.json is not configured or there is a problem connecting to your network, knobby will enter configuration mode. Join the temporary wifi network displayed on screen and wait for the configuration portal to appear or visit http://192.168.4.1. Enter your wifi network information plus Spotify client ID and secret, then switch back to your normal wifi network and visit http://knobby.local to continue.
 
 ## Usage
 
 * Rotate and click the knob to select
 * Hold and rotate the knob to switch menus and sort modes
 * Hold the knob for a couple seconds for a random genre
+* Double click the knob to skip to the next track
 * Visit http://knobby.local/authorize to add additional Spotify accounts
 
 ## License
