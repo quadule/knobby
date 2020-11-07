@@ -234,7 +234,6 @@ void loop() {
     } else {
       setStatusMessage("", 0);
     }
-    displayInvalidatedPartial = false;
     lastConnectedMillis = now;
 
     wifi_config_t current_conf;
@@ -296,7 +295,7 @@ void loop() {
   if (displayInvalidated) {
     updateDisplay();
   } else {
-    if (spotifyAction != Idle && spotifyAction != CurrentlyPlaying && spotifyAction != SetVolume && menuMode != RootMenu) {
+    if (shouldShowProgressBar()) {
       showingProgressBar = true;
       tft.drawFastHLine(-now % tft.width(), 0, 20, TFT_BLACK);
       tft.drawFastHLine(-(now + 20) % tft.width(), 0, 20, TFT_DARKGREY);
@@ -1092,6 +1091,12 @@ unsigned long getExtraLongPressedMillis() {
   return extraMillis < 0 ? 0 : extraMillis;
 }
 
+bool shouldShowProgressBar() {
+  return spotifyAction == GetToken || spotifyAction == PlayPlaylist || spotifyAction == GetDevices ||
+         spotifyAction == GetPlaylists || spotifyAction == GetPlaylistDescription ||
+         (spotifyApiRequestStartedMillis > 0 && millis() - spotifyApiRequestStartedMillis > 950);
+}
+
 bool shouldShowRandom() {
   if (randomizingMenuEndMillis > 0 || knobRotatedWhileLongPressed) return false;
   return getLongPressedMillis() > extraLongPressMillis && lastMenuMode != SimilarList &&
@@ -1429,6 +1434,7 @@ bool writeDataJson() {
 
 HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {
   uint32_t ts = millis();
+  spotifyApiRequestStartedMillis = ts;
   String path = String("/v1/") + endpoint;
   Serial.printf("> [%d] spotifyApiRequest(%s, %s, %s)\n", ts, method, path.c_str(), content);
 
@@ -1456,6 +1462,7 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
     spotifyHttp.writeToStream(&payload);
   }
   spotifyHttp.end();
+  spotifyApiRequestStartedMillis = -1;
 
   HTTP_response_t response = {code, payload};
   return response;

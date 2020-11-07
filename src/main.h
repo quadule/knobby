@@ -183,6 +183,7 @@ bool isGenreMenu(MenuModes mode);
 bool isPlaylistMenu(MenuModes mode);
 unsigned long getLongPressedMillis();
 unsigned long getExtraLongPressedMillis();
+bool shouldShowProgressBar();
 bool shouldShowRandom();
 bool shouldShowSimilarMenu();
 bool shouldShowUsersMenu();

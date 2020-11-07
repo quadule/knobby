@@ -6,7 +6,7 @@
 #define SPOTIFY_ID_SIZE 22
 #define SPOTIFY_WAIT_MILLIS 700
 
-const uint16_t SPOTIFY_POLL_INTERVAL = 15000;
+const uint16_t SPOTIFY_POLL_INTERVAL = 18000;
 const char *spotifyCACertificate =
     "-----BEGIN CERTIFICATE-----\n"
     "MIIElDCCA3ygAwIBAgIQAf2j627KdciIQ4tyS8+8kTANBgkqhkiG9w0BAQsFADBh\n"
@@ -107,6 +107,7 @@ RTC_DATA_ATTR SpotifyState_t spotifyState = {};
 
 WiFiClientSecure spotifyWifiClient;
 HTTPClient spotifyHttp;
+long spotifyApiRequestStartedMillis = -1;
 String spotifyAuthCode;
 uint32_t nextCurrentlyPlayingMillis = 1;
 bool spotifyGettingToken = false;
