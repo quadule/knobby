@@ -94,7 +94,8 @@ void setup() {
     wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
     wifiManager->setConfigPortalTimeout(180);
     wifiManager->setSaveConfigCallback(saveAndSleep);
-    wifiManager->startConfigPortal("knobby", configPassword.c_str());
+    wifiManager->autoConnect("knobby", configPassword.c_str());
+    tft.fillScreen(TFT_BLACK);
   } else {
     Serial.printf("Connecting to saved wifi SSID: %s...\n", wifiSSID.c_str());
     WiFi.mode(WIFI_STA);
@@ -227,7 +228,7 @@ void loop() {
     startDeepSleep();
   }
 
-  if (connected && lastReconnectAttemptMillis > lastConnectedMillis) {
+  if (connected && (lastConnectedMillis < 0 || lastReconnectAttemptMillis > lastConnectedMillis)) {
     if (lastReconnectAttemptMillis > 0) {
       setStatusMessage("reconnected", 1000);
     } else {
@@ -240,6 +241,12 @@ void loop() {
     esp_wifi_get_config(WIFI_IF_STA, &current_conf);
     current_conf.sta.listen_interval = 10;
     esp_wifi_set_config(WIFI_IF_STA, &current_conf);
+
+    if (wifiSSID.isEmpty()) {
+      wifiSSID = WiFi.SSID();
+      wifiPassword = WiFi.psk();
+      writeDataJson();
+    }
   } else if (!connected && now - lastReconnectAttemptMillis > 3000) {
     lastReconnectAttemptMillis = now;
     if (lastConnectedMillis < 0 && now > 5000) setStatusMessage("connecting to wifi", 1000);
