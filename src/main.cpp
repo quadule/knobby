@@ -1259,6 +1259,7 @@ void startRandomizingMenu(bool autoplay) {
     randomizingMenuEndMillis = now + 850;
     randomizingMenuTicks = 0;
     randomizingMenuAutoplay = autoplay;
+    if (randomizingMenuAutoplay) spotifyResetProgress();
     setMenuMode(lastFullGenreMenuMode, 0);
   }
 }
