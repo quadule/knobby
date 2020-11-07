@@ -412,7 +412,7 @@ void knobClicked() {
 
   switch (menuMode) {
     case UserList:
-      if (!spotifyUsers.empty()) {
+      if (!spotifyUsers.empty() && activeSpotifyUser != &spotifyUsers[menuIndex]) {
         spotifyAction = Idle;
         spotifyTokenLifetime = 0;
         spotifyTokenSeconds = 0;
