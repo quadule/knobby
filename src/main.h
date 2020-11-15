@@ -1,6 +1,7 @@
 #include <Arduino.h>
 
 #include "ArduinoJson.h"
+#include "ArduinoOTA.h"
 #include "ESP32Encoder.h"
 #include "ESPAsyncWebServer.h"
 #include "ESPAsync_WiFiManager.h"
@@ -111,8 +112,8 @@ AsyncEventSource events("/events");
 AsyncWebServer server(80);
 DNSServer dnsServer;
 ESPAsync_WiFiManager *wifiManager;
-ESPAsync_WMParameter spotifyClientIdParam("spotifyClientId", "Spotify Client ID", spotifyClientId.c_str(), 40);
-ESPAsync_WMParameter spotifyClientSecretParam("spotifyClientSecret", "Spotify Client Secret", spotifyClientSecret.c_str(), 40);
+ESPAsync_WMParameter *spotifyClientIdParam;
+ESPAsync_WMParameter *spotifyClientSecretParam;
 
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
@@ -142,6 +143,7 @@ unsigned long randomizingMenuEndMillis = 0;
 unsigned long randomizingMenuTicks = 0;
 unsigned long statusMessageUntilMillis = 0;
 unsigned long wifiConnectTimeoutMillis = 45000;
+size_t updateContentLength = 0;
 
 // Events
 void setup();
@@ -157,6 +159,7 @@ void knobLongPressStopped();
 void eventsSendLog(const char *logData, EventsLogTypes type = log_line);
 bool readDataJson();
 bool writeDataJson();
+void onOTAProgress(unsigned int progress, unsigned int total);
 uint16_t checkMenuSize(MenuModes mode);
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1);
 void drawDivider(bool selected);

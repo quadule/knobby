@@ -15,7 +15,7 @@ void setup() {
   ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
   ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
   disableCore1WDT();
-  esp_task_wdt_init(10, true);
+  esp_task_wdt_init(15, true);
 
   similarMenuItems.reserve(16);
   spotifyDevices.reserve(10);
@@ -95,8 +95,11 @@ void setup() {
     }
     drawWifiSetup();
     wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
-    wifiManager->addParameter(&spotifyClientIdParam);
-    wifiManager->addParameter(&spotifyClientSecretParam);
+    spotifyClientIdParam = new ESPAsync_WMParameter("spotifyClientId", "Spotify Client ID", spotifyClientId.c_str(), 40);
+    spotifyClientSecretParam = new ESPAsync_WMParameter("spotifyClientSecret", "Spotify Client Secret", spotifyClientSecret.c_str(), 40);
+    wifiManager->addParameter(spotifyClientIdParam);
+    wifiManager->addParameter(spotifyClientSecretParam);
+    wifiManager->setBreakAfterConfig(true);
     wifiManager->setConfigPortalTimeout(180);
     wifiManager->setSaveConfigCallback(saveAndSleep);
     if (spotifyClientId.isEmpty() || spotifyClientSecret.isEmpty()) {
@@ -114,12 +117,30 @@ void setup() {
     WiFi.setHostname(nodeName.c_str());
   }
 
-  if (MDNS.begin(nodeName.c_str())) {
-    MDNS.addService("http", "tcp", 80);
-    log_i("mDNS responder started, visit http://%s.local", nodeName.c_str());
-  } else {
-    log_e("Error setting up MDNS responder!");
-  }
+  Update.onProgress(onOTAProgress);
+  ArduinoOTA.setHostname(nodeName.c_str());
+  ArduinoOTA.setPassword(configPassword.c_str());
+  ArduinoOTA.setTimeout(3000);
+  ArduinoOTA.onStart([]() {
+      int cmd = ArduinoOTA.getCommand();
+      if (cmd == U_FLASH) {
+        log_i("OTA: updating firmware");
+      } else if (cmd == U_SPIFFS) {
+        log_i("OTA: updating SPIFFS");
+        SPIFFS.end();
+      } else {
+        log_e("OTA: unknown command %d", cmd);
+      }
+    })
+    .onEnd([]() {
+      log_i("OTA: update complete");
+    })
+    .onError([](ota_error_t error) {
+      log_e("OTA: error code %u", error);
+      setStatusMessage("update failed");
+    });
+  ArduinoOTA.begin();
+  MDNS.addService("http", "tcp", 80);
 
   // Initialize HTTP server handlers
   events.onConnect([](AsyncEventSourceClient *client) { log_i("[%d] events.onConnect", (int)millis()); });
@@ -129,7 +150,7 @@ void setup() {
     inactivityMillis = 1000 * 60 * 3;
     uint32_t ts = millis();
     log_i("[%d] server.on /", ts);
-    if (spotifyAccessToken[0] == '\0') {
+    if (spotifyUsers.empty()) {
       request->redirect("http://" + nodeName + ".local/authorize");
     } else {
       request->send(SPIFFS, "/index.html");
@@ -197,7 +218,56 @@ void setup() {
     request->send(200, "text/plain", sendLogEvents ? "1" : "0");
   });
 
-  server.onNotFound([](AsyncWebServerRequest *request) { request->send(404); });
+  server.on("/update", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      AsyncWebParameter *passwordParam = request->getParam("password", true);
+      if (!passwordParam || passwordParam->value() != configPassword) {
+        request->send(403, "text/plain", "Incorrect password");
+      } else {
+        request->send(400, "text/plain", "Missing update file");
+      }
+    },
+    [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
+      AsyncWebParameter *passwordParam = request->getParam("password", true);
+      if (!passwordParam || passwordParam->value() != configPassword) {
+        request->send(403, "text/plain", "Incorrect password");
+        return;
+      }
+
+      if (!index){
+        updateContentLength = request->contentLength();
+        int cmd = (filename.indexOf("spiffs") > -1) ? U_SPIFFS : U_FLASH;
+        if (cmd == U_SPIFFS) SPIFFS.end();
+        if (!Update.begin(updateContentLength, cmd)) {
+          Update.printError(Serial);
+        }
+      }
+
+      if (Update.write(data, len) != len) {
+        Update.printError(Serial);
+      }
+
+      if (final) {
+        AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", "Rebooting, please wait...");
+        response->addHeader("Refresh", "20");
+        response->addHeader("Location", "/");
+        request->send(response);
+        if (!Update.end(true)){
+          updateContentLength = 0;
+          Update.printError(Serial);
+          setStatusMessage("update failed");
+        } else {
+          log_i("OTA: update complete");
+          Serial.flush();
+          ESP.restart();
+        }
+      }
+    }
+  );
+
+  server.onNotFound([](AsyncWebServerRequest *request) {
+    request->send(404, "text/plain", "404 Not Found");
+  });
 
   server.begin();
 
@@ -254,7 +324,7 @@ void loop() {
 
     wifi_config_t current_conf;
     esp_wifi_get_config(WIFI_IF_STA, &current_conf);
-    current_conf.sta.listen_interval = 10;
+    current_conf.sta.listen_interval = 5;
     esp_wifi_set_config(WIFI_IF_STA, &current_conf);
 
     if (wifiSSID.isEmpty()) {
@@ -275,6 +345,8 @@ void loop() {
       WiFi.begin();
     }
   }
+
+  ArduinoOTA.handle();
 
   if (connected && !spotifyGettingToken && spotifyNeedsNewAccessToken()) {
     spotifyGettingToken = true;
@@ -308,7 +380,7 @@ void loop() {
     }
   }
 
-  if (displayInvalidated) {
+  if (displayInvalidated && updateContentLength == 0) {
     updateDisplay();
   } else {
     if (shouldShowProgressBar()) {
@@ -668,7 +740,6 @@ void updateDisplay() {
   displayInvalidated = false;
   if (!displayInvalidatedPartial) tft.fillScreen(TFT_BLACK);
   displayInvalidatedPartial = false;
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   unsigned long now = millis();
 
@@ -1244,8 +1315,8 @@ void setStatusMessage(const char *message, unsigned long durationMs) {
 
 void saveAndSleep() {
   forceStartConfigPortalOnBoot = false;
-  spotifyClientId = spotifyClientIdParam.getValue();
-  spotifyClientSecret = spotifyClientSecretParam.getValue();
+  spotifyClientId = spotifyClientIdParam->getValue();
+  spotifyClientSecret = spotifyClientSecretParam->getValue();
   wifiSSID = wifiManager->WiFi_SSID();
   wifiPassword = wifiManager->WiFi_Pass();
   writeDataJson();
@@ -1421,6 +1492,22 @@ bool writeDataJson() {
   serializeJson(doc, Serial);
   Serial.println();
   return true;
+}
+
+void onOTAProgress(unsigned int progress, unsigned int total) {
+  if (progress == 0) {
+    inactivityMillis = 1000 * 60 * 5;
+    tft.fillScreen(TFT_BLACK);
+    tft.setCursor(textPadding, lineOne);
+    img.setTextColor(TFT_WHITE, TFT_BLACK);
+    drawCenteredText("updating", textWidth, 1);
+    drawDivider(true);
+  }
+  char status[5];
+  sprintf(status, "%u%%", (progress / (total / 100)));
+  tft.setCursor(textPadding, lineTwo);
+  drawCenteredText(status, textWidth, 1);
+  esp_task_wdt_reset();
 }
 
 HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {

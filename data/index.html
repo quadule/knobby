@@ -3,16 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Console</title>
+  <title>knobby</title>
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
 
   <style type="text/css">
-    #Console { position: absolute; left: 0; right: 0; top: 0; bottom: 40px; margin: 10px; padding: 10px; border: 2px solid silver; overflow: auto; background-color: black; color: white; }
+    h1, h2 { font-size: 16px; }
+    #Console { height: 80vh; padding: 10px; border: 2px solid silver; overflow: auto; background-color: black; color: white; }
     .info, .error { font-family: Consolas, "Courier New", monospace; white-space: pre; }
     .error { color: red; }
-    #btnBar { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; }
-    button { width: 50px; margin: 0 10px; cursor: pointer; }
+    #controls { margin: 10px 0; }
+
+    button { cursor: pointer; }
   </style>
 
   <script>
@@ -107,10 +109,32 @@
   </script>
 </head>
 <body>
+<h1>knobby console</h1>
 <div id="Console"></div>
-<div id="btnBar">
+<div id="controls">
   <button id="btnToggle" class="material-icons" title="Toggle events [Space bar]">pause</button>
   <button id="btnClear" class="material-icons" title="Clear console [Delete|Escape]">delete_forever</button>
+</div>
+<hr>
+<div id="update">
+  <h2>update firmware</h2>
+  <form method="post" action="/update" enctype="multipart/form-data">
+    <div>
+      <label for="password">
+        password:
+        <input type="password" name="password">
+      </label>
+    </div>
+    <div>
+      <label for="update">
+        .bin file:
+        <input type="file" name="update" accept=".bin">
+      </label>
+    </div>
+    <p>
+      <input type="submit" value="Update">
+    </p>
+  </form>
 </div>
 </body>
 </html>
