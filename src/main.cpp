@@ -315,7 +315,7 @@ void loop() {
   }
 
   if (connected && (lastConnectedMillis < 0 || lastReconnectAttemptMillis > lastConnectedMillis)) {
-    if (lastReconnectAttemptMillis > 0) {
+    if (lastConnectedMillis >= 0) {
       setStatusMessage("reconnected", 1000);
     } else {
       setStatusMessage("", 0);
