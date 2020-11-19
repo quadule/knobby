@@ -82,7 +82,7 @@ void setup() {
     writeDataJson();
   }
 
-  if (forceStartConfigPortalOnBoot || wifiSSID.isEmpty() || spotifyClientId.isEmpty() || spotifyClientSecret.isEmpty()) {
+  if (forceStartConfigPortalOnBoot || wifiSSID.isEmpty()) {
     if (forceStartConfigPortalOnBoot) {
       forceStartConfigPortalOnBoot = false;
     } else {
@@ -91,18 +91,10 @@ void setup() {
     drawWifiSetup();
     disableCore1WDT();
     wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
-    spotifyClientIdParam = new ESPAsync_WMParameter("spotifyClientId", "Spotify Client ID", spotifyClientId.c_str(), 40);
-    spotifyClientSecretParam = new ESPAsync_WMParameter("spotifyClientSecret", "Spotify Client Secret", spotifyClientSecret.c_str(), 40);
-    wifiManager->addParameter(spotifyClientIdParam);
-    wifiManager->addParameter(spotifyClientSecretParam);
     wifiManager->setBreakAfterConfig(true);
     wifiManager->setConfigPortalTimeout(180);
     wifiManager->setSaveConfigCallback(saveAndSleep);
-    if (spotifyClientId.isEmpty() || spotifyClientSecret.isEmpty()) {
-      wifiManager->startConfigPortal("knobby", configPassword.c_str());
-    } else {
-      wifiManager->autoConnect("knobby", configPassword.c_str());
-    }
+    wifiManager->autoConnect("knobby", configPassword.c_str());
     tft.fillScreen(TFT_BLACK);
   } else {
     log_i("Connecting to saved wifi SSID: %s...", wifiSSID.c_str());
@@ -158,13 +150,35 @@ void setup() {
     uint32_t ts = millis();
     log_i("[%d] server.on /authorize", ts);
     spotifyGettingToken = true;
+
+    unsigned char verifier[32];
+    for (auto i=0; i<32; i++) verifier[i] = random(256);
+    String encoded = base64::encode((const uint8_t *)&verifier, 32);
+    encoded.replace('+', '-');
+    encoded.replace('/', '_');
+    strncpy(spotifyCodeVerifier, encoded.c_str(), 43);
+
+    unsigned char codeVerifierSha[32];
+    mbedtls_md_context_t ctx;
+    mbedtls_md_init(&ctx);
+    mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), 0);
+    mbedtls_md_starts(&ctx);
+    mbedtls_md_update(&ctx, (const unsigned char *)&spotifyCodeVerifier, 43);
+    mbedtls_md_finish(&ctx, codeVerifierSha);
+
+    encoded = base64::encode(codeVerifierSha, sizeof(codeVerifierSha));
+    encoded.replace('+', '-');
+    encoded.replace('/', '_');
+    strncpy(spotifyCodeChallenge, encoded.c_str(), 43);
+
     const String authUrl =
         "https://accounts.spotify.com/authorize/?response_type=code&scope="
         "user-read-private+user-read-currently-playing+user-read-playback-state+"
         "user-modify-playback-state+playlist-read-private+"
         "user-library-read+user-follow-read+user-follow-modify"
+        "&code_challenge_method=S256&code_challenge=" + String(spotifyCodeChallenge) +
         "&show_dialog=true&redirect_uri=http%3A%2F%2F" +
-        nodeName + ".local%2Fcallback&client_id=" + spotifyClientId;
+        nodeName + ".local%2Fcallback&client_id=" + String(spotifyClientId);
     request->redirect(authUrl);
   });
 
@@ -268,9 +282,7 @@ void setup() {
     spotifyAction = GetToken;
   }
 
-  if (!spotifyClientId.isEmpty() && !spotifyClientSecret.isEmpty()) {
-    xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
-  }
+  xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
 
   if (secondsAsleep > newSessionSeconds) genreSort = AlphabeticSort;
   knobHeldForRandom = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
@@ -658,8 +670,6 @@ void knobDoubleClicked() {
         spotifyAccessToken[0] = '\0';
         spotifyRefreshToken[0] = '\0';
         configPassword.clear();
-        spotifyClientId.clear();
-        spotifyClientSecret.clear();
         wifiSSID.clear();
         wifiPassword.clear();
         spotifyUsers.clear();
@@ -1456,8 +1466,6 @@ void setStatusMessage(const char *message, unsigned long durationMs) {
 
 void saveAndSleep() {
   forceStartConfigPortalOnBoot = false;
-  spotifyClientId = spotifyClientIdParam->getValue();
-  spotifyClientSecret = spotifyClientSecretParam->getValue();
   wifiSSID = wifiManager->WiFi_SSID();
   wifiPassword = wifiManager->WiFi_Pass();
   writeDataJson();
@@ -1583,8 +1591,6 @@ bool readDataJson() {
 
   configPassword = doc["configPassword"] | "";
   firmwareURL = doc["firmwareURL"] | "";
-  spotifyClientId = doc["spotifyClientId"] | "";
-  spotifyClientSecret = doc["spotifyClientSecret"] | "";
   wifiSSID = doc["wifiSSID"] | WiFi.SSID();
   wifiPassword = doc["wifiPassword"] | WiFi.psk();
 
@@ -1615,8 +1621,6 @@ bool writeDataJson() {
 
   doc["configPassword"] = configPassword;
   doc["firmwareURL"] = firmwareURL;
-  doc["spotifyClientId"] = spotifyClientId;
-  doc["spotifyClientSecret"] = spotifyClientSecret;
   doc["wifiSSID"] = wifiSSID;
   doc["wifiPassword"] = wifiPassword;
 
@@ -1720,12 +1724,12 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
 
   if (grant_type == gt_authorization_code) {
     snprintf(requestContent, sizeof(requestContent),
-             "grant_type=authorization_code&redirect_uri=http%%3A%%2F%%2F%s.local%%2Fcallback&code=%s",
-             nodeName.c_str(), code);
+             "client_id=%s&grant_type=authorization_code&redirect_uri=http%%3A%%2F%%2F%s.local%%2Fcallback&code=%s&code_verifier=%s",
+             spotifyClientId, nodeName.c_str(), code, spotifyCodeVerifier);
   } else {
     snprintf(requestContent, sizeof(requestContent),
-             "grant_type=refresh_token&refresh_token=%s",
-             code);
+             "client_id=%s&grant_type=refresh_token&refresh_token=%s",
+             spotifyClientId, code);
   }
   log_i("[%d] %s %s", ts, method, path);
 
@@ -1737,9 +1741,8 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
   http.setReuse(false);
   http.begin(spotifyWifiClient, "accounts.spotify.com", 443, path);
   http.addHeader("Content-Type", "application/x-www-form-urlencoded");
-  http.setAuthorization(spotifyClientId.c_str(), spotifyClientSecret.c_str());
 
-  int httpCode = http.sendRequest(method, (uint8_t *)requestContent, strlen(requestContent));
+  int httpCode = http.sendRequest("POST", requestContent);
   if (httpCode == 401) {
     log_e("401 Unauthorized, clearing spotifyAccessToken");
     spotifyAccessToken[0] = '\0';
@@ -1780,8 +1783,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
               activeSpotifyDeviceId[0] = '\0';
               spotifyDevicesLoaded = false;
               spotifyDevices.clear();
-            } else if (grant_type == gt_refresh_token && activeSpotifyUser != nullptr &&
-                       strcmp(activeSpotifyUser->refreshToken, spotifyRefreshToken) != 0) {
+            } else if (grant_type == gt_refresh_token && activeSpotifyUser != nullptr) {
               strncpy(activeSpotifyUser->refreshToken, spotifyRefreshToken, sizeof(activeSpotifyUser->refreshToken));
               writeDataJson();
             }
@@ -1797,6 +1799,11 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
   } else {
     log_e("[%d] %d - %s", (int)millis(), httpCode, payload.c_str());
     Serial.flush();
+    if (httpCode == 400 && grant_type == gt_refresh_token) {
+      spotifyUsers.clear();
+      writeDataJson();
+      ESP.restart();
+    }
     inactivityMillis = 15000;
     delay(8000);
   }
@@ -1911,14 +1918,14 @@ void spotifyCurrentlyPlaying() {
       if (spotifyState.isPlaying && spotifyState.durationMillis > 0) {
         // Check if current song is about to end
         uint32_t remainingMillis = spotifyState.durationMillis - spotifyState.progressMillis;
-        if (remainingMillis < SPOTIFY_POLL_INTERVAL) {
+        if (remainingMillis < spotifyPollInterval) {
           // Refresh at the end of current song,
           // without considering remaining polling delay
           nextCurrentlyPlayingMillis = millis() + remainingMillis + 100;
         }
       }
       if (spotifyState.isPlaying && nextCurrentlyPlayingMillis == 0) {
-        nextCurrentlyPlayingMillis = millis() + (spotifyState.durationMillis == 0 ? 2000 : SPOTIFY_POLL_INTERVAL);
+        nextCurrentlyPlayingMillis = millis() + (spotifyState.durationMillis == 0 ? 2000 : spotifyPollInterval);
       }
       if (spotifyState.isPlaying && lastInputMillis <= 1 && menuMode != NowPlaying && millis() < 10000) {
         setMenuMode(NowPlaying, PlayPauseButton);

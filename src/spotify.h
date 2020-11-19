@@ -2,11 +2,12 @@
 #include "HTTPClient.h"
 #include "WiFiClientSecure.h"
 #include "driver/rtc_io.h"
+#include "mbedtls/md.h"
 
 #define SPOTIFY_ID_SIZE 22
 #define SPOTIFY_WAIT_MILLIS 700
 
-const uint16_t SPOTIFY_POLL_INTERVAL = 18000;
+const uint16_t spotifyPollInterval = 18000;
 const char *spotifyCACertificate =
     "-----BEGIN CERTIFICATE-----\n"
     "MIIElDCCA3ygAwIBAgIQAf2j627KdciIQ4tyS8+8kTANBgkqhkiG9w0BAQsFADBh\n"
@@ -35,6 +36,7 @@ const char *spotifyCACertificate =
     "c+LJMto4JQtV05od8GiG7S5BNO98pVAdvzr508EIDObtHopYJeS4d60tbvVS3bR0\n"
     "j6tJLp07kzQoH3jOlOrHvdPJbRzeXDLz\n"
     "-----END CERTIFICATE-----\n";
+const char *spotifyClientId = "55aee603baf641f899e5bfeba3fe05d0";
 
 typedef struct {
   int httpCode;
@@ -108,8 +110,8 @@ WiFiClientSecure spotifyWifiClient;
 HTTPClient spotifyHttp;
 long spotifyApiRequestStartedMillis = -1;
 String spotifyAuthCode;
-String spotifyClientId;
-String spotifyClientSecret;
+char spotifyCodeVerifier[44] = "";
+char spotifyCodeChallenge[44] = "";
 uint32_t nextCurrentlyPlayingMillis = 1;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = CurrentlyPlaying;
