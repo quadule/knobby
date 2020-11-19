@@ -366,17 +366,14 @@ void loop() {
     if (statusMessage[0] != '\0' && now > statusMessageUntilMillis) {
       statusMessageUntilMillis = 0;
       statusMessage[0] = '\0';
-      displayInvalidated = true;
-      displayInvalidatedPartial = true;
+      invalidateDisplay();
     } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
       clickEffectEndMillis = 0;
-      displayInvalidated = true;
-      displayInvalidatedPartial = true;
+      invalidateDisplay();
     } else if ((randomizingMenuEndMillis > 0 && now < randomizingMenuEndMillis) || lastInputMillis > lastDisplayMillis ||
                (spotifyState.isPlaying && now - lastDisplayMillis > 950) ||
                (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2)) {
-      displayInvalidated = true;
-      displayInvalidatedPartial = true;
+      invalidateDisplay();
     }
   }
 
@@ -516,7 +513,7 @@ void knobClicked() {
         spotifyResetProgress();
         setActiveUser(&spotifyUsers[menuIndex]);
         writeDataJson();
-        displayInvalidated = true;
+        invalidateDisplay();
       }
       break;
     case DeviceList:
@@ -736,10 +733,17 @@ void drawWifiSetup() {
   drawCenteredText(line.c_str(), textWidth, 1);
 }
 
+void invalidateDisplay(bool eraseDisplay) {
+  displayInvalidated = true;
+  displayInvalidatedPartial = displayInvalidatedPartial && !eraseDisplay;
+}
+
 void updateDisplay() {
   displayInvalidated = false;
-  if (!displayInvalidatedPartial) tft.fillScreen(TFT_BLACK);
-  displayInvalidatedPartial = false;
+  if (!displayInvalidatedPartial) {
+    tft.fillScreen(TFT_BLACK);
+    displayInvalidatedPartial = true;
+  }
   tft.setTextDatum(MC_DATUM);
   unsigned long now = millis();
 
@@ -763,6 +767,7 @@ void updateDisplay() {
       if (randomizingMenuAutoplay) {
         playPlaylist(genrePlaylists[genreIndex]);
         playingGenreIndex = genreIndex;
+        displayInvalidatedPartial = true;
       }
     }
   } else if (menuMode == RootMenu) {
@@ -1294,8 +1299,7 @@ void setMenuIndex(uint16_t newMenuIndex) {
     default:
       break;
   }
-  displayInvalidated = true;
-  displayInvalidatedPartial = true;
+  invalidateDisplay();
 }
 
 void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
@@ -1303,14 +1307,13 @@ void setMenuMode(MenuModes newMode, uint16_t newMenuIndex) {
   menuMode = newMode;
   menuSize = checkMenuSize(newMode);
   setMenuIndex(newMenuIndex);
-  displayInvalidatedPartial = oldMode == newMode;
+  invalidateDisplay(oldMode != newMode);
 }
 
 void setStatusMessage(const char *message, unsigned long durationMs) {
   strncpy(statusMessage, message, sizeof(statusMessage) - 1);
   statusMessageUntilMillis = millis() + durationMs;
-  displayInvalidated = true;
-  displayInvalidatedPartial = true;
+  invalidateDisplay();
 }
 
 void saveAndSleep() {
@@ -1775,8 +1778,7 @@ void spotifyCurrentlyPlaying() {
       if (spotifyState.isPlaying && lastInputMillis <= 1 && menuMode != NowPlaying && millis() < 10000) {
         setMenuMode(NowPlaying, PlayPauseButton);
       } else {
-        displayInvalidated = true;
-        displayInvalidatedPartial = true;
+        invalidateDisplay();
       }
     } else {
       log_e("[%d] Heap free: %d", ts, ESP.getFreeHeap());
@@ -1860,8 +1862,7 @@ void spotifySeek() {
     spotifyState.progressMillis = spotifyState.estimatedProgressMillis = spotifySeekToMillis;
     nextCurrentlyPlayingMillis = spotifyState.lastUpdateMillis + SPOTIFY_WAIT_MILLIS;
     spotifyState.isPlaying = true;
-    displayInvalidated = true;
-    displayInvalidatedPartial = true;
+    invalidateDisplay();
   } else {
     log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
     spotifyResetProgress(true);
@@ -1891,8 +1892,7 @@ void spotifyToggle() {
     spotifyState.lastUpdateMillis = millis();
     nextCurrentlyPlayingMillis = spotifyState.lastUpdateMillis + SPOTIFY_WAIT_MILLIS;
     spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
-    displayInvalidated = true;
-    displayInvalidatedPartial = true;
+    invalidateDisplay();
   } else {
     log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
     spotifyResetProgress(true);
@@ -1944,8 +1944,7 @@ void spotifyResetProgress(bool keepContext) {
     spotifyState.contextName[0] = '\0';
     spotifyState.playlistId[0] = '\0';
   }
-  displayInvalidated = true;
-  displayInvalidatedPartial = true;
+  invalidateDisplay();
 };
 
 void spotifyGetDevices() {
@@ -1997,8 +1996,7 @@ void spotifyGetDevices() {
     }
   }
   spotifyAction = CurrentlyPlaying;
-  displayInvalidated = true;
-  displayInvalidatedPartial = true;
+  invalidateDisplay();
 }
 
 void spotifySetVolume() {

@@ -116,7 +116,7 @@ ESPAsync_WMParameter *spotifyClientIdParam;
 ESPAsync_WMParameter *spotifyClientSecretParam;
 
 bool displayInvalidated = true;
-bool displayInvalidatedPartial = false;
+bool displayInvalidatedPartial = true;
 int lastKnobCount = 0;
 bool knobRotatedWhileLongPressed = false;
 bool randomizingMenuAutoplay = false;
@@ -164,6 +164,7 @@ uint16_t checkMenuSize(MenuModes mode);
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1);
 void drawDivider(bool selected);
 void drawWifiSetup();
+void invalidateDisplay(bool eraseDisplay = false);
 void playPlaylist(const char *playlistId, const char *name = "");
 void saveAndSleep();
 void setActiveDevice(SpotifyDevice_t *device);
