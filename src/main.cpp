@@ -46,6 +46,7 @@ void setup() {
         (spotifyState.isPlaying &&
          (spotifyState.estimatedProgressMillis + secondsAsleep * 1000 > spotifyState.durationMillis))) {
       spotifyResetProgress();
+      strcpy(spotifyState.contextName, "loading...");
     }
     nextCurrentlyPlayingMillis = 1;
   }
