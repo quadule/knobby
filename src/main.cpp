@@ -986,7 +986,7 @@ void updateDisplay() {
         snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
         if (playingGenreIndex >= 0) img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
         drawCenteredText(playing, textWidth, 3);
-      } else if (spotifyApiRequestStartedMillis < 0) {
+      } else if (spotifyApiRequestStartedMillis < 0 && !spotifyState.isPlaying) {
         img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
         drawCenteredText("- none -", textWidth, 3);
       }
