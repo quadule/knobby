@@ -1700,18 +1700,19 @@ void spotifyCurrentlyPlaying() {
       spotifyState.progressMillis = spotifyState.estimatedProgressMillis = json["progress_ms"];
 
       JsonObject context = json["context"];
-      if (context.isNull()) {
+      if (context.isNull() || strcmp(context["type"], "playlist") != 0) {
         spotifyState.contextName[0] = '\0';
         spotifyState.playlistId[0] = '\0';
         playingCountryIndex = -1;
         playingGenreIndex = -1;
       } else {
-        if (strcmp(context["type"], "playlist") == 0) {
-          const char *id = strrchr(context["uri"], ':') + 1;
-          if (strcmp(spotifyState.playlistId, id) != 0) spotifyState.contextName[0] = '\0';
-          strncpy(spotifyState.playlistId, id, SPOTIFY_ID_SIZE);
-          playingGenreIndex = getGenreIndexByPlaylistId(id);
+        const char *id = strrchr(context["uri"], ':') + 1;
+        if (strcmp(spotifyState.playlistId, id) != 0) {
+          spotifyState.contextName[0] = '\0';
+          playingCountryIndex = -1;
         }
+        strncpy(spotifyState.playlistId, id, SPOTIFY_ID_SIZE);
+        playingGenreIndex = getGenreIndexByPlaylistId(id);
       }
 
       JsonObject item = json["item"];
