@@ -118,6 +118,7 @@ ESPAsync_WMParameter *spotifyClientSecretParam;
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = true;
 int lastKnobCount = 0;
+bool knobHeldForRandom = false;
 bool knobRotatedWhileLongPressed = false;
 bool randomizingMenuAutoplay = false;
 time_t secondsAsleep = 0;

@@ -294,6 +294,7 @@ void setup() {
   }
 
   if (holdingButton) {
+    knobHeldForRandom = true;
     startRandomizingMenu(true);
   } else if (secondsAsleep == 0 || secondsAsleep > 60 * 40) {
     startRandomizingMenu(false);
@@ -355,6 +356,7 @@ void loop() {
   }
 
   if (shouldShowRandom() && getExtraLongPressedMillis() >= extraLongPressMillis) {
+    knobHeldForRandom = true;
     longPressStartedMillis = 0;
     startRandomizingMenu(true);
   }
@@ -599,6 +601,10 @@ void knobDoubleClicked() {
 void knobLongPressStarted() {
   longPressStartedMillis = lastInputMillis = millis();
   knobRotatedWhileLongPressed = false;
+  if (knobHeldForRandom) {
+    knobHeldForRandom = false;
+    return;
+  }
   if (menuMode != RootMenu) {
     lastMenuMode = menuMode;
     lastMenuIndex = menuIndex;
@@ -635,6 +641,10 @@ void knobLongPressStarted() {
 
 void knobLongPressStopped() {
   lastInputMillis = millis();
+  if (knobHeldForRandom) {
+    knobHeldForRandom = false;
+    return;
+  }
   checkMenuSize(RootMenu);
   if (shouldShowRandom()) {
     startRandomizingMenu();
@@ -764,7 +774,6 @@ void updateDisplay() {
     while (millis() < endTickMillis) delay(10);
     if (millis() >= randomizingMenuEndMillis) {
       randomizingMenuEndMillis = 0;
-      button.reset();
       if (randomizingMenuAutoplay) {
         playPlaylist(genrePlaylists[genreIndex]);
         playingGenreIndex = genreIndex;
