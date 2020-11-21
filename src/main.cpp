@@ -534,7 +534,6 @@ void knobClicked() {
     case AlphabeticList:
     case AlphabeticSuffixList:
     case PopularityList:
-      lastMenuMode = lastPlaylistMenuMode = menuMode;
       playPlaylist(genrePlaylists[genreIndex]);
       playingGenreIndex = genreIndex;
       break;
@@ -545,14 +544,10 @@ void knobClicked() {
       }
       break;
     case CountryList:
-      lastMenuMode = lastPlaylistMenuMode = menuMode;
-      lastMenuIndex = menuIndex;
       playPlaylist(countryPlaylists[menuIndex], countries[menuIndex]);
       playingCountryIndex = lastMenuIndex;
       break;
     case PlaylistList:
-      lastMenuMode = lastPlaylistMenuMode = menuMode;
-      lastMenuIndex = menuIndex;
       playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name);
       break;
     case VolumeControl:
@@ -1388,8 +1383,13 @@ void playPlaylist(const char *playlistId, const char *name) {
   strncpy(spotifyState.playlistId, playlistId, SPOTIFY_ID_SIZE);
   strncpy(spotifyState.contextName, name, sizeof(spotifyState.contextName) - 1);
   if (!spotifyGettingToken && spotifyAction != GetToken) spotifyAction = PlayPlaylist;
-  setStatusMessage("play");
+
+  lastMenuMode = menuMode;
+  lastMenuIndex = menuIndex;
+  if (isPlaylistMenu(menuMode)) lastPlaylistMenuMode = menuMode;
+  if (isGenreMenu(menuMode) && menuMode != SimilarList) lastFullGenreMenuMode = menuMode;
   setMenuMode(NowPlaying, PlayPauseButton);
+  setStatusMessage("play");
 }
 
 int formatMillis(char *output, unsigned long millis) {
