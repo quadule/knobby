@@ -567,7 +567,7 @@ void knobClicked() {
           }
           break;
         case BackButton:
-          if (spotifyState.disallowsSkippingPrev || spotifyState.estimatedProgressMillis > 1000) {
+          if (spotifyState.disallowsSkippingPrev || spotifyState.estimatedProgressMillis > 2000) {
             spotifySeekToMillis = 0;
             spotifyAction = Seek;
           } else {
