@@ -2025,8 +2025,9 @@ void spotifyToggleShuffle() {
   if (spotifyAccessToken[0] == '\0') return;
 
   spotifyState.isShuffled = !spotifyState.isShuffled;
-  HTTP_response_t response;
+  invalidateDisplay();
 
+  HTTP_response_t response;
   char path[33];
   snprintf(path, sizeof(path), "me/player/shuffle?state=%s", spotifyState.isShuffled ? "true" : "false");
   response = spotifyApiRequest("PUT", path);
@@ -2034,8 +2035,9 @@ void spotifyToggleShuffle() {
   if (response.httpCode == 204) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
-    spotifyState.isShuffled = !spotifyState.isShuffled;
     log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
+    spotifyState.isShuffled = !spotifyState.isShuffled;
+    invalidateDisplay();
   }
   spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
 };
