@@ -121,7 +121,7 @@ void setup() {
   Update.onProgress(onOTAProgress);
   ArduinoOTA.setHostname(nodeName.c_str());
   ArduinoOTA.setPassword(configPassword.c_str());
-  ArduinoOTA.setTimeout(3000);
+  ArduinoOTA.setTimeout(10000);
   ArduinoOTA.onStart([]() {
       int cmd = ArduinoOTA.getCommand();
       if (cmd == U_FLASH) {
@@ -135,6 +135,7 @@ void setup() {
     })
     .onEnd([]() {
       log_i("OTA: update complete");
+      lastInputMillis = millis();
     })
     .onError([](ota_error_t error) {
       log_e("OTA: error code %u", error);
@@ -259,7 +260,9 @@ void setup() {
           setStatusMessage("update failed");
         } else {
           log_i("OTA: update complete");
+          onOTAProgress(100, 100);
           Serial.flush();
+          delay(100);
           ESP.restart();
         }
       }
