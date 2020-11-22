@@ -825,11 +825,7 @@ void updateDisplay() {
       }
     }
   } else if (menuMode == DeviceList) {
-    if (spotifyDevices.empty()) {
-      tft.setCursor(textPadding, lineTwo);
-      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-      drawCenteredText("loading...", textWidth);
-    } else {
+    if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
       SpotifyDevice_t *device = &spotifyDevices[menuIndex];
       bool selected = device == activeSpotifyDevice;
       char header[14];
@@ -842,12 +838,20 @@ void updateDisplay() {
       if (device != nullptr) {
         tft.setCursor(textPadding, lineTwo);
         if (!spotifyDevicesLoaded || device->name[0] == '\0') {
-          drawCenteredText("loading...", textWidth);
+          drawCenteredText("loading...", textWidth, 3);
         } else {
           if (strcmp(device->id, activeSpotifyDeviceId) == 0) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
           drawCenteredText(device->name, textWidth, 3);
         }
       }
+    } else if (!spotifyDevicesLoaded || spotifyAction == GetDevices) {
+      tft.setCursor(textPadding, lineTwo);
+      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+      drawCenteredText("loading...", textWidth, 3);
+    } else if (spotifyDevicesLoaded && spotifyDevices.empty()) {
+      tft.setCursor(textPadding, lineTwo);
+      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+      drawCenteredText("no devices found", textWidth, 3);
     }
   } else if (menuMode == VolumeControl) {
     uint8_t x = 10;
