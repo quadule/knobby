@@ -282,9 +282,11 @@ void setup() {
   spotifyHttp.setReuse(true);
 
   bool holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
+  button.tick(holdingButton);
   if (holdingButton) {
     delay(10);
     holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
+    button.tick(holdingButton);
   }
 
   if (spotifyNeedsNewAccessToken()) {
@@ -302,8 +304,6 @@ void setup() {
   } else if (secondsAsleep == 0 || secondsAsleep > 60 * 40) {
     startRandomizingMenu(false);
   }
-
-  lastInputMillis = millis();
 }
 
 void loop() {
@@ -599,10 +599,6 @@ void knobDoubleClicked() {
 void knobLongPressStarted() {
   longPressStartedMillis = lastInputMillis = millis();
   knobRotatedWhileLongPressed = false;
-  if (knobHeldForRandom) {
-    knobHeldForRandom = false;
-    return;
-  }
   if (menuMode != RootMenu) {
     lastMenuMode = menuMode;
     lastMenuIndex = menuIndex;
@@ -1203,7 +1199,7 @@ bool shouldShowProgressBar() {
 
 bool shouldShowRandom() {
   if (randomizingMenuEndMillis > 0 || knobRotatedWhileLongPressed) return false;
-  return getLongPressedMillis() > extraLongPressMillis && lastMenuMode != SimilarList &&
+  return (knobHeldForRandom || getLongPressedMillis() > extraLongPressMillis) && lastMenuMode != SimilarList &&
          (lastMenuMode == NowPlaying || isGenreMenu(lastMenuMode));
 }
 
@@ -1383,6 +1379,7 @@ void startRandomizingMenu(bool autoplay) {
 
 void playPlaylist(const char *playlistId, const char *name) {
   spotifyResetProgress();
+  spotifyState.isPlaying = true;
   spotifyPlayPlaylistId = playlistId;
   strncpy(spotifyState.playlistId, playlistId, SPOTIFY_ID_SIZE);
   strncpy(spotifyState.contextName, name, sizeof(spotifyState.contextName) - 1);
