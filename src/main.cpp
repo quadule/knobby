@@ -873,7 +873,11 @@ void updateDisplay() {
       img.printToSprite(String(statusMessage));
     } else {
       char elapsed[11];
-      formatMillis(elapsed, spotifyState.estimatedProgressMillis);
+      if (spotifyState.durationMillis == 0) {
+        formatMillis(elapsed, 0);
+      } else {
+        formatMillis(elapsed, spotifyState.estimatedProgressMillis);
+      }
       img.setTextColor(spotifyState.isPlaying ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
       img.printToSprite(String(elapsed));
     }
