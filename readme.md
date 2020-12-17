@@ -44,4 +44,4 @@ All code is released under the MIT license. The case design is released under th
 
 * Spotify playlists and inspiration from Glenn McDonald's wonderful [Every Noise at Once](http://everynoise.com).
 * Some of the Spotify API integration was derived from [M5Spot](https://github.com/CosmicMac/M5Spot)
-* [Material icons from Google](https://material.io/resources/icons/)
+* Icons from [Google Material](https://material.io/resources/icons/) and [Typicons](https://www.s-ings.com/typicons/).

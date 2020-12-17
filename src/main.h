@@ -19,6 +19,7 @@
 #include "esp_task_wdt.h"
 #include "esp_wifi.h"
 #include "genres.h"
+#include "knobby.h"
 #include "sdkconfig.h"
 #include "settings.h"
 #include "spotify.h"
@@ -48,7 +49,8 @@ typedef struct {
 #define FONT_NAME "GillSans24"
 #define ICON_SIZE 24
 #define LINE_HEIGHT 26
-#define TFT_LIGHTBLACK 0x1082 /*  16,   16,  16 */
+#define TFT_LIGHTBLACK 0x1082 /*  16,  16,  16 */
+#define TFT_DARKERGREY 0x4A49 /*  72,  72,  72 */
 #define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
 
 const char *rootMenuItems[] = {"devices",    "playlists", "countries",   "name", "name ending",
@@ -80,12 +82,21 @@ const String ICON_PLAY_ARROW = "\uE90C";
 const String ICON_PAUSE = "\uE90D";
 const String ICON_WIFI = "\uE90E";
 const String ICON_SPOTIFY = "\uEA94";
+const String ICON_WIFI_OFF = "\uE918";
+const String ICON_BATTERY_CHARGE = "\uE90F";
+const String ICON_BATTERY_LOW = "\uE912";
+const String ICON_BATTERY_MID = "\uE911";
+const String ICON_BATTERY_HIGH = "\uE910";
+const String ICON_BATTERY_FULL = "\uE913";
+const String ICON_BLUETOOTH = "\uE914";
+const String ICON_BLUETOOTH_CONNECTED = "\uE915";
+const String ICON_BLUETOOTH_DISABLED = "\uE916";
+const String ICON_BLUETOOTH_SEARCHING = "\uE917";
 
 String configPassword;
 String wifiSSID;
 String wifiPassword;
 
-RTC_DATA_ATTR float batteryVoltage = 0.0;
 RTC_DATA_ATTR unsigned int bootCount = 0;
 RTC_DATA_ATTR time_t bootSeconds = 0;
 RTC_DATA_ATTR time_t lastSleepSeconds = 0;
@@ -93,6 +104,7 @@ RTC_DATA_ATTR MenuModes menuMode = AlphabeticList;
 RTC_DATA_ATTR uint16_t menuIndex = 0;
 RTC_DATA_ATTR uint16_t menuSize = GENRE_COUNT;
 RTC_DATA_ATTR uint16_t genreIndex = 0;
+RTC_DATA_ATTR float lastBatteryVoltage = 0.0;
 RTC_DATA_ATTR MenuModes lastMenuMode = AlphabeticList;
 RTC_DATA_ATTR uint16_t lastMenuIndex = 0;
 RTC_DATA_ATTR MenuModes lastFullGenreMenuMode = AlphabeticList;
@@ -101,9 +113,11 @@ RTC_DATA_ATTR int playingCountryIndex = -1;
 RTC_DATA_ATTR int playingGenreIndex = -1;
 RTC_DATA_ATTR bool forceStartConfigPortalOnBoot = false;
 
+Knobby knobby;
 TFT_eSPI tft = TFT_eSPI(135, 240);
 TFT_eSprite img = TFT_eSprite(&tft);
 TFT_eSprite ico = TFT_eSprite(&tft);
+TFT_eSprite batterySprite = TFT_eSprite(&tft);
 ESP32Encoder knob;
 OneButton button(ROTARY_ENCODER_BUTTON_PIN, true, true);
 
@@ -130,7 +144,6 @@ int rootMenuSimilarIndex = -1;
 int rootMenuUsersIndex = -1;
 int similarMenuGenreIndex = -1;
 std::vector<SimilarItem_t> similarMenuItems;
-int vref = 1100;
 long lastConnectedMillis = -1;
 unsigned long clickEffectEndMillis = 0;
 unsigned long inactivityMillis = 90000;
@@ -162,6 +175,7 @@ bool readDataJson();
 bool writeDataJson();
 void onOTAProgress(unsigned int progress, unsigned int total);
 uint16_t checkMenuSize(MenuModes mode);
+void drawBattery(unsigned int percent, unsigned int y);
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1);
 void drawDivider(bool selected);
 void drawWifiSetup();
@@ -173,9 +187,9 @@ void setActiveUser(SpotifyUser_t *user);
 void setMenuIndex(uint16_t newMenuIndex);
 void setMenuMode(MenuModes newMode, uint16_t newMenuIndex);
 void setStatusMessage(const char *message, unsigned long durationMs = 1300);
+void shutdownIfLowBattery();
 void startDeepSleep();
 void startRandomizingMenu(bool autoplay = false);
-void updateBatteryVoltage();
 void updateDisplay();
 
 // Getters

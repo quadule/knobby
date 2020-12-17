@@ -14,8 +14,6 @@ void setup() {
   };
   ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
   ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
-  disableCore1WDT();
-  esp_task_wdt_init(15, true);
 
   similarMenuItems.reserve(16);
   spotifyDevices.reserve(10);
@@ -26,6 +24,7 @@ void setup() {
   tft.setRotation(3);
   img.loadFont(FONT_NAME);
   ico.loadFont("icomoon24");
+  batterySprite.loadFont("icomoon31");
   tft.fillScreen(TFT_BLACK);
   gpio_hold_en((gpio_num_t)TFT_BL);
 
@@ -52,17 +51,9 @@ void setup() {
   }
   bootCount++;
 
-  esp_adc_cal_characteristics_t adc_chars;
-  esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6, (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
-  //Check type of calibration value used to characterize ADC
-  if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
-    log_d("eFuse Vref: %u mV", adc_chars.vref);
-    vref = adc_chars.vref;
-  } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
-    log_d("Two Point --> coeff_a:%umV coeff_b:%umV", adc_chars.coeff_a, adc_chars.coeff_b);
-  } else {
-    log_d("Default Vref: 1100mV");
-  }
+  // Restore battery level from RTC memory after sleep first
+  if (lastBatteryVoltage > 0.0) knobby.setBatteryVoltage(lastBatteryVoltage);
+  knobby.setup();
 
   ESP32Encoder::useInternalWeakPullResistors = UP;
   knob.attachFullQuad(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN);
@@ -240,7 +231,7 @@ void setup() {
         updateContentLength = request->contentLength();
         int cmd = (filename.indexOf("spiffs") > -1) ? U_SPIFFS : U_FLASH;
         if (cmd == U_SPIFFS) SPIFFS.end();
-        if (!Update.begin(updateContentLength, cmd)) {
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN, cmd)) {
           Update.printError(Serial);
         }
       }
@@ -281,12 +272,10 @@ void setup() {
   spotifyHttp.setTimeout(4000);
   spotifyHttp.setReuse(true);
 
-  bool holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
-  button.tick(holdingButton);
-  if (holdingButton) {
+  bool holdingKnob = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
+  if (holdingKnob) {
     delay(10);
-    holdingButton = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
-    button.tick(holdingButton);
+    holdingKnob = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
   }
 
   if (spotifyNeedsNewAccessToken()) {
@@ -298,7 +287,7 @@ void setup() {
     xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
   }
 
-  if (holdingButton) {
+  if (holdingKnob) {
     knobHeldForRandom = true;
     startRandomizingMenu(true);
   } else if (secondsAsleep == 0 || secondsAsleep > 60 * 40) {
@@ -311,7 +300,10 @@ void loop() {
   unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
 
   if (knob.getCount() != lastKnobCount) knobRotated();
-  button.tick();
+  if (randomizingMenuEndMillis == 0) button.tick();
+  knobby.loop();
+  lastBatteryVoltage = knobby.batteryVoltage();
+  shutdownIfLowBattery();
 
   bool connected = WiFi.isConnected();
 
@@ -351,14 +343,12 @@ void loop() {
     }
   }
 
-  ArduinoOTA.handle();
-
   if (connected && !spotifyGettingToken && spotifyNeedsNewAccessToken()) {
     spotifyGettingToken = true;
     spotifyAction = GetToken;
   }
 
-  if (shouldShowRandom() && getExtraLongPressedMillis() >= extraLongPressMillis) {
+  if (!knobHeldForRandom && shouldShowRandom() && getExtraLongPressedMillis() >= extraLongPressMillis) {
     knobHeldForRandom = true;
     longPressStartedMillis = 0;
     startRandomizingMenu(true);
@@ -401,6 +391,8 @@ void loop() {
     }
   }
 
+  ArduinoOTA.handle();
+
   if ((spotifyAction == Idle || spotifyAction == CurrentlyPlaying) && lastInputDelta > 500 &&
       randomizingMenuEndMillis == 0 && !shouldShowRandom()) {
     delay(30);
@@ -411,6 +403,7 @@ void loop() {
 }
 
 void backgroundApiLoop(void *params) {
+  esp_task_wdt_init(15, true);
   for (;;) {
     if (WiFi.status() == WL_CONNECTED) {
       uint32_t now = millis();
@@ -505,6 +498,10 @@ void knobRotated() {
 
 void knobClicked() {
   lastInputMillis = millis();
+  if (knobHeldForRandom) {
+    knobHeldForRandom = false;
+    return;
+  }
   clickEffectEndMillis = lastInputMillis + clickEffectMillis;
 
   switch (menuMode) {
@@ -592,12 +589,18 @@ void knobClicked() {
 
 void knobDoubleClicked() {
   lastInputMillis = millis();
+  if (knobHeldForRandom) {
+    knobHeldForRandom = false;
+    return;
+  }
   spotifyAction = Next;
   setStatusMessage("next");
 }
 
 void knobLongPressStarted() {
-  longPressStartedMillis = lastInputMillis = millis();
+  lastInputMillis = millis();
+  if (knobHeldForRandom) return;
+  longPressStartedMillis = lastInputMillis;
   knobRotatedWhileLongPressed = false;
   if (menuMode != RootMenu) {
     lastMenuMode = menuMode;
@@ -716,6 +719,48 @@ void knobLongPressStopped() {
   longPressStartedMillis = 0;
 }
 
+void drawBattery(unsigned int percent, unsigned int y) {
+  const unsigned int batterySize = 31;
+  batterySprite.setTextDatum(MC_DATUM);
+  batterySprite.createSprite(batterySize, batterySize);
+  batterySprite.setTextColor(TFT_DARKERGREY, TFT_BLACK);
+  batterySprite.setCursor(1, 3);
+  if (knobby.powerStatus() == PowerStatusOnBattery) {
+    if (percent >= 85) {
+      batterySprite.printToSprite(ICON_BATTERY_FULL);
+    } else if (percent >= 60) {
+      batterySprite.printToSprite(ICON_BATTERY_HIGH);
+    } else if (percent >= 35) {
+      batterySprite.printToSprite(ICON_BATTERY_MID);
+    } else {
+      batterySprite.setTextColor(TFT_RED, TFT_BLACK);
+      batterySprite.printToSprite(ICON_BATTERY_LOW);
+    }
+  } else  {
+    batterySprite.setTextColor(TFT_GREEN, TFT_BLACK);
+    batterySprite.printToSprite(ICON_BATTERY_CHARGE);
+  }
+  tft.setCursor(centerX - batterySize / 2, y);
+  batterySprite.pushSprite(tft.getCursorX(), tft.getCursorY());
+  batterySprite.deleteSprite();
+}
+
+void shutdownIfLowBattery() {
+  if (knobby.shouldUpdateBattery() || knobby.batteryVoltage() >= 3.2) return;
+  tft.fillScreen(TFT_BLACK);
+  drawBattery(0, 50);
+  delay(333);
+  tft.fillScreen(TFT_BLACK);
+  delay(333);
+  drawBattery(0, 50);
+  delay(333);
+  tft.fillScreen(TFT_BLACK);
+  delay(333);
+  drawBattery(0, 50);
+  delay(333);
+  startDeepSleep();
+}
+
 void drawDivider(bool selected) {
   int width = 110;
   if (selected) {
@@ -794,12 +839,8 @@ void updateDisplay() {
       }
     }
 
-    img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    tft.setCursor(textPadding, lineThree + LINE_HEIGHT);
-    if (batteryVoltage > 0 && batteryVoltage < 3.75) {
-      String voltage = String(batteryVoltage) + "V";
-      drawCenteredText(voltage.c_str(), textWidth);
-    }
+    drawBattery(knobby.batteryPercentage(), lineThree + 18);
+
     tft.drawRoundRect(9, lineTwo - 15, 221, 49, 5, TFT_WHITE);
   } else if (menuMode == UserList) {
     SpotifyUser_t *user = &spotifyUsers[menuIndex];
@@ -1147,20 +1188,6 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines) {
     tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
     lineNumber++;
   }
-}
-
-void updateBatteryVoltage() {
-  /*
-  ADC_EN is the ADC detection enable port
-  If the USB port is used for power supply, it is turned on by default.
-  If it is powered by battery, it needs to be set to high level
-  */
-  pinMode(ADC_EN, OUTPUT);
-  digitalWrite(ADC_EN, HIGH);
-  delay(10);
-  batteryVoltage = ((float)analogRead(ADC_PIN) / 4095.0) * 2.0 * 3.3 * (vref / 1000.0);
-  digitalWrite(ADC_EN, LOW);
-  lastBatteryUpdateMillis = millis();
 }
 
 int getGenreIndexByName(const char *genreName) {
