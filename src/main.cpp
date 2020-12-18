@@ -309,6 +309,8 @@ void loop() {
 
   if (lastInputDelta > inactivityMillis) {
     startDeepSleep();
+  } else if (menuMode == VolumeControl && lastInputDelta > volumeMenuTimeoutMillis) {
+    setMenuMode(NowPlaying, VolumeButton);
   }
 
   if (connected && (lastConnectedMillis < 0 || lastReconnectAttemptMillis > lastConnectedMillis)) {

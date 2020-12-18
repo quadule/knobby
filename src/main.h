@@ -156,6 +156,7 @@ unsigned long nowPlayingDisplayMillis = 0;
 unsigned long randomizingMenuEndMillis = 0;
 unsigned long randomizingMenuTicks = 0;
 unsigned long statusMessageUntilMillis = 0;
+unsigned long volumeMenuTimeoutMillis = 10000;
 unsigned long wifiConnectTimeoutMillis = 45000;
 size_t updateContentLength = 0;
 
