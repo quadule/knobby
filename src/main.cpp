@@ -650,7 +650,14 @@ void knobLongPressStopped() {
       setMenuMode(SimilarList, lastMenuMode == SimilarList ? lastMenuIndex : 0);
     } else {
       similarMenuItems.clear();
-      similarMenuGenreIndex = genreIndex;
+      if (isGenreMenu(lastMenuMode)) {
+        similarMenuGenreIndex = genreIndex;
+      } else if (playingGenreIndex >= 0) {
+        similarMenuGenreIndex = playingGenreIndex;
+      } else {
+        log_e("missing genre index for similar menu");
+        similarMenuGenreIndex = 0;
+      }
       setMenuMode(SimilarList, 0);
       spotifyAction = GetPlaylistDescription;
     }
@@ -1235,7 +1242,7 @@ bool shouldShowRandom() {
 }
 
 bool shouldShowSimilarMenu() {
-  return lastMenuMode == SimilarList || isGenreMenu(lastMenuMode);
+  return isGenreMenu(lastMenuMode) || playingGenreIndex >= 0;
 }
 
 bool shouldShowUsersMenu() {
