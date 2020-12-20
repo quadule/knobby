@@ -57,9 +57,9 @@ void setup() {
 
   ESP32Encoder::useInternalWeakPullResistors = UP;
   knob.attachFullQuad(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN);
-  button.setDebounceTicks(30);
-  button.setClickTicks(360);
-  button.setPressTicks(360);
+  button.setDebounceTicks(debounceMillis);
+  button.setClickTicks(doubleClickMaxMillis);
+  button.setPressTicks(longPressMillis);
   button.attachClick(knobClicked);
   button.attachDoubleClick(knobDoubleClicked);
   button.attachLongPressStart(knobLongPressStarted);
@@ -300,7 +300,7 @@ void loop() {
   unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
 
   if (knob.getCount() != lastKnobCount) knobRotated();
-  if (randomizingMenuEndMillis == 0) button.tick();
+  button.tick();
   knobby.loop();
   lastBatteryVoltage = knobby.batteryVoltage();
   shutdownIfLowBattery();
@@ -500,11 +500,8 @@ void knobRotated() {
 
 void knobClicked() {
   lastInputMillis = millis();
-  if (knobHeldForRandom) {
-    knobHeldForRandom = false;
-    return;
-  }
   clickEffectEndMillis = lastInputMillis + clickEffectMillis;
+  if (randomizingMenuEndMillis > 0) randomizingMenuEndMillis = 0;
 
   switch (menuMode) {
     case UserList:
@@ -591,17 +588,14 @@ void knobClicked() {
 
 void knobDoubleClicked() {
   lastInputMillis = millis();
-  if (knobHeldForRandom) {
-    knobHeldForRandom = false;
-    return;
-  }
+  if (knobHeldForRandom || randomizingMenuEndMillis > 0) return;
   spotifyAction = Next;
   setStatusMessage("next");
 }
 
 void knobLongPressStarted() {
   lastInputMillis = millis();
-  if (knobHeldForRandom) return;
+  if (knobHeldForRandom || randomizingMenuEndMillis > 0) return;
   longPressStartedMillis = lastInputMillis;
   knobRotatedWhileLongPressed = false;
   if (menuMode != RootMenu) {
@@ -640,7 +634,7 @@ void knobLongPressStarted() {
 
 void knobLongPressStopped() {
   lastInputMillis = millis();
-  if (knobHeldForRandom) {
+  if (knobHeldForRandom || randomizingMenuEndMillis > 0) {
     knobHeldForRandom = false;
     return;
   }
