@@ -1477,10 +1477,12 @@ bool readDataJson() {
   if (error) {
     log_e("Failed to read data.json: %s", error.c_str());
     return false;
+#ifdef DEBUG
   } else {
     Serial.print("Loading data.json: ");
     serializeJson(doc, Serial);
     Serial.println();
+#endif
   }
 
   configPassword = doc["configPassword"] | "";
@@ -1539,9 +1541,11 @@ bool writeDataJson() {
     log_e("Failed to write data.json: %d", bytes);
     return false;
   }
+#ifdef DEBUG
   Serial.print("Saving data.json: ");
   serializeJson(doc, Serial);
   Serial.println();
+#endif
   return true;
 }
 
@@ -1628,7 +1632,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
              "grant_type=refresh_token&refresh_token=%s",
              code);
   }
-  log_i("[%d] %s %s %s", ts, method, path, requestContent);
+  log_i("[%d] %s %s", ts, method, path);
 
   HTTPClient http;
   StreamString payload;
