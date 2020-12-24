@@ -110,7 +110,6 @@ RTC_DATA_ATTR uint16_t genreIndex = 0;
 RTC_DATA_ATTR float lastBatteryVoltage = 0.0;
 RTC_DATA_ATTR MenuModes lastMenuMode = AlphabeticList;
 RTC_DATA_ATTR uint16_t lastMenuIndex = 0;
-RTC_DATA_ATTR MenuModes lastFullGenreMenuMode = AlphabeticList;
 RTC_DATA_ATTR MenuModes lastPlaylistMenuMode = AlphabeticList;
 RTC_DATA_ATTR int playingCountryIndex = -1;
 RTC_DATA_ATTR int playingGenreIndex = -1;

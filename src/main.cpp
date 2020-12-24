@@ -632,7 +632,6 @@ void knobLongPressStarted() {
     lastMenuMode = menuMode;
     lastMenuIndex = menuIndex;
     if (isPlaylistMenu(menuMode)) lastPlaylistMenuMode = menuMode;
-    if (isGenreMenu(menuMode) && menuMode != SimilarList) lastFullGenreMenuMode = menuMode;
   }
   checkMenuSize(RootMenu);
   if (menuMode == NowPlaying) {
@@ -830,7 +829,7 @@ void updateDisplay() {
   tft.setTextDatum(MC_DATUM);
   unsigned long now = millis();
 
-  if (spotifyUsers.empty()) {
+  if (spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
     tft.setCursor(textPadding, lineOne);
     drawCenteredText("spotify log in", textWidth);
     drawDivider(true);
@@ -838,17 +837,30 @@ void updateDisplay() {
     drawCenteredText(("http://" + nodeName + ".local").c_str(), 239);
   } else if (now < randomizingMenuEndMillis) {
     randomizingMenuTicks++;
-    setMenuIndex(random(checkMenuSize(lastFullGenreMenuMode)));
-    img.setTextColor(genreColors[genreIndex], TFT_BLACK);
+    setMenuIndex(random(checkMenuSize(lastPlaylistMenuMode)));
     tft.setCursor(textPadding, lineTwo);
-    drawCenteredText(genres[genreIndex], textWidth, 3);
+    if (isGenreMenu(lastPlaylistMenuMode)) {
+      img.setTextColor(genreColors[genreIndex], TFT_BLACK);
+      drawCenteredText(genres[genreIndex], textWidth, 3);
+    } else if (lastPlaylistMenuMode == CountryList) {
+      drawCenteredText(countries[menuIndex], textWidth, 3);
+    } else if (lastPlaylistMenuMode == PlaylistList) {
+      drawCenteredText(spotifyPlaylists[menuIndex].name, textWidth, 3);
+    }
     auto endTickMillis = millis() + pow(randomizingMenuTicks, 3);
     while (millis() < endTickMillis) delay(10);
     if (millis() >= randomizingMenuEndMillis) {
       randomizingMenuEndMillis = 0;
       if (randomizingMenuAutoplay) {
-        playPlaylist(genrePlaylists[genreIndex]);
-        playingGenreIndex = genreIndex;
+        if (isGenreMenu(lastPlaylistMenuMode)) {
+          playPlaylist(genrePlaylists[genreIndex]);
+          playingGenreIndex = genreIndex;
+        } else if (lastPlaylistMenuMode == CountryList) {
+          playPlaylist(countryPlaylists[menuIndex], countries[menuIndex]);
+          playingCountryIndex = lastMenuIndex;
+        } else if (lastPlaylistMenuMode == PlaylistList) {
+          playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name);
+        }
         displayInvalidatedPartial = true;
       }
     }
@@ -1264,7 +1276,7 @@ bool shouldShowProgressBar() {
 bool shouldShowRandom() {
   if (randomizingMenuEndMillis > 0 || knobRotatedWhileLongPressed) return false;
   return (knobHeldForRandom || getLongPressedMillis() > extraLongPressMillis) && lastMenuMode != SimilarList &&
-         (lastMenuMode == NowPlaying || isGenreMenu(lastMenuMode));
+         isPlaylistMenu(lastMenuMode);
 }
 
 bool shouldShowSimilarMenu() {
@@ -1437,7 +1449,7 @@ void startRandomizingMenu(bool autoplay) {
       if (spotifyAction != GetToken) spotifyAction = Idle;
       spotifyResetProgress();
     }
-    setMenuMode(lastFullGenreMenuMode, 0);
+    setMenuMode(lastPlaylistMenuMode, 0);
   }
 }
 
@@ -1452,7 +1464,6 @@ void playPlaylist(const char *playlistId, const char *name) {
   lastMenuMode = menuMode;
   lastMenuIndex = menuIndex;
   if (isPlaylistMenu(menuMode)) lastPlaylistMenuMode = menuMode;
-  if (isGenreMenu(menuMode) && menuMode != SimilarList) lastFullGenreMenuMode = menuMode;
   setMenuMode(NowPlaying, PlayPauseButton);
   setStatusMessage("play");
 }
