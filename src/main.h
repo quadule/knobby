@@ -21,7 +21,6 @@
 #include "genres.h"
 #include "knobby.h"
 #include "sdkconfig.h"
-#include "settings.h"
 #include "spotify.h"
 #include "time.h"
 
