@@ -27,6 +27,7 @@ void setup() {
   batterySprite.loadFont("icomoon31");
   tft.fillScreen(TFT_BLACK);
   gpio_hold_en((gpio_num_t)TFT_BL);
+  ledcSetup(TFT_BL, 5000, 8);
 
   if (bootCount == 0) {
     delay(1000);
@@ -297,7 +298,7 @@ void setup() {
 
 void loop() {
   uint32_t now = millis();
-  unsigned long lastInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
+  unsigned long previousInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
 
   if (knob.getCount() != lastKnobCount) knobRotated();
   button.tick();
@@ -305,11 +306,37 @@ void loop() {
   lastBatteryVoltage = knobby.batteryVoltage();
   shutdownIfLowBattery();
 
+  now = millis();
+  unsigned long inputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
   bool connected = WiFi.isConnected();
 
-  if (lastInputDelta > inactivityMillis) {
+  if (inputDelta < inactivityMillis && previousInputDelta > inactivityMillis) {
+    ledcDetachPin(TFT_BL);
+    esp_pm_config_esp32_t pm_config_ls_enable = {
+      .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+      .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+      .light_sleep_enable = true
+    };
+    ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
+    gpio_hold_en((gpio_num_t)TFT_BL);
+    digitalWrite(TFT_BL, HIGH);
+  } else if (inputDelta > inactivityMillis + inactivityFadeOutMillis) {
     startDeepSleep();
-  } else if (menuMode == VolumeControl && lastInputDelta > volumeMenuTimeoutMillis) {
+  } else if (inputDelta > inactivityMillis) {
+    double fadeProgress = 1.0 - (inputDelta - inactivityMillis) / (double)inactivityFadeOutMillis;
+    uint32_t duty = min(max((int)round(fadeProgress * 255.0), 0), 255);
+    if (duty >= 250) {
+      ledcAttachPin(TFT_BL, TFT_BL);
+      esp_pm_config_esp32_t pm_config_ls_enable = {
+        .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+        .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+        .light_sleep_enable = false
+      };
+      ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
+      gpio_hold_dis((gpio_num_t)TFT_BL);
+    }
+    ledcWrite(TFT_BL, duty);
+  } else if (menuMode == VolumeControl && inputDelta > volumeMenuTimeoutMillis) {
     setMenuMode(NowPlaying, VolumeButton);
   }
 
@@ -395,7 +422,7 @@ void loop() {
 
   ArduinoOTA.handle();
 
-  if ((spotifyAction == Idle || spotifyAction == CurrentlyPlaying) && lastInputDelta > 500 &&
+  if ((spotifyAction == Idle || spotifyAction == CurrentlyPlaying) && inputDelta > 500 &&
       randomizingMenuEndMillis == 0 && !shouldShowRandom()) {
     delay(30);
   } else {

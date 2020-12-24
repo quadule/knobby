@@ -60,6 +60,7 @@ const unsigned int debounceMillis = 20;
 const unsigned int doubleClickMaxMillis = 360;
 const unsigned int longPressMillis = 450;
 const unsigned int extraLongPressMillis = 1250;
+const unsigned int inactivityFadeOutMillis = 8000;
 const int lineOne = 10;
 const int lineDivider = lineOne + LINE_HEIGHT + 2;
 const int lineTwo = lineOne + LINE_HEIGHT + 11;
