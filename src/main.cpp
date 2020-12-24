@@ -425,14 +425,14 @@ void loop() {
   if ((spotifyAction == Idle || spotifyAction == CurrentlyPlaying) && inputDelta > 500 &&
       randomizingMenuEndMillis == 0 && !shouldShowRandom()) {
     delay(30);
+  } else if (inputDelta > 500) {
+    delay(10);
   } else {
     yield();
   }
-  esp_task_wdt_reset();
 }
 
 void backgroundApiLoop(void *params) {
-  esp_task_wdt_init(15, true);
   for (;;) {
     if (WiFi.status() == WL_CONNECTED) {
       uint32_t now = millis();
@@ -493,8 +493,11 @@ void backgroundApiLoop(void *params) {
           break;
       }
     }
-    yield();
-    if (spotifyAction == Idle || spotifyAction == CurrentlyPlaying) delay(50);
+    if (spotifyAction == Idle || spotifyAction == CurrentlyPlaying) {
+      delay(50);
+    } else {
+      delay(10);
+    }
   }
 }
 
