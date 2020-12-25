@@ -36,7 +36,8 @@ If data.json is not configured or there is a problem connecting to your network,
   - Keep holding the knob until the progress bar reaches the end to play automatically
   - Release the knob before the progress bar reaches the end to continue browsing
   - Rotate the knob to cancel randomizing or switch menus
-* Double click the knob to skip to the next track
+* When browsing genres, double click the knob to switch sort modes
+* When playing something, double click the knob to skip to the next track
 * Visit http://knobby.local/authorize to add additional Spotify accounts
 
 ## License

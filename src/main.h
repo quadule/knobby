@@ -30,13 +30,12 @@ enum MenuModes {
   DeviceList = 0,
   PlaylistList = 1,
   CountryList = 2,
-  AlphabeticList = 3,
-  AlphabeticSuffixList = 4,
-  PopularityList = 5,
-  SimilarList = 6,
-  NowPlaying = 7,
-  UserList = 8
+  GenreList = 3,
+  SimilarList = 4,
+  NowPlaying = 5,
+  UserList = 6
 };
+enum GenreSortModes { AlphabeticSort, AlphabeticSuffixSort };
 enum NowPlayingButtons { VolumeButton = 0, ShuffleButton = 1, BackButton = 2, PlayPauseButton = 3, NextButton = 4 };
 enum EventsLogTypes { log_line, log_raw };
 
@@ -52,8 +51,7 @@ typedef struct {
 #define TFT_DARKERGREY 0x4A49 /*  72,  72,  72 */
 #define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
 
-const char *rootMenuItems[] = {"devices",    "playlists", "countries",   "name", "name ending",
-                               "popularity", "similar",   "now playing", "users"};
+const char *rootMenuItems[] = {"devices", "playlists", "countries", "genres", "similar", "now playing", "users"};
 const int centerX = 120;
 const unsigned int clickEffectMillis = 30;
 const unsigned int debounceMillis = 20;
@@ -61,6 +59,7 @@ const unsigned int doubleClickMaxMillis = 360;
 const unsigned int longPressMillis = 450;
 const unsigned int extraLongPressMillis = 1250;
 const unsigned int inactivityFadeOutMillis = 8000;
+const unsigned int newSessionSeconds = 60 * 40;
 const int lineOne = 10;
 const int lineDivider = lineOne + LINE_HEIGHT + 2;
 const int lineTwo = lineOne + LINE_HEIGHT + 11;
@@ -103,14 +102,15 @@ String wifiPassword;
 RTC_DATA_ATTR unsigned int bootCount = 0;
 RTC_DATA_ATTR time_t bootSeconds = 0;
 RTC_DATA_ATTR time_t lastSleepSeconds = 0;
-RTC_DATA_ATTR MenuModes menuMode = AlphabeticList;
+RTC_DATA_ATTR MenuModes menuMode = GenreList;
 RTC_DATA_ATTR uint16_t menuIndex = 0;
 RTC_DATA_ATTR uint16_t menuSize = GENRE_COUNT;
 RTC_DATA_ATTR uint16_t genreIndex = 0;
+RTC_DATA_ATTR GenreSortModes genreSort = AlphabeticSort;
 RTC_DATA_ATTR float lastBatteryVoltage = 0.0;
-RTC_DATA_ATTR MenuModes lastMenuMode = AlphabeticList;
+RTC_DATA_ATTR MenuModes lastMenuMode = GenreList;
 RTC_DATA_ATTR uint16_t lastMenuIndex = 0;
-RTC_DATA_ATTR MenuModes lastPlaylistMenuMode = AlphabeticList;
+RTC_DATA_ATTR MenuModes lastPlaylistMenuMode = GenreList;
 RTC_DATA_ATTR int playingCountryIndex = -1;
 RTC_DATA_ATTR int playingGenreIndex = -1;
 RTC_DATA_ATTR bool forceStartConfigPortalOnBoot = false;
@@ -189,7 +189,7 @@ void setActiveDevice(SpotifyDevice_t *device);
 void setActiveUser(SpotifyUser_t *user);
 void setMenuIndex(uint16_t newMenuIndex);
 void setMenuMode(MenuModes newMode, uint16_t newMenuIndex);
-void setStatusMessage(const char *message, unsigned long durationMs = 1300);
+void setStatusMessage(const char *message, unsigned long durationMs = 1800);
 void shutdownIfLowBattery();
 void startDeepSleep();
 void startRandomizingMenu(bool autoplay = false);
@@ -199,7 +199,7 @@ void updateDisplay();
 int formatMillis(char *output, unsigned long millis);
 int getGenreIndexByName(const char *genreName);
 int getGenreIndexByPlaylistId(const char *playlistId);
-uint16_t getMenuIndexForGenreIndex(uint16_t index, MenuModes mode);
+uint16_t getMenuIndexForGenreIndex(uint16_t index);
 uint16_t getGenreIndexForMenuIndex(uint16_t index, MenuModes mode);
 bool isGenreMenu(MenuModes mode);
 bool isPlaylistMenu(MenuModes mode);

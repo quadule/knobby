@@ -35,7 +35,7 @@ void setup() {
     Serial.flush();
     log_i("Boot #%d", bootCount);
     genreIndex = random(GENRE_COUNT);
-    setMenuMode(AlphabeticList, genreIndex);
+    setMenuMode(GenreList, genreIndex);
   } else {
     struct timeval tod;
     gettimeofday(&tod, NULL);
@@ -290,10 +290,11 @@ void setup() {
     xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
   }
 
+  if (secondsAsleep > newSessionSeconds) genreSort = AlphabeticSort;
   if (holdingKnob) {
     knobHeldForRandom = true;
     startRandomizingMenu(true);
-  } else if (secondsAsleep == 0 || secondsAsleep > 60 * 40) {
+  } else if (secondsAsleep == 0 || secondsAsleep > newSessionSeconds) {
     startRandomizingMenu(false);
   }
 }
@@ -344,7 +345,7 @@ void loop() {
 
   if (connected && (lastConnectedMillis < 0 || lastReconnectAttemptMillis > lastConnectedMillis)) {
     if (lastConnectedMillis >= 0) {
-      setStatusMessage("reconnected", 1000);
+      setStatusMessage("reconnected");
     } else {
       setStatusMessage("", 0);
     }
@@ -364,7 +365,7 @@ void loop() {
     }
   } else if (!connected && now - lastReconnectAttemptMillis > 3000) {
     lastReconnectAttemptMillis = now;
-    if (lastConnectedMillis < 0 && now > 5000) setStatusMessage("connecting to wifi", 1000);
+    if (lastConnectedMillis < 0 && now > 5000) setStatusMessage("connecting to wifi");
     if (lastConnectedMillis < 0 && now >= wifiConnectTimeoutMillis) {
       log_w("[%d] No wifi after %d seconds, starting config portal.", now, (int)wifiConnectTimeoutMillis / 1000);
       forceStartConfigPortalOnBoot = true;
@@ -561,9 +562,7 @@ void knobClicked() {
         }
       }
       break;
-    case AlphabeticList:
-    case AlphabeticSuffixList:
-    case PopularityList:
+    case GenreList:
       playPlaylist(genrePlaylists[genreIndex]);
       playingGenreIndex = genreIndex;
       break;
@@ -623,8 +622,14 @@ void knobClicked() {
 void knobDoubleClicked() {
   lastInputMillis = millis();
   if (knobHeldForRandom || randomizingMenuEndMillis > 0) return;
-  spotifyAction = Next;
-  setStatusMessage("next");
+  if (isGenreMenu(menuMode)) {
+    genreSort = genreSort == AlphabeticSort ? AlphabeticSuffixSort : AlphabeticSort;
+    setMenuIndex(getMenuIndexForGenreIndex(genreIndex));
+    setStatusMessage(genreSort == AlphabeticSort ? "sort by name" : "sort by name ending");
+  } else {
+    spotifyAction = Next;
+    setStatusMessage("next");
+  }
 }
 
 void knobLongPressStarted() {
@@ -645,9 +650,7 @@ void knobLongPressStarted() {
         break;
       case PlaylistList:
       case CountryList:
-      case AlphabeticList:
-      case AlphabeticSuffixList:
-      case PopularityList:
+      case GenreList:
         setMenuMode(RootMenu, (uint16_t)lastPlaylistMenuMode);
         break;
       default:
@@ -737,13 +740,11 @@ void knobLongPressStopped() {
           newMenuIndex = random(COUNTRY_COUNT);
         }
         break;
-      case AlphabeticList:
-      case AlphabeticSuffixList:
-      case PopularityList:
+      case GenreList:
         if (lastMenuMode == NowPlaying && playingGenreIndex >= 0) {
-          newMenuIndex = getMenuIndexForGenreIndex(playingGenreIndex, (MenuModes)menuIndex);
+          newMenuIndex = getMenuIndexForGenreIndex(playingGenreIndex);
         } else {
-          newMenuIndex = getMenuIndexForGenreIndex(genreIndex, (MenuModes)menuIndex);
+          newMenuIndex = getMenuIndexForGenreIndex(genreIndex);
         }
         break;
       default:
@@ -1256,7 +1257,7 @@ int getGenreIndexByPlaylistId(const char *playlistId) {
 
 // is genreIndex tracked in this menu?
 bool isGenreMenu(MenuModes mode) {
-  return mode == AlphabeticList || mode == AlphabeticSuffixList || mode == PopularityList || mode == SimilarList;
+  return mode == GenreList || mode == SimilarList;
 }
 
 bool isPlaylistMenu(MenuModes mode) {
@@ -1309,9 +1310,7 @@ uint16_t checkMenuSize(MenuModes mode) {
       return spotifyPlaylists.size();
     case CountryList:
       return COUNTRY_COUNT;
-    case AlphabeticList:
-    case AlphabeticSuffixList:
-    case PopularityList:
+    case GenreList:
       return GENRE_COUNT;
     case SimilarList:
       return similarMenuItems.size();
@@ -1326,12 +1325,8 @@ uint16_t checkMenuSize(MenuModes mode) {
 
 uint16_t getGenreIndexForMenuIndex(uint16_t index, MenuModes mode) {
   switch (mode) {
-    case AlphabeticList:
-      return index;
-    case AlphabeticSuffixList:
-      return genreIndexes_suffix[index];
-    case PopularityList:
-      return genreIndexes_popularity[index];
+    case GenreList:
+      return genreSort == AlphabeticSort ? index : genreIndexes_suffix[index];
     case PlaylistList:
       return max(0, getGenreIndexByPlaylistId(spotifyPlaylists[index].id));
     case SimilarList:
@@ -1348,17 +1343,8 @@ uint16_t getIndexOfGenreIndex(const uint16_t indexes[], uint16_t indexToFind) {
   return 0;
 }
 
-uint16_t getMenuIndexForGenreIndex(uint16_t index, MenuModes mode) {
-  switch (mode) {
-    case AlphabeticList:
-      return index;
-    case AlphabeticSuffixList:
-      return getIndexOfGenreIndex(genreIndexes_suffix, index);
-    case PopularityList:
-      return getIndexOfGenreIndex(genreIndexes_popularity, index);
-    default:
-      return 0;
-  }
+uint16_t getMenuIndexForGenreIndex(uint16_t index) {
+  return genreSort == AlphabeticSort ? index : getIndexOfGenreIndex(genreIndexes_suffix, index);
 }
 
 void setMenuIndex(uint16_t newMenuIndex) {
@@ -1366,9 +1352,7 @@ void setMenuIndex(uint16_t newMenuIndex) {
 
   int newGenreIndex = -1;
   switch (menuMode) {
-    case AlphabeticList:
-    case AlphabeticSuffixList:
-    case PopularityList:
+    case GenreList:
       if (menuSize > 0) genreIndex = getGenreIndexForMenuIndex(menuIndex, menuMode);
       break;
     case SimilarList:
@@ -1419,7 +1403,7 @@ void saveAndSleep() {
 
 void startDeepSleep() {
   // don't sleep on transient menus
-  if (menuMode == SimilarList || menuMode == PlaylistList || (!isPlaylistMenu(menuMode) && menuMode != NowPlaying)) setMenuMode(AlphabeticList, genreIndex);
+  if (menuMode == SimilarList || menuMode == PlaylistList || (!isPlaylistMenu(menuMode) && menuMode != NowPlaying)) setMenuMode(GenreList, genreIndex);
   struct timeval tod;
   gettimeofday(&tod, NULL);
   lastSleepSeconds = tod.tv_sec;
