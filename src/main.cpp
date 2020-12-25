@@ -1251,6 +1251,7 @@ int getGenreIndexByPlaylistId(const char *playlistId) {
   return -1;
 }
 
+// is genreIndex tracked in this menu?
 bool isGenreMenu(MenuModes mode) {
   return mode == AlphabeticList || mode == AlphabeticSuffixList || mode == PopularityList || mode == SimilarList;
 }
@@ -1276,8 +1277,8 @@ bool shouldShowProgressBar() {
 
 bool shouldShowRandom() {
   if (randomizingMenuEndMillis > 0 || knobRotatedWhileLongPressed) return false;
-  return (knobHeldForRandom || getLongPressedMillis() > extraLongPressMillis) && lastMenuMode != SimilarList &&
-         isPlaylistMenu(lastMenuMode);
+  return (knobHeldForRandom || getLongPressedMillis() > extraLongPressMillis) &&
+         (isPlaylistMenu(lastMenuMode) || lastMenuMode == NowPlaying || lastMenuMode == VolumeControl);
 }
 
 bool shouldShowSimilarMenu() {
