@@ -87,6 +87,7 @@ void setup() {
       log_w("Missing required configuration, starting portal.");
     }
     drawWifiSetup();
+    disableCore1WDT();
     wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
     spotifyClientIdParam = new ESPAsync_WMParameter("spotifyClientId", "Spotify Client ID", spotifyClientId.c_str(), 40);
     spotifyClientSecretParam = new ESPAsync_WMParameter("spotifyClientSecret", "Spotify Client Secret", spotifyClientSecret.c_str(), 40);
