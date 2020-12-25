@@ -180,7 +180,8 @@ void setup() {
     }
     if (spotifyAction == GetToken) {
       setStatusMessage("connecting");
-      request->send(200, "text/plain", "Authorized! Getting token...");
+      request->send(200, "text/plain",
+                    "Authorized! Knobby should be ready to use in a moment. You can close this page now.");
     } else {
       request->send(204);
     }
@@ -348,6 +349,8 @@ void loop() {
       setStatusMessage("", 0);
     }
     lastConnectedMillis = now;
+
+    log_i("[%d] Connected to wifi with IP address %s", now, WiFi.localIP().toString().c_str());
 
     wifi_config_t current_conf;
     esp_wifi_get_config(WIFI_IF_STA, &current_conf);

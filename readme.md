@@ -30,9 +30,12 @@ If data.json is not configured or there is a problem connecting to your network,
 
 ## Usage
 
-* Rotate and click the knob to select
-* Hold and rotate the knob to switch menus and sort modes
-* Hold the knob for a couple seconds for a random genre
+* Rotate and click the knob to select or play
+* Hold down and rotate the knob to switch menus and sort modes
+* Hold down the knob for a few seconds for a random genre, country, or playlist from the last open menu
+  - Keep holding the knob until the progress bar reaches the end to play automatically
+  - Release the knob before the progress bar reaches the end to continue browsing
+  - Rotate the knob to cancel randomizing or switch menus
 * Double click the knob to skip to the next track
 * Visit http://knobby.local/authorize to add additional Spotify accounts
 
