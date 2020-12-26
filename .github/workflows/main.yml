@@ -27,10 +27,10 @@ jobs:
         pip install --upgrade platformio
     - name: Run PlatformIO
       run: |
-        pio run
-        pio run -t buildfs
+        pio run -e serial
+        pio run -t buildfs -e serial
     - name: Archive firmware artifacts
       uses: actions/upload-artifact@v2
       with:
         name: firmware
-        path: .pio/build/**/*.bin
+        path: .pio/build/serial/*.bin
