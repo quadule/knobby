@@ -1264,6 +1264,10 @@ bool isPlaylistMenu(MenuModes mode) {
   return isGenreMenu(mode) || mode == PlaylistList || mode == CountryList;
 }
 
+bool isTransientMenu(MenuModes mode) {
+  return mode == SimilarList || mode == PlaylistList || (!isPlaylistMenu(mode) && mode != NowPlaying);
+}
+
 unsigned long getLongPressedMillis() {
   return longPressStartedMillis == 0 ? 0 : millis() - longPressStartedMillis;
 }
@@ -1402,8 +1406,9 @@ void saveAndSleep() {
 }
 
 void startDeepSleep() {
-  // don't sleep on transient menus
-  if (menuMode == SimilarList || menuMode == PlaylistList || (!isPlaylistMenu(menuMode) && menuMode != NowPlaying)) setMenuMode(GenreList, genreIndex);
+  if (isTransientMenu(menuMode)) setMenuMode(GenreList, genreIndex);
+  if (isTransientMenu(lastMenuMode)) lastMenuMode = GenreList;
+  if (isTransientMenu(lastPlaylistMenuMode)) lastPlaylistMenuMode = GenreList;
   struct timeval tod;
   gettimeofday(&tod, NULL);
   lastSleepSeconds = tod.tv_sec;
