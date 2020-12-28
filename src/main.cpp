@@ -622,11 +622,11 @@ void knobClicked() {
 void knobDoubleClicked() {
   lastInputMillis = millis();
   if (knobHeldForRandom || randomizingMenuEndMillis > 0) return;
-  if (isGenreMenu(menuMode)) {
+  if (menuMode == GenreList) {
     genreSort = genreSort == AlphabeticSort ? AlphabeticSuffixSort : AlphabeticSort;
     setMenuIndex(getMenuIndexForGenreIndex(genreIndex));
     setStatusMessage(genreSort == AlphabeticSort ? "sort by name" : "sort by name ending");
-  } else {
+  } else if (!spotifyState.disallowsSkippingNext) {
     spotifyAction = Next;
     setStatusMessage("next");
   }
