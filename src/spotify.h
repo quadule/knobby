@@ -44,7 +44,6 @@ typedef struct {
 typedef struct {
   char name[64] = "";
   char refreshToken[150] = "";
-  char country[3] = "";
   bool selected = false;
   char selectedDeviceId[41] = "";
 } SpotifyUser_t;

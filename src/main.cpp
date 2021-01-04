@@ -1531,13 +1531,11 @@ bool readDataJson() {
   for (JsonObject jsonUser : usersArray) {
     const char *name = jsonUser["name"];
     const char *token = jsonUser["token"];
-    const char *country = jsonUser["country"];
     const char *selectedDeviceId = jsonUser["selectedDeviceId"];
 
     SpotifyUser_t user;
     strncpy(user.name, name, sizeof(user.name) - 1);
     strncpy(user.refreshToken, token, sizeof(user.refreshToken) - 1);
-    strncpy(user.country, country, sizeof(user.country) - 1);
     strncpy(user.selectedDeviceId, selectedDeviceId, sizeof(user.selectedDeviceId) - 1);
     spotifyUsers.push_back(user);
 
@@ -1565,7 +1563,6 @@ bool writeDataJson() {
     JsonObject obj = usersArray.createNestedObject();
     obj["name"] = user.name;
     obj["token"] = user.refreshToken;
-    obj["country"] = user.country;
     obj["selectedDeviceId"] = user.selectedDeviceId;
     obj["selected"] = (bool)(strcmp(user.refreshToken, spotifyRefreshToken) == 0);
   }
@@ -1761,10 +1758,7 @@ void spotifyCurrentlyPlaying() {
   nextCurrentlyPlayingMillis = 0;
   if (spotifyAccessToken[0] == '\0' || !activeSpotifyUser) return;
   uint32_t ts = millis();
-
-  char url[21];
-  sprintf(url, "me/player?market=%s", activeSpotifyUser->country);
-  HTTP_response_t response = spotifyApiRequest("GET", url);
+  HTTP_response_t response = spotifyApiRequest("GET", "me/player?market=from_token");
 
   if (response.httpCode == 200) {
     DynamicJsonDocument json(9000);
@@ -1900,9 +1894,7 @@ void spotifyCurrentProfile() {
 
     if (!error) {
       const char *displayName = json["display_name"];
-      const char *country = json["country"];
       strncpy(activeSpotifyUser->name, displayName, sizeof(activeSpotifyUser->name) - 1);
-      strncpy(activeSpotifyUser->country, country, sizeof(activeSpotifyUser->country) - 1);
       writeDataJson();
       if (menuMode == UserList) setMenuMode(UserList, spotifyUsers.size() - 1);
     } else {
