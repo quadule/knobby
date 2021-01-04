@@ -234,7 +234,7 @@ void setup() {
         updateContentLength = request->contentLength();
         int cmd = (filename.indexOf("spiffs") > -1) ? U_SPIFFS : U_FLASH;
         if (cmd == U_SPIFFS) SPIFFS.end();
-        if (!Update.begin(UPDATE_SIZE_UNKNOWN, cmd)) {
+        if (!Update.begin(updateContentLength > 0 ? updateContentLength : UPDATE_SIZE_UNKNOWN, cmd)) {
           Update.printError(Serial);
         }
       }
