@@ -827,6 +827,21 @@ void drawDivider(bool selected) {
   }
 }
 
+void drawMenuHeader(bool selected) {
+  tft.setCursor(textPadding, lineOne);
+  if (millis() < statusMessageUntilMillis && statusMessage[0] != '\0') {
+    img.setTextColor(TFT_WHITE, TFT_BLACK);
+    drawCenteredText(statusMessage, textWidth);
+  } else if (menuSize > 0) {
+    char label[14];
+    sprintf(label, "%d / %d", menuIndex + 1, menuSize);
+    img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
+    tft.setCursor(textPadding, lineOne);
+    drawCenteredText(label, textWidth);
+    drawDivider(selected);
+  }
+}
+
 void drawWifiSetup() {
   tft.setCursor(textPadding, lineOne);
   drawCenteredText("join to setup", textWidth, 1);
@@ -899,11 +914,7 @@ void updateDisplay() {
   } else if (menuMode == UserList) {
     SpotifyUser_t *user = &spotifyUsers[menuIndex];
     bool selected = user == activeSpotifyUser;
-    char header[14];
-    sprintf(header, "%d / %d", menuIndex + 1, menuSize);
-    tft.setCursor(textPadding, lineOne);
-    img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
-    drawCenteredText(header, textWidth);
+    drawMenuHeader(selected);
     drawDivider(selected);
 
     if (user != nullptr) {
@@ -919,11 +930,7 @@ void updateDisplay() {
     if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
       SpotifyDevice_t *device = &spotifyDevices[menuIndex];
       bool selected = device == activeSpotifyDevice;
-      char header[14];
-      sprintf(header, "%d / %d", menuIndex + 1, menuSize);
-      tft.setCursor(textPadding, lineOne);
-      img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
-      drawCenteredText(header, textWidth);
+      drawMenuHeader(selected);
       drawDivider(selected);
 
       if (device != nullptr) {
@@ -1120,18 +1127,7 @@ void updateDisplay() {
       text = genres[genreIndex];
     }
 
-    tft.setCursor(textPadding, lineOne);
-    if (now < statusMessageUntilMillis && statusMessage[0] != '\0') {
-      img.setTextColor(TFT_WHITE, TFT_BLACK);
-      drawCenteredText(statusMessage, textWidth);
-    } else if (menuSize > 0) {
-      char label[14];
-      sprintf(label, "%d / %d", menuIndex + 1, menuSize);
-      img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
-      tft.setCursor(textPadding, lineOne);
-      drawCenteredText(label, textWidth);
-      drawDivider(selected);
-    }
+    drawMenuHeader(selected);
 
     if (menuMode == PlaylistList || menuMode == CountryList) {
       img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
