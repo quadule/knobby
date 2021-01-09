@@ -569,10 +569,12 @@ void knobClicked() {
       }
       break;
     case DeviceList:
-      if (spotifyDevicesLoaded && !spotifyDevices.empty() && activeSpotifyDevice != &spotifyDevices[menuIndex]) {
+      if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
+        bool changed = strcmp(activeSpotifyUser->selectedDeviceId, spotifyDevices[menuIndex].id) != 0;
         setActiveDevice(&spotifyDevices[menuIndex]);
-        writeDataJson();
-        if (spotifyState.isPlaying && !spotifyGettingToken) {
+        if (changed) writeDataJson();
+        if (spotifyState.isPlaying && !spotifyGettingToken &&
+            (!activeSpotifyDevice || strcmp(activeSpotifyDevice->id, spotifyDevices[menuIndex].id) != 0)) {
           spotifyAction = TransferPlayback;
         }
       }
@@ -1907,6 +1909,25 @@ void spotifyCurrentProfile() {
   spotifyAction = spotifyDevicesLoaded ? CurrentlyPlaying : GetDevices;
 }
 
+bool spotifyRetryError(HTTP_response_t response) {
+  if (response.httpCode == 404) {
+    log_w("Spotify device not found");
+    if (activeSpotifyDeviceId[0] != '\0') {
+      setActiveDevice(nullptr);
+      activeSpotifyDeviceId[0] = '\0';
+      spotifyDevicesLoaded = false;
+    } else {
+      spotifyAction = GetDevices;
+      setMenuMode(DeviceList, 0);
+      setStatusMessage("select device");
+    }
+    return true;
+  } else if (response.httpCode >= 400) {
+    log_e("[%d] HTTP %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
+  }
+  return false;
+}
+
 void spotifyNext() {
   HTTP_response_t response = spotifyApiRequest("POST", "me/player/next");
   spotifyResetProgress(true);
@@ -1967,6 +1988,7 @@ void spotifyToggle() {
   } else {
     response = spotifyApiRequest("PUT", wasPlaying ? "me/player/pause" : "me/player/play");
   }
+  bool retry = spotifyRetryError(response);
 
   if (response.httpCode == 204) {
     spotifyState.lastUpdateMillis = millis();
@@ -1974,10 +1996,9 @@ void spotifyToggle() {
     spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
     invalidateDisplay();
   } else {
-    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
     spotifyResetProgress(true);
     nextCurrentlyPlayingMillis = millis();
-    spotifyAction = CurrentlyPlaying;
+    if (!retry) spotifyAction = CurrentlyPlaying;
   }
 };
 
@@ -1994,16 +2015,17 @@ void spotifyPlayPlaylist() {
   } else {
     response = spotifyApiRequest("PUT", "me/player/play", requestContent);
   }
+  bool retry = spotifyRetryError(response);
 
   spotifyResetProgress(true);
   if (response.httpCode == 204) {
     spotifyState.isPlaying = true;
     strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, SPOTIFY_ID_SIZE);
-  } else {
-    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
   }
-  spotifyAction = CurrentlyPlaying;
-  spotifyPlayPlaylistId = nullptr;
+  if (!retry) {
+    spotifyAction = CurrentlyPlaying;
+    spotifyPlayPlaylistId = nullptr;
+  }
 };
 
 void spotifyResetProgress(bool keepContext) {
