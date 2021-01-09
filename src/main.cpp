@@ -275,12 +275,6 @@ void setup() {
   spotifyHttp.setTimeout(4000);
   spotifyHttp.setReuse(true);
 
-  bool holdingKnob = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
-  if (holdingKnob) {
-    delay(10);
-    holdingKnob = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
-  }
-
   if (spotifyNeedsNewAccessToken()) {
     spotifyGettingToken = true;
     spotifyAction = GetToken;
@@ -291,8 +285,8 @@ void setup() {
   }
 
   if (secondsAsleep > newSessionSeconds) genreSort = AlphabeticSort;
-  if (holdingKnob) {
-    knobHeldForRandom = true;
+  knobHeldForRandom = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
+  if (knobHeldForRandom) {
     startRandomizingMenu(true);
   } else if (secondsAsleep == 0 || secondsAsleep > newSessionSeconds) {
     startRandomizingMenu(false);
@@ -323,11 +317,11 @@ void loop() {
     ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
     gpio_hold_en((gpio_num_t)TFT_BL);
     digitalWrite(TFT_BL, HIGH);
-  } else if (inputDelta > inactivityMillis + inactivityFadeOutMillis) {
+  } else if (inputDelta > inactivityMillis + 2 * inactivityFadeOutMillis) {
     startDeepSleep();
   } else if (inputDelta > inactivityMillis) {
     double fadeProgress = 1.0 - (inputDelta - inactivityMillis) / (double)inactivityFadeOutMillis;
-    uint32_t duty = min(max((int)round(fadeProgress * 255.0), 0), 255);
+    uint32_t duty = min(max((int)round(fadeProgress * 255.0), 5), 255);
     if (duty >= 250) {
       ledcAttachPin(TFT_BL, TFT_BL);
       esp_pm_config_esp32_t pm_config_ls_enable = {
@@ -388,6 +382,25 @@ void loop() {
     startRandomizingMenu(true);
   }
 
+  if (randomizingMenuEndMillis > 0 && millis() >= randomizingMenuEndMillis) {
+    randomizingMenuEndMillis = 0;
+    randomizingMenuNextMillis = 0;
+    if (randomizingMenuAutoplay) {
+      if (isGenreMenu(lastPlaylistMenuMode)) {
+        playPlaylist(genrePlaylists[genreIndex]);
+        playingGenreIndex = genreIndex;
+      } else if (lastPlaylistMenuMode == CountryList) {
+        playPlaylist(countryPlaylists[menuIndex], countries[menuIndex]);
+        playingCountryIndex = lastMenuIndex;
+      } else if (lastPlaylistMenuMode == PlaylistList) {
+        playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name);
+      }
+      displayInvalidatedPartial = true;
+    } else {
+      invalidateDisplay();
+    }
+  }
+
   if (spotifyState.isPlaying && now > spotifyState.lastUpdateMillis) {
     spotifyState.estimatedProgressMillis = spotifyState.progressMillis + (now - spotifyState.lastUpdateMillis);
   }
@@ -400,29 +413,27 @@ void loop() {
     } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
       clickEffectEndMillis = 0;
       invalidateDisplay();
-    } else if ((randomizingMenuEndMillis > 0 && now < randomizingMenuEndMillis) || lastInputMillis > lastDisplayMillis ||
+    } else if ((randomizingMenuNextMillis > 0 && now >= randomizingMenuNextMillis) || lastInputMillis > lastDisplayMillis ||
                (spotifyState.isPlaying && now - lastDisplayMillis > 950) ||
                (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2)) {
       invalidateDisplay();
     }
   }
 
-  if (displayInvalidated && updateContentLength == 0) {
-    updateDisplay();
-  } else {
-    if (shouldShowProgressBar()) {
-      showingProgressBar = true;
-      tft.drawFastHLine(-now % tft.width(), 0, 20, TFT_BLACK);
-      tft.drawFastHLine(-(now + 20) % tft.width(), 0, 20, TFT_DARKGREY);
-      tft.drawFastHLine(-(now + 40) % tft.width(), 0, 20, TFT_BLACK);
-      tft.drawFastHLine(-(now + 60) % tft.width(), 0, 20, TFT_DARKGREY);
-      tft.drawFastHLine(-(now + 80) % tft.width(), 0, 20, TFT_BLACK);
-      tft.drawFastHLine(-(now + 100) % tft.width(), 0, 20, TFT_DARKGREY);
-      tft.drawFastHLine(-(now + 120) % tft.width(), 0, 20, TFT_BLACK);
-    } else if (showingProgressBar) {
-      tft.drawFastHLine(0, 0, 239, TFT_BLACK);
-      showingProgressBar = false;
-    }
+  if (displayInvalidated && updateContentLength == 0) updateDisplay();
+
+  if (shouldShowProgressBar()) {
+    showingProgressBar = true;
+    tft.drawFastHLine(-now % tft.width(), 0, 20, TFT_BLACK);
+    tft.drawFastHLine(-(now + 20) % tft.width(), 0, 20, TFT_DARKGREY);
+    tft.drawFastHLine(-(now + 40) % tft.width(), 0, 20, TFT_BLACK);
+    tft.drawFastHLine(-(now + 60) % tft.width(), 0, 20, TFT_DARKGREY);
+    tft.drawFastHLine(-(now + 80) % tft.width(), 0, 20, TFT_BLACK);
+    tft.drawFastHLine(-(now + 100) % tft.width(), 0, 20, TFT_DARKGREY);
+    tft.drawFastHLine(-(now + 120) % tft.width(), 0, 20, TFT_BLACK);
+  } else if (showingProgressBar) {
+    tft.drawFastHLine(0, 0, 239, TFT_BLACK);
+    showingProgressBar = false;
   }
 
   ArduinoOTA.handle();
@@ -535,6 +546,10 @@ void knobRotated() {
 
 void knobClicked() {
   lastInputMillis = millis();
+  if (knobHeldForRandom && randomizingMenuEndMillis > 0) {
+    knobHeldForRandom = false;
+    return;
+  }
   clickEffectEndMillis = lastInputMillis + clickEffectMillis;
   if (randomizingMenuEndMillis > 0) randomizingMenuEndMillis = 0;
 
@@ -621,7 +636,10 @@ void knobClicked() {
 
 void knobDoubleClicked() {
   lastInputMillis = millis();
-  if (knobHeldForRandom || randomizingMenuEndMillis > 0) return;
+  if (knobHeldForRandom || randomizingMenuEndMillis > 0) {
+    knobHeldForRandom = false;
+    return;
+  }
   if (menuMode == GenreList) {
     genreSort = genreSort == AlphabeticSort ? AlphabeticSuffixSort : AlphabeticSort;
     setMenuIndex(getMenuIndexForGenreIndex(genreIndex));
@@ -670,14 +688,15 @@ void knobLongPressStarted() {
 
 void knobLongPressStopped() {
   lastInputMillis = millis();
-  if (knobHeldForRandom || randomizingMenuEndMillis > 0) {
+  if (knobHeldForRandom || longPressStartedMillis == 0) {
     knobHeldForRandom = false;
     return;
   }
+  if (!knobHeldForRandom && shouldShowRandom()) startRandomizingMenu();
+  longPressStartedMillis = 0;
+  if (menuMode != RootMenu || randomizingMenuEndMillis > 0) return;
   checkMenuSize(RootMenu);
-  if (shouldShowRandom()) {
-    startRandomizingMenu();
-  } else if (menuIndex == rootMenuSimilarIndex) {
+  if (menuIndex == rootMenuSimilarIndex) {
     if (similarMenuGenreIndex == genreIndex) {
       setMenuMode(SimilarList, lastMenuMode == SimilarList ? lastMenuIndex : 0);
     } else {
@@ -753,7 +772,6 @@ void knobLongPressStopped() {
 
     setMenuMode((MenuModes)menuIndex, newMenuIndex);
   }
-  longPressStartedMillis = 0;
 }
 
 void drawBattery(unsigned int percent, unsigned int y) {
@@ -841,32 +859,18 @@ void updateDisplay() {
     tft.setCursor(0, lineTwo);
     drawCenteredText(("http://" + nodeName + ".local").c_str(), 239);
   } else if (now < randomizingMenuEndMillis) {
-    randomizingMenuTicks++;
-    setMenuIndex(random(checkMenuSize(lastPlaylistMenuMode)));
-    tft.setCursor(textPadding, lineTwo);
-    if (isGenreMenu(lastPlaylistMenuMode)) {
-      img.setTextColor(genreColors[genreIndex], TFT_BLACK);
-      drawCenteredText(genres[genreIndex], textWidth, 3);
-    } else if (lastPlaylistMenuMode == CountryList) {
-      drawCenteredText(countries[menuIndex], textWidth, 3);
-    } else if (lastPlaylistMenuMode == PlaylistList) {
-      drawCenteredText(spotifyPlaylists[menuIndex].name, textWidth, 3);
-    }
-    auto endTickMillis = millis() + pow(randomizingMenuTicks, 3);
-    while (millis() < endTickMillis) delay(10);
-    if (millis() >= randomizingMenuEndMillis) {
-      randomizingMenuEndMillis = 0;
-      if (randomizingMenuAutoplay) {
-        if (isGenreMenu(lastPlaylistMenuMode)) {
-          playPlaylist(genrePlaylists[genreIndex]);
-          playingGenreIndex = genreIndex;
-        } else if (lastPlaylistMenuMode == CountryList) {
-          playPlaylist(countryPlaylists[menuIndex], countries[menuIndex]);
-          playingCountryIndex = lastMenuIndex;
-        } else if (lastPlaylistMenuMode == PlaylistList) {
-          playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name);
-        }
-        displayInvalidatedPartial = true;
+    if (now >= randomizingMenuNextMillis) {
+      randomizingMenuNextMillis = millis() + max((int)pow(++randomizingMenuTicks, 3), 20);
+      setMenuIndex(random(checkMenuSize(lastPlaylistMenuMode)));
+      tft.setCursor(textPadding, lineTwo);
+      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+      if (isGenreMenu(lastPlaylistMenuMode)) {
+        img.setTextColor(genreColors[genreIndex], TFT_BLACK);
+        drawCenteredText(genres[genreIndex], textWidth, 3);
+      } else if (lastPlaylistMenuMode == CountryList) {
+        drawCenteredText(countries[menuIndex], textWidth, 3);
+      } else if (lastPlaylistMenuMode == PlaylistList) {
+        drawCenteredText(spotifyPlaylists[menuIndex].name, textWidth, 3);
       }
     }
   } else if (menuMode == RootMenu) {
@@ -1284,7 +1288,7 @@ bool shouldShowProgressBar() {
 }
 
 bool shouldShowRandom() {
-  if (randomizingMenuEndMillis > 0 || knobRotatedWhileLongPressed) return false;
+  if (randomizingMenuEndMillis > 0 || knobRotatedWhileLongPressed || checkMenuSize(lastMenuMode) < 2) return false;
   return (knobHeldForRandom || getLongPressedMillis() > extraLongPressMillis) &&
          (isPlaylistMenu(lastMenuMode) || lastMenuMode == NowPlaying || lastMenuMode == VolumeControl);
 }
@@ -1436,7 +1440,7 @@ void startDeepSleep() {
 void startRandomizingMenu(bool autoplay) {
   unsigned long now = millis();
   if (now > randomizingMenuEndMillis) {
-    randomizingMenuEndMillis = now + 850;
+    randomizingMenuEndMillis = now + randomizingLengthMillis;
     randomizingMenuTicks = 0;
     randomizingMenuAutoplay = autoplay;
     if (randomizingMenuAutoplay) {
