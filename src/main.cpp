@@ -2,8 +2,7 @@
 
 void setup() {
   Serial.begin(115200);
-  Serial.print("\0\r\n");
-  Serial.flush();
+  Serial.print("\r\n");
 
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_A_PIN);
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_B_PIN);
@@ -22,15 +21,38 @@ void setup() {
   spotifyUsers.reserve(10);
   spotifyPlaylists.reserve(100);
   SPIFFS.begin(true);
-  tft.init();
+
+  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+    ttgo = TTGOClass::getWatch();
+    ttgo->setTftExternal(tft);
+    ttgo->begin();
+    ttgo->openBL();
+    ttgo->setBrightness(255);
+
+    // Turn on the IRQ used
+    ttgo->power->adc1Enable(AXP202_BATT_VOL_ADC1 | AXP202_BATT_CUR_ADC1 | AXP202_VBUS_VOL_ADC1 | AXP202_VBUS_CUR_ADC1, AXP202_ON);
+    ttgo->power->enableIRQ(AXP202_VBUS_REMOVED_IRQ | AXP202_VBUS_CONNECT_IRQ | AXP202_CHARGING_FINISHED_IRQ, AXP202_ON);
+    ttgo->power->clearIRQ();
+
+    // Turn off unused power
+    ttgo->power->setPowerOutPut(AXP202_EXTEN, AXP202_OFF);
+    ttgo->power->setPowerOutPut(AXP202_DCDC2, AXP202_OFF);
+    ttgo->power->setPowerOutPut(AXP202_LDO3, AXP202_OFF);
+    ttgo->power->setPowerOutPut(AXP202_LDO4, AXP202_OFF);
+  #else
+    tft.init();
+    tft.fillScreen(TFT_BLACK);
+    ledcSetup(TFT_BL, 12000, 8);
+    ledcAttachPin(TFT_BL, TFT_BL);
+    ledcWrite(TFT_BL, 255);
+  #endif
+
   tft.setRotation(3);
   tft.loadFont(GillSans24_vlw_start);
   img.loadFont(GillSans24_vlw_start);
   ico.loadFont(icomoon24_vlw_start);
   batterySprite.loadFont(icomoon31_vlw_start);
-  tft.fillScreen(TFT_BLACK);
   gpio_hold_en((gpio_num_t)TFT_BL);
-  ledcSetup(TFT_BL, 5000, 8);
 
   if (bootCount == 0) {
     log_d("Boot #%d", bootCount);
@@ -311,23 +333,34 @@ void loop() {
   unsigned long inputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
   bool connected = WiFi.isConnected();
 
-  if (inputDelta < inactivityMillis && previousInputDelta > inactivityMillis) {
-    ledcDetachPin(TFT_BL);
-    esp_pm_config_esp32_t pm_config_ls_enable = {
-      .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-      .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-      .light_sleep_enable = true
-    };
-    ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
-    gpio_hold_en((gpio_num_t)TFT_BL);
-    digitalWrite(TFT_BL, HIGH);
+  if (inputDelta < previousInputDelta && previousInputDelta > inactivityMillis) {
+    if (menuMode == NowPlaying) spotifyAction = CurrentlyPlaying;
+    #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+      ttgo->bl->begin();
+      ttgo->bl->adjust(255);
+    #else
+      ledcDetachPin(TFT_BL);
+      gpio_hold_en((gpio_num_t)TFT_BL);
+      digitalWrite(TFT_BL, HIGH);
+      esp_pm_config_esp32_t pm_config_ls_enable = {
+        .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+        .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+        .light_sleep_enable = true
+      };
+      ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
+    #endif
   } else if (inputDelta > inactivityMillis + 2 * inactivityFadeOutMillis) {
     startDeepSleep();
   } else if (inputDelta > inactivityMillis) {
     double fadeProgress = 1.0 - (inputDelta - inactivityMillis) / (double)inactivityFadeOutMillis;
-    uint32_t duty = min(max((int)round(fadeProgress * 255.0), 5), 255);
+    #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+      const int minimumDuty = 99;
+    #else
+      const int minimumDuty = 5;
+    #endif
+    uint32_t duty = min(max((int)round(fadeProgress * 255.0), minimumDuty), 255);
     if (duty >= 250) {
-      ledcAttachPin(TFT_BL, TFT_BL);
+      spotifyAction = Idle;
       esp_pm_config_esp32_t pm_config_ls_enable = {
         .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
         .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
@@ -336,7 +369,12 @@ void loop() {
       ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
       gpio_hold_dis((gpio_num_t)TFT_BL);
     }
-    ledcWrite(TFT_BL, duty);
+    #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+      ttgo->setBrightness(duty);
+    #else
+      if (duty >= 250) ledcAttachPin(TFT_BL, TFT_BL);
+      ledcWrite(TFT_BL, duty);
+    #endif
   } else if (menuMode == VolumeControl && inputDelta > volumeMenuTimeoutMillis) {
     setMenuMode(NowPlaying, VolumeButton);
   }
@@ -364,14 +402,13 @@ void loop() {
   } else if (!connected && now - lastReconnectAttemptMillis > 3000) {
     lastReconnectAttemptMillis = now;
     if (lastConnectedMillis < 0 && now > 5000) setStatusMessage("connecting to wifi");
+    WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
     if (lastConnectedMillis < 0 && now >= wifiConnectTimeoutMillis) {
       log_w("[%d] No wifi after %d seconds, starting config portal.", now, (int)wifiConnectTimeoutMillis / 1000);
       forceStartConfigPortalOnBoot = true;
       gpio_hold_dis((gpio_num_t)TFT_BL);
       esp_sleep_enable_timer_wakeup(100);
       esp_deep_sleep_start();
-    } else {
-      WiFi.begin();
     }
   }
 
@@ -439,18 +476,16 @@ void loop() {
     tft.drawFastHLine(-(now + 100) % tft.width(), 0, 20, TFT_DARKGREY);
     tft.drawFastHLine(-(now + 120) % tft.width(), 0, 20, TFT_BLACK);
   } else if (showingProgressBar) {
-    tft.drawFastHLine(0, 0, 239, TFT_BLACK);
+    tft.drawFastHLine(0, 0, tft.width(), TFT_BLACK);
     showingProgressBar = false;
   }
 
   ArduinoOTA.handle();
 
-  if (inputDelta > 5000) {
+  now = millis();
+  if (inputDelta > 3000 || now - lastDelayMillis > 1000) {
     lastDelayMillis = now;
     delay(30);
-  } else if (inputDelta > 500 || lastDelayMillis > 500) {
-    lastDelayMillis = now;
-    delay(10);
   }
 }
 
@@ -515,18 +550,97 @@ void backgroundApiLoop(void *params) {
           break;
       }
     }
-    if (spotifyAction == Idle || spotifyAction == CurrentlyPlaying) {
-      delay(50);
+    delay(30);
+  }
+}
+
+void selectRootMenuItem() {
+  checkMenuSize(RootMenu);
+  if (menuIndex == rootMenuSimilarIndex) {
+    if (similarMenuGenreIndex == genreIndex) {
+      setMenuMode(SimilarList, lastMenuMode == SimilarList ? lastMenuIndex : 0);
     } else {
-      delay(10);
+      similarMenuItems.clear();
+      if (isGenreMenu(lastMenuMode)) {
+        similarMenuGenreIndex = genreIndex;
+      } else if (playingGenreIndex >= 0) {
+        similarMenuGenreIndex = playingGenreIndex;
+      } else {
+        log_e("missing genre index for similar menu");
+        similarMenuGenreIndex = 0;
+      }
+      setMenuMode(SimilarList, 0);
+      spotifyAction = GetPlaylistDescription;
     }
+  } else if (menuIndex == rootMenuNowPlayingIndex) {
+    nextCurrentlyPlayingMillis = lastInputMillis;
+    setMenuMode(NowPlaying, lastMenuMode == NowPlaying ? lastMenuIndex : (uint16_t)PlayPauseButton);
+    if (spotifyAction != GetToken) spotifyAction = CurrentlyPlaying;
+  } else if (menuIndex == rootMenuUsersIndex) {
+    if (!spotifyUsers.empty()) {
+      uint16_t newMenuIndex = lastMenuMode == UserList ? lastMenuIndex : 0;
+      auto usersCount = spotifyUsers.size();
+      for (auto i = 1; i < usersCount; i++) {
+        if (strcmp(spotifyUsers[i].refreshToken, spotifyRefreshToken) == 0) {
+          newMenuIndex = i;
+          break;
+        }
+      }
+      if (spotifyUsers[newMenuIndex].name[0] == '\0') spotifyAction = CurrentProfile;
+      setMenuMode(UserList, newMenuIndex);
+    }
+  } else {
+    uint16_t newMenuIndex = lastMenuIndex;
+    switch (menuIndex) {
+      case SettingsMenu:
+        if (lastMenuMode != SettingsMenu) newMenuIndex = 0;
+        break;
+      case DeviceList:
+        if (lastMenuMode != DeviceList) newMenuIndex = 0;
+        if (spotifyAction != GetToken && lastMenuMode != DeviceList) {
+          spotifyDevicesLoaded = false;
+          spotifyAction = GetDevices;
+        }
+        break;
+      case PlaylistList:
+        if (!spotifyPlaylistsLoaded) spotifyAction = GetPlaylists;
+        if (lastMenuMode != PlaylistList) newMenuIndex = 0;
+        if (spotifyState.playlistId[0] != '\0') {
+          auto playlistsCount = spotifyPlaylists.size();
+          for (auto i = 1; i < playlistsCount; i++) {
+            if (strcmp(spotifyPlaylists[i].id, spotifyState.playlistId) == 0) {
+              newMenuIndex = i;
+              break;
+            }
+          }
+        }
+        break;
+      case CountryList:
+        if (playingCountryIndex >= 0) {
+          newMenuIndex = playingCountryIndex;
+        } else if (lastMenuMode != CountryList) {
+          newMenuIndex = random(COUNTRY_COUNT);
+        }
+        break;
+      case GenreList:
+        if (lastMenuMode == NowPlaying && playingGenreIndex >= 0) {
+          newMenuIndex = getMenuIndexForGenreIndex(playingGenreIndex);
+        } else {
+          newMenuIndex = getMenuIndexForGenreIndex(genreIndex);
+        }
+        break;
+      default:
+        break;
+    }
+
+    setMenuMode((MenuModes)menuIndex, newMenuIndex);
   }
 }
 
 void knobRotated() {
   int newCount = knob.getCount();
   int knobDelta = newCount - lastKnobCount;
-  int positionDelta = knobDelta / 4;
+  int positionDelta = knobDelta / ROTARY_ENCODER_PULSE_COUNT;
   if (positionDelta == 0) return;
   lastKnobCount = newCount;
 
@@ -560,6 +674,9 @@ void knobClicked() {
   if (randomizingMenuEndMillis > 0) randomizingMenuEndMillis = 0;
 
   switch (menuMode) {
+    case RootMenu:
+      selectRootMenuItem();
+      break;
     case UserList:
       if (!spotifyUsers.empty() && activeSpotifyUser != &spotifyUsers[menuIndex]) {
         spotifyAction = Idle;
@@ -738,87 +855,11 @@ void knobLongPressStopped() {
   }
   if (!knobHeldForRandom && shouldShowRandom()) startRandomizingMenu();
   longPressStartedMillis = 0;
-  if (menuMode != RootMenu || randomizingMenuEndMillis > 0) return;
-  checkMenuSize(RootMenu);
-  if (menuIndex == rootMenuSimilarIndex) {
-    if (similarMenuGenreIndex == genreIndex) {
-      setMenuMode(SimilarList, lastMenuMode == SimilarList ? lastMenuIndex : 0);
-    } else {
-      similarMenuItems.clear();
-      if (isGenreMenu(lastMenuMode)) {
-        similarMenuGenreIndex = genreIndex;
-      } else if (playingGenreIndex >= 0) {
-        similarMenuGenreIndex = playingGenreIndex;
-      } else {
-        log_e("missing genre index for similar menu");
-        similarMenuGenreIndex = 0;
-      }
-      setMenuMode(SimilarList, 0);
-      spotifyAction = GetPlaylistDescription;
-    }
-  } else if (menuIndex == rootMenuNowPlayingIndex) {
-    nextCurrentlyPlayingMillis = lastInputMillis;
-    setMenuMode(NowPlaying, lastMenuMode == NowPlaying ? lastMenuIndex : (uint16_t)PlayPauseButton);
-    if (spotifyAction != GetToken) spotifyAction = CurrentlyPlaying;
-  } else if (menuIndex == rootMenuUsersIndex) {
-    if (!spotifyUsers.empty()) {
-      uint16_t newMenuIndex = lastMenuMode == UserList ? lastMenuIndex : 0;
-      auto usersCount = spotifyUsers.size();
-      for (auto i = 1; i < usersCount; i++) {
-        if (strcmp(spotifyUsers[i].refreshToken, spotifyRefreshToken) == 0) {
-          newMenuIndex = i;
-          break;
-        }
-      }
-      if (spotifyUsers[newMenuIndex].name[0] == '\0') spotifyAction = CurrentProfile;
-      setMenuMode(UserList, newMenuIndex);
-    }
-  } else {
-    uint16_t newMenuIndex = lastMenuIndex;
-    switch (menuIndex) {
-      case SettingsMenu:
-        if (lastMenuMode != SettingsMenu) newMenuIndex = 0;
-        break;
-      case DeviceList:
-        if (lastMenuMode != DeviceList) newMenuIndex = 0;
-        if (spotifyAction != GetToken && lastMenuMode != DeviceList) {
-          spotifyDevicesLoaded = false;
-          spotifyAction = GetDevices;
-        }
-        break;
-      case PlaylistList:
-        if (!spotifyPlaylistsLoaded) spotifyAction = GetPlaylists;
-        if (lastMenuMode != PlaylistList) newMenuIndex = 0;
-        if (spotifyState.playlistId[0] != '\0') {
-          auto playlistsCount = spotifyPlaylists.size();
-          for (auto i = 1; i < playlistsCount; i++) {
-            if (strcmp(spotifyPlaylists[i].id, spotifyState.playlistId) == 0) {
-              newMenuIndex = i;
-              break;
-            }
-          }
-        }
-        break;
-      case CountryList:
-        if (playingCountryIndex >= 0) {
-          newMenuIndex = playingCountryIndex;
-        } else if (lastMenuMode != CountryList) {
-          newMenuIndex = random(COUNTRY_COUNT);
-        }
-        break;
-      case GenreList:
-        if (lastMenuMode == NowPlaying && playingGenreIndex >= 0) {
-          newMenuIndex = getMenuIndexForGenreIndex(playingGenreIndex);
-        } else {
-          newMenuIndex = getMenuIndexForGenreIndex(genreIndex);
-        }
-        break;
-      default:
-        break;
-    }
-
-    setMenuMode((MenuModes)menuIndex, newMenuIndex);
-  }
+  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+    if (menuMode == RootMenu && knobRotatedWhileLongPressed && randomizingMenuEndMillis == 0) selectRootMenuItem();
+  #else
+    if (menuMode == RootMenu && randomizingMenuEndMillis == 0) selectRootMenuItem();
+  #endif
 }
 
 void drawBattery(unsigned int percent, unsigned int y) {
@@ -848,7 +889,7 @@ void drawBattery(unsigned int percent, unsigned int y) {
 }
 
 void shutdownIfLowBattery() {
-  if (knobby.shouldUpdateBattery() || knobby.batteryVoltage() >= 3.2) return;
+  if (knobby.shouldUpdateBattery() || knobby.powerStatus() == PowerStatusPowered || knobby.batteryVoltage() >= 3.2) return;
   tft.fillScreen(TFT_BLACK);
   drawBattery(0, 50);
   delay(333);
@@ -864,13 +905,12 @@ void shutdownIfLowBattery() {
 }
 
 void drawDivider(bool selected) {
-  int width = 110;
   if (selected) {
-    width += 30;
-    tft.drawFastHLine(centerX - width / 2 - 1, lineDivider, width, TFT_LIGHTGREY);
+    tft.drawFastHLine(6, lineDivider, screenWidth - 12, TFT_LIGHTGREY);
   } else {
-    tft.drawFastHLine(textPadding, lineDivider, textWidth, TFT_BLACK);
-    tft.drawFastHLine(centerX - width / 2 - 1, lineDivider, width, TFT_LIGHTBLACK);
+    const int width = 160;
+    tft.drawFastHLine(6, lineDivider, screenWidth - 12, TFT_BLACK);
+    tft.drawFastHLine(centerX - width / 2, lineDivider, width, TFT_LIGHTBLACK);
   }
 }
 
@@ -889,11 +929,11 @@ void drawMenuHeader(bool selected, const char *text) {
       drawCenteredText(label, textWidth - textPadding * 2);
     }
   }
-  if (menuSize > 1) {
-    tft.setTextColor(TFT_DARKERGREY, TFT_BLACK);
+  if (menuSize > 0) {
+    tft.setTextColor(menuSize == 1 ? TFT_LIGHTBLACK : TFT_DARKERGREY, TFT_BLACK);
     tft.setCursor(8, lineOne - 2);
     tft.print("\xE2\x80\xB9");
-    tft.setCursor(screenWidth - 17, lineOne - 2);
+    tft.setCursor(screenWidth - 14, lineOne - 2);
     tft.print("\xE2\x80\xBA");
   }
   if (text[0] != '\0' || menuSize > 0) drawDivider(selected);
@@ -941,7 +981,7 @@ void updateDisplay() {
       } else if (lastPlaylistMenuMode == CountryList) {
         drawCenteredText(countries[menuIndex], textWidth, 3);
       } else if (lastPlaylistMenuMode == PlaylistList) {
-        drawCenteredText(spotifyPlaylists[menuIndex].name, textWidth, 3);
+        drawCenteredText(spotifyPlaylists[menuIndex].name, textWidth, maxTextLines);
       }
     }
   } else if (menuMode == RootMenu) {
@@ -949,10 +989,10 @@ void updateDisplay() {
     img.setTextColor(TFT_WHITE, TFT_BLACK);
     if (shouldShowRandom()) {
       double pressedProgress = min(1.0, (double)getExtraLongPressedMillis() / (double)extraLongPressMillis);
-      tft.drawFastHLine(0, 0, (int)(pressedProgress * 239), TFT_WHITE);
+      tft.drawFastHLine(0, 0, (int)(pressedProgress * screenWidth), TFT_WHITE);
       drawCenteredText("random", textWidth);
     } else {
-      tft.drawFastHLine(0, 0, 239, TFT_BLACK);
+      tft.drawFastHLine(0, 0, screenWidth, TFT_BLACK);
       if (menuIndex == rootMenuSimilarIndex) {
         drawCenteredText(rootMenuItems[SimilarList], textWidth);
       } else if (menuIndex == rootMenuNowPlayingIndex) {
@@ -963,8 +1003,7 @@ void updateDisplay() {
         drawCenteredText(rootMenuItems[menuIndex], textWidth);
       }
     }
-    drawBattery(knobby.batteryPercentage(), lineThree + 18);
-    tft.drawRoundRect(9, lineTwo - 15, 221, 49, 5, TFT_WHITE);
+    tft.drawRoundRect(8, lineTwo - 15, 223, 49, 5, TFT_WHITE);
 
   } else if (menuMode == SettingsMenu) {
     drawMenuHeader(false, settingsMenuItems[menuIndex]);
@@ -1075,7 +1114,7 @@ void updateDisplay() {
     const uint16_t disabled = TFT_DARKGREY;
 
     bool nextClicked = menuIndex == NextButton && spotifyAction == Next && now < clickEffectEndMillis;
-    tft.setCursor(TFT_HEIGHT - textPadding - width, lineOne - 2);
+    tft.setCursor(screenWidth - 4 - width, lineOne - 2);
     ico.fillRoundRect(0, 0, width, height, 3, nextClicked ? fg : bg);
     if (nextClicked) {
       ico.setTextColor(bg, fg);
@@ -1147,7 +1186,7 @@ void updateDisplay() {
     ico.pushSprite(tft.getCursorX(), tft.getCursorY());
 
     ico.deleteSprite();
-    tft.drawFastHLine(textPadding, lineDivider, textWidth, TFT_LIGHTBLACK);
+    tft.drawFastHLine(6, lineDivider, screenWidth - 12, TFT_LIGHTBLACK);
 
     if (millis() - nowPlayingDisplayMillis >= 50) {
       tft.setTextDatum(MC_DATUM);
@@ -1161,20 +1200,21 @@ void updateDisplay() {
           (spotifyState.isPlaying || spotifyPlayPlaylistId != nullptr || spotifyAction == Previous || spotifyAction == Next) &&
           (spotifyState.durationMillis == 0 || spotifyState.estimatedProgressMillis % 6000 > 3000)) {
         img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
-        drawCenteredText(genres[playingGenreIndex], textWidth, 3);
+        drawCenteredText(genres[playingGenreIndex], textWidth, maxTextLines);
       } else if (spotifyState.contextName[0] != '\0' &&
                  (spotifyState.durationMillis == 0 || spotifyState.estimatedProgressMillis % 6000 > 3000)) {
         if (spotifyAction == PlayPlaylist && now < clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        drawCenteredText(spotifyState.contextName, textWidth, 3);
+        drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
       } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
         char playing[201];
         snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
         if (playingGenreIndex >= 0) img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
-        drawCenteredText(playing, textWidth, 3);
+        drawCenteredText(playing, textWidth, maxTextLines);
       } else if (spotifyApiRequestStartedMillis < 0 && !spotifyState.isPlaying) {
         img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
-        drawCenteredText("- none -", textWidth, 3);
+        drawCenteredText("- none -", textWidth, maxTextLines);
       }
+
       nowPlayingDisplayMillis = millis();
     }
   } else {
@@ -1221,6 +1261,13 @@ void updateDisplay() {
     tft.setCursor(textPadding, lineTwo);
     drawCenteredText(text, textWidth, 3);
   }
+
+  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+    drawBattery(knobby.batteryPercentage(), screenHeight - 43);
+  #else
+    if (menuMode == RootMenu) drawBattery(knobby.batteryPercentage(), screenHeight - 43);
+  #endif
+
   lastDisplayMillis = millis();
 }
 
@@ -1485,6 +1532,7 @@ void saveAndSleep() {
 }
 
 void startDeepSleep() {
+  log_i("[%d] Entering deep sleep.", (uint32_t)millis());
   if (isTransientMenu(menuMode)) setMenuMode(GenreList, genreIndex);
   if (isTransientMenu(lastMenuMode)) lastMenuMode = GenreList;
   if (isTransientMenu(lastPlaylistMenuMode)) lastPlaylistMenuMode = GenreList;
@@ -1493,7 +1541,6 @@ void startDeepSleep() {
   lastSleepSeconds = tod.tv_sec;
   spotifyAction = Idle;
   tft.fillScreen(TFT_BLACK);
-  log_i("[%d] Entering deep sleep.", (uint32_t)millis());
   WiFi.disconnect(true);
   gpio_hold_dis((gpio_num_t)TFT_BL);
   digitalWrite(TFT_BL, LOW);
@@ -1502,7 +1549,6 @@ void startDeepSleep() {
   rtc_gpio_isolate(GPIO_NUM_0); // button 1
   rtc_gpio_isolate(GPIO_NUM_35); // button 2
   rtc_gpio_isolate(GPIO_NUM_39);
-  rtc_gpio_isolate((gpio_num_t)ADC_PIN);
   rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_A_PIN);
   rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_B_PIN);
   adc_power_off();
@@ -1516,7 +1562,7 @@ void startRandomizingMenu(bool autoplay) {
   unsigned long now = millis();
   if (now > randomizingMenuEndMillis) {
     randomizingMenuEndMillis = now + randomizingLengthMillis;
-    randomizingMenuTicks = 0;
+    randomizingMenuTicks = 1;
     randomizingMenuAutoplay = autoplay;
     if (randomizingMenuAutoplay) {
       if (spotifyAction != GetToken) spotifyAction = Idle;

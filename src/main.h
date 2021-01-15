@@ -87,7 +87,7 @@ typedef struct {
 
 #define FONT_NAME "GillSans24"
 #define ICON_SIZE 24
-#define LINE_HEIGHT 26
+#define LINE_HEIGHT 27
 #define TFT_LIGHTBLACK 0x1082 /*  16,  16,  16 */
 #define TFT_DARKERGREY 0x4A49 /*  72,  72,  72 */
 #define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
@@ -99,25 +99,31 @@ bool contains(C&& c, T e) {
 
 const char *rootMenuItems[] = {"devices", "settings", "playlists", "countries", "genres", "similar", "now playing", "users"};
 const char *settingsMenuItems[] = {"about", "update", "add user", "log out", "reset all"};
-const int centerX = 120;
+const int screenWidth = TFT_HEIGHT - 1;
+const int screenHeight = TFT_WIDTH - 1;
+const int centerX = screenWidth / 2;
 const unsigned int clickEffectMillis = 30;
 const unsigned int debounceMillis = 20;
 const unsigned int doubleClickMaxMillis = 360;
 const unsigned int longPressMillis = 450;
 const unsigned int extraLongPressMillis = 1250;
-const unsigned int inactivityFadeOutMillis = 6000;
-const unsigned int randomizingLengthMillis = 1300;
+const unsigned int inactivityFadeOutMillis = 4000;
+const unsigned int randomizingLengthMillis = 1230;
 const unsigned int newSessionSeconds = 60 * 40;
 const unsigned int statusMessageMillis = 2000;
-const int screenWidth = TFT_HEIGHT - 1;
-const int lineOne = 10;
-const int lineDivider = lineOne + LINE_HEIGHT + 2;
+const int lineOne = 9;
+const int lineDivider = lineOne + LINE_HEIGHT + 1;
 const int lineTwo = lineOne + LINE_HEIGHT + 11;
 const int lineThree = lineTwo + LINE_HEIGHT;
 const int lineFour = lineThree + LINE_HEIGHT;
 const int lineSpacing = 3;
-const int textPadding = 10;
-const int textWidth = screenWidth - textPadding * 2;
+const int textPadding = 9;
+const int textWidth = screenWidth + 1 - textPadding * 2;
+#ifdef LILYGO_WATCH_2019_WITH_TOUCH
+  const int maxTextLines = 5;
+#else
+  const int maxTextLines = 3;
+#endif
 const String nodeName = "knobby";
 const String ICON_VOLUME_UP = "\uE900";
 const String ICON_VOLUME_OFF = "\uE901";
@@ -168,7 +174,7 @@ RTC_DATA_ATTR int playingGenreIndex = -1;
 RTC_DATA_ATTR bool forceStartConfigPortalOnBoot = false;
 
 Knobby knobby;
-TFT_eSPI tft = TFT_eSPI(135, 240);
+TFT_eSPI tft = TFT_eSPI(TFT_WIDTH, TFT_HEIGHT);
 TFT_eSprite img = TFT_eSprite(&tft);
 TFT_eSprite ico = TFT_eSprite(&tft);
 TFT_eSprite batterySprite = TFT_eSprite(&tft);

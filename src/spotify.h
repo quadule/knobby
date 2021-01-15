@@ -5,7 +5,7 @@
 #include "mbedtls/md.h"
 
 #define SPOTIFY_ID_SIZE 22
-#define SPOTIFY_WAIT_MILLIS 700
+#define SPOTIFY_WAIT_MILLIS 900
 
 const uint16_t spotifyPollInterval = 18000;
 const char *spotifyCACertificate =

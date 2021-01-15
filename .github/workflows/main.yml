@@ -31,9 +31,10 @@ jobs:
         pip install --upgrade platformio
     - name: Run PlatformIO
       run: |
-        pio run
+        pio run -e knobby -e twatch
         mkdir upload
         cp .pio/build/knobby/firmware.bin upload/knobby.bin
+        cp .pio/build/twatch/firmware.bin upload/twatch.bin
     - name: Archive firmware artifacts
       uses: actions/upload-artifact@v2
       with:

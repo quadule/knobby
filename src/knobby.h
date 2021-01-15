@@ -6,6 +6,18 @@
 #include "esp_ota_ops.h"
 #include "Wire.h"
 
+#ifdef LILYGO_WATCH_2019_WITH_TOUCH
+  #include "board/twatch2019_with_touch.h"
+  #define LILYGO_WATCH_HAS_TOUCH
+  #define LILYGO_WATCH_HAS_PCF8563
+  #define LILYGO_WATCH_HAS_AXP202
+  #define LILYGO_WATCH_HAS_BACKLIGHT
+  #define LILYGO_WATCH_HAS_BUTTON
+  #undef LILYGO_WATCH_HAS_BMA423
+  #include "TTGO.h"
+  TTGOClass *ttgo;
+#endif
+
 enum PowerStatus {
   PowerStatusUnknown = -1,
   PowerStatusPowered = 0,
@@ -59,19 +71,23 @@ Knobby::Knobby() {
 }
 
 void Knobby::setup() {
-  esp_adc_cal_characteristics_t adc_chars;
-  esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6,
-                                                          (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
-  if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
-    log_d("eFuse Vref: %u mV", adc_chars.vref);
-    _vref = adc_chars.vref;
-  } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
-    log_d("Two Point --> coeff_a:%umV coeff_b:%umV", adc_chars.coeff_a, adc_chars.coeff_b);
-  } else {
-    log_d("Default Vref: 1100mV");
-  }
+  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+    ttgo = TTGOClass::getWatch();
+  #else
+    esp_adc_cal_characteristics_t adc_chars;
+    esp_adc_cal_value_t val_type = esp_adc_cal_characterize((adc_unit_t)ADC_UNIT_1, (adc_atten_t)ADC1_CHANNEL_6,
+                                                            (adc_bits_width_t)ADC_WIDTH_BIT_12, 1100, &adc_chars);
+    if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
+      log_d("eFuse Vref: %u mV", adc_chars.vref);
+      _vref = adc_chars.vref;
+    } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
+      log_d("Two Point --> coeff_a:%umV coeff_b:%umV", adc_chars.coeff_a, adc_chars.coeff_b);
+    } else {
+      log_d("Default Vref: 1100mV");
+    }
+    pinMode(ADC_EN, OUTPUT);
+  #endif
 
-  pinMode(ADC_EN, OUTPUT);
   loop();
 }
 
@@ -96,19 +112,35 @@ void Knobby::printHeader() {
 }
 
 uint8_t Knobby::batteryPercentage() {
-  return _batteryPercentage;
+  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+    return ttgo->power->getBattPercentage();
+  #else
+    return _batteryPercentage;
+  #endif
 }
 
 float Knobby::batteryVoltage() {
-  return _batteryVoltage;
+  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+    return ttgo->power->getBattVoltage();
+  #else
+    return _batteryVoltage;
+  #endif
 }
 
 PowerStatus Knobby::powerStatus() {
-  return _powerStatus;
+  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+    return ttgo->power->isChargeing() ? PowerStatusPowered : PowerStatusOnBattery;
+  #else
+    return _powerStatus;
+  #endif
 }
 
 bool Knobby::shouldUpdateBattery() {
-  return _batteryUpdatedMillis == 0 || millis() - _batteryUpdatedMillis >= _batteryReadingRate;
+  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+    return false;
+  #else
+    return _batteryUpdatedMillis == 0 || millis() - _batteryUpdatedMillis >= _batteryReadingRate;
+  #endif
 }
 
 void Knobby::setBatteryVoltage(float voltage) {
