@@ -22,9 +22,9 @@ void setup() {
   SPIFFS.begin(true);
   tft.init();
   tft.setRotation(3);
-  img.loadFont(FONT_NAME);
-  ico.loadFont("icomoon24");
-  batterySprite.loadFont("icomoon31");
+  img.loadFont(GillSans24_vlw_start);
+  ico.loadFont(icomoon24_vlw_start);
+  batterySprite.loadFont(icomoon31_vlw_start);
   tft.fillScreen(TFT_BLACK);
   gpio_hold_en((gpio_num_t)TFT_BL);
   ledcSetup(TFT_BL, 5000, 8);
@@ -148,7 +148,7 @@ void setup() {
     if (spotifyUsers.empty()) {
       request->redirect("http://" + nodeName + ".local/authorize");
     } else {
-      request->send(SPIFFS, "/index.html");
+      request->send(200, "text/html", index_html_start);
     }
   });
 
