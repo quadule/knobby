@@ -2,6 +2,8 @@
 
 void setup() {
   Serial.begin(115200);
+  Serial.print("\0\r\n");
+  Serial.flush();
 
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_A_PIN);
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_B_PIN);
@@ -22,6 +24,7 @@ void setup() {
   SPIFFS.begin(true);
   tft.init();
   tft.setRotation(3);
+  tft.loadFont(GillSans24_vlw_start);
   img.loadFont(GillSans24_vlw_start);
   ico.loadFont(icomoon24_vlw_start);
   batterySprite.loadFont(icomoon31_vlw_start);
@@ -30,10 +33,7 @@ void setup() {
   ledcSetup(TFT_BL, 5000, 8);
 
   if (bootCount == 0) {
-    delay(1000);
-    Serial.print("\n\r\n");
-    Serial.flush();
-    log_i("Boot #%d", bootCount);
+    log_d("Boot #%d", bootCount);
     genreIndex = random(GENRE_COUNT);
     setMenuMode(GenreList, genreIndex);
   } else {
@@ -41,7 +41,7 @@ void setup() {
     gettimeofday(&tod, NULL);
     time_t currentSeconds = tod.tv_sec;
     secondsAsleep = currentSeconds - lastSleepSeconds;
-    log_i("Boot #%d, asleep for %ld seconds", bootCount, secondsAsleep);
+    log_d("Boot #%d, asleep for %ld seconds", bootCount, secondsAsleep);
     if (secondsAsleep > 60 * 10 ||
         (spotifyState.isPlaying &&
          (spotifyState.estimatedProgressMillis + secondsAsleep * 1000 > spotifyState.durationMillis))) {
@@ -51,6 +51,8 @@ void setup() {
     nextCurrentlyPlayingMillis = 1;
   }
   bootCount++;
+
+  knobby.printHeader();
 
   // Restore battery level from RTC memory after sleep first
   if (lastBatteryVoltage > 0.0) knobby.setBatteryVoltage(lastBatteryVoltage);
@@ -145,7 +147,7 @@ void setup() {
     inactivityMillis = 1000 * 60 * 3;
     uint32_t ts = millis();
     log_i("[%d] server.on /", ts);
-    if (spotifyUsers.empty()) {
+    if (spotifyUsers.empty() || (menuMode == SettingsMenu && menuIndex == SettingsAddUser)) {
       request->redirect("http://" + nodeName + ".local/authorize");
     } else {
       request->send(200, "text/html", index_html_start);
@@ -189,19 +191,6 @@ void setup() {
 
   server.on("/heap", HTTP_GET,
             [](AsyncWebServerRequest *request) { request->send(200, "text/plain", String(ESP.getFreeHeap())); });
-
-  server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request) {
-    uint32_t ts = millis();
-    log_i("[%d] server.on /reset", ts);
-    forceStartConfigPortalOnBoot = true;
-    SPIFFS.remove("/data.json");
-    request->send(200, "text/plain", "Tokens deleted, restarting.");
-    delay(1000);
-    WiFi.disconnect(true);
-    gpio_hold_dis((gpio_num_t)TFT_BL);
-    esp_sleep_enable_timer_wakeup(1000);
-    esp_deep_sleep_start();
-  });
 
   server.on("/sleep", HTTP_GET, [](AsyncWebServerRequest *request) {
     uint32_t ts = millis();
@@ -254,7 +243,6 @@ void setup() {
           setStatusMessage("update failed");
         } else {
           log_i("OTA: update complete");
-          onOTAProgress(100, 100);
           Serial.flush();
           delay(100);
           ESP.restart();
@@ -644,7 +632,44 @@ void knobDoubleClicked() {
   if (menuMode == GenreList) {
     genreSort = genreSort == AlphabeticSort ? AlphabeticSuffixSort : AlphabeticSort;
     setMenuIndex(getMenuIndexForGenreIndex(genreIndex));
-    setStatusMessage(genreSort == AlphabeticSort ? "sort by name" : "sort by name ending");
+    setStatusMessage(genreSort == AlphabeticSort ? "sorted by name" : "sorted by ending");
+  } else if (menuMode == SettingsMenu) {
+    switch (menuIndex) {
+      case SettingsUpdate:
+        updateFirmware();
+        break;
+      case SettingsRemoveUser:
+        if (activeSpotifyUser) {
+          setStatusMessage("logged out");
+          auto activeItr = std::find_if(spotifyUsers.begin(), spotifyUsers.end(), [&](SpotifyUser_t const &user) { return &user == activeSpotifyUser; });
+          setMenuMode(UserList, std::distance(spotifyUsers.begin(), activeItr));
+          updateDisplay();
+          spotifyUsers.erase(activeItr);
+          spotifyAccessToken[0] = '\0';
+          spotifyDevices.clear();
+          spotifyDevicesLoaded = false;
+          writeDataJson();
+          delay(statusMessageMillis);
+          ESP.restart();
+        }
+        break;
+      case SettingsResetAll:
+        tft.fillScreen(TFT_BLACK);
+        spotifyAccessToken[0] = '\0';
+        spotifyRefreshToken[0] = '\0';
+        configPassword.clear();
+        spotifyClientId.clear();
+        spotifyClientSecret.clear();
+        wifiSSID.clear();
+        wifiPassword.clear();
+        spotifyUsers.clear();
+        writeDataJson();
+        WiFi.disconnect(true, true);
+        ESP.restart();
+        break;
+      default:
+        break;
+    }
   } else if (!spotifyState.disallowsSkippingNext) {
     spotifyAction = Next;
     setStatusMessage("next");
@@ -733,6 +758,9 @@ void knobLongPressStopped() {
   } else {
     uint16_t newMenuIndex = lastMenuIndex;
     switch (menuIndex) {
+      case SettingsMenu:
+        if (lastMenuMode != SettingsMenu) newMenuIndex = 0;
+        break;
       case DeviceList:
         if (lastMenuMode != DeviceList) newMenuIndex = 0;
         if (spotifyAction != GetToken && lastMenuMode != DeviceList) {
@@ -828,19 +856,30 @@ void drawDivider(bool selected) {
   }
 }
 
-void drawMenuHeader(bool selected) {
-  tft.setCursor(textPadding, lineOne);
+void drawMenuHeader(bool selected, const char *text) {
   if (millis() < statusMessageUntilMillis && statusMessage[0] != '\0') {
     img.setTextColor(TFT_WHITE, TFT_BLACK);
-    drawCenteredText(statusMessage, textWidth);
-  } else if (menuSize > 0) {
-    char label[14];
-    sprintf(label, "%d / %d", menuIndex + 1, menuSize);
-    img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
     tft.setCursor(textPadding, lineOne);
-    drawCenteredText(label, textWidth);
-    drawDivider(selected);
+    drawCenteredText(statusMessage, textWidth);
+  } else {
+    img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
+    tft.setCursor(textPadding * 2, lineOne);
+    if (text[0] != '\0') {
+      drawCenteredText(text, textWidth - textPadding * 2);
+    } else if (menuSize > 0) {
+      char label[14];
+      sprintf(label, "%d / %d", menuIndex + 1, menuSize);
+      drawCenteredText(label, textWidth - textPadding * 2);
+    }
   }
+  if (menuSize > 1) {
+    tft.setTextColor(TFT_DARKERGREY, TFT_BLACK);
+    tft.setCursor(8, lineOne - 2);
+    tft.print("\xE2\x80\xB9");
+    tft.setCursor(screenWidth - 17, lineOne - 2);
+    tft.print("\xE2\x80\xBA");
+  }
+  if (text[0] != '\0' || menuSize > 0) drawDivider(selected);
 }
 
 void drawWifiSetup() {
@@ -865,21 +904,19 @@ void updateDisplay() {
     tft.fillScreen(TFT_BLACK);
     displayInvalidatedPartial = true;
   }
+  img.setTextColor(TFT_DARKGREY, TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   unsigned long now = millis();
 
   if (spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
-    tft.setCursor(textPadding, lineOne);
-    drawCenteredText("spotify log in", textWidth);
-    drawDivider(true);
-    tft.setCursor(0, lineTwo);
-    drawCenteredText(("http://" + nodeName + ".local").c_str(), 239);
+    drawMenuHeader(false, "setup");
+    tft.setCursor(textPadding, lineTwo);
+    drawCenteredText(("log in with spotify at http://" + nodeName + ".local/authorize").c_str(), textWidth, 3);
   } else if (now < randomizingMenuEndMillis) {
     if (now >= randomizingMenuNextMillis) {
       randomizingMenuNextMillis = millis() + max((int)pow(++randomizingMenuTicks, 3), 20);
       setMenuIndex(random(checkMenuSize(lastPlaylistMenuMode)));
       tft.setCursor(textPadding, lineTwo);
-      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
       if (isGenreMenu(lastPlaylistMenuMode)) {
         img.setTextColor(genreColors[genreIndex], TFT_BLACK);
         drawCenteredText(genres[genreIndex], textWidth, 3);
@@ -908,15 +945,37 @@ void updateDisplay() {
         drawCenteredText(rootMenuItems[menuIndex], textWidth);
       }
     }
-
     drawBattery(knobby.batteryPercentage(), lineThree + 18);
-
     tft.drawRoundRect(9, lineTwo - 15, 221, 49, 5, TFT_WHITE);
+
+  } else if (menuMode == SettingsMenu) {
+    drawMenuHeader(false, settingsMenuItems[menuIndex]);
+    img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    tft.setCursor(textPadding, lineTwo);
+    switch (menuIndex) {
+      case SettingsAbout:
+        tft.setCursor(0, lineTwo);
+        drawCenteredText(("knobby.quadule.com by milo winningham code: " + configPassword).c_str(), screenWidth, 3);
+        break;
+      case SettingsUpdate:
+        drawCenteredText("double click to begin updating", textWidth, 3);
+        break;
+      case SettingsAddUser:
+        drawCenteredText(("log in with spotify at http://" + nodeName + ".local/authorize").c_str(), textWidth, 3);
+        break;
+      case SettingsRemoveUser:
+        drawCenteredText("double click to log out of spotify", textWidth, 3);
+        break;
+      case SettingsResetAll:
+        drawCenteredText("double click to erase all data and enter setup mode", textWidth, 3);;
+        break;
+      default:
+        break;
+    }
   } else if (menuMode == UserList) {
     SpotifyUser_t *user = &spotifyUsers[menuIndex];
     bool selected = user == activeSpotifyUser;
     drawMenuHeader(selected);
-    drawDivider(selected);
 
     if (user != nullptr) {
       tft.setCursor(textPadding, lineTwo);
@@ -932,7 +991,6 @@ void updateDisplay() {
       SpotifyDevice_t *device = &spotifyDevices[menuIndex];
       bool selected = device == activeSpotifyDevice;
       drawMenuHeader(selected);
-      drawDivider(selected);
 
       if (device != nullptr) {
         tft.setCursor(textPadding, lineTwo);
@@ -1307,6 +1365,8 @@ uint16_t checkMenuSize(MenuModes mode) {
       rootMenuNowPlayingIndex = nextDynamicIndex++;
       rootMenuUsersIndex = shouldShowUsersMenu() ? nextDynamicIndex++ : -1;
       return nextDynamicIndex;
+    case SettingsMenu:
+      return (sizeof(settingsMenuItems) / sizeof(settingsMenuItems[0]));
     case UserList:
       return spotifyUsers.size();
     case DeviceList:
@@ -1522,6 +1582,7 @@ bool readDataJson() {
   }
 
   configPassword = doc["configPassword"] | "";
+  firmwareURL = doc["firmwareURL"] | "";
   spotifyClientId = doc["spotifyClientId"] | "";
   spotifyClientSecret = doc["spotifyClientSecret"] | "";
   wifiSSID = doc["wifiSSID"] | WiFi.SSID();
@@ -1553,6 +1614,7 @@ bool writeDataJson() {
   DynamicJsonDocument doc(5000);
 
   doc["configPassword"] = configPassword;
+  doc["firmwareURL"] = firmwareURL;
   doc["spotifyClientId"] = spotifyClientId;
   doc["spotifyClientSecret"] = spotifyClientSecret;
   doc["wifiSSID"] = wifiSSID;
@@ -1588,7 +1650,7 @@ void onOTAProgress(unsigned int progress, unsigned int total) {
     tft.fillScreen(TFT_BLACK);
     tft.setCursor(textPadding, lineOne);
     img.setTextColor(TFT_WHITE, TFT_BLACK);
-    drawCenteredText("updating", textWidth, 1);
+    drawCenteredText("updating...", textWidth, 1);
     drawDivider(true);
   }
   char status[5];
@@ -2244,4 +2306,75 @@ void spotifyGetPlaylists() {
   }
 
   spotifyAction = CurrentlyPlaying;
+}
+
+void updateFirmware() {
+  if (checkedForUpdateMillis > 0 && millis() - checkedForUpdateMillis < 10000) {
+    setStatusMessage("up to date");
+    return;
+  }
+  if (knobby.batteryPercentage() < 20) {
+    setStatusMessage("battery too low");
+    return;
+  }
+
+  setStatusMessage("checking...");
+  spotifyAction = Idle;
+  updateDisplay();
+
+  spotifyWifiClient.stop();
+  WiFiClientSecure client;
+  client.setCACert(s3CACertificate);
+  HTTPClient http;
+  http.setUserAgent("Knobby/1.0");
+  http.setConnectTimeout(4000);
+  http.setTimeout(4000);
+  http.setReuse(false);
+  if (firmwareURL.isEmpty()) {
+    log_i("[%d] GET %s", (uint32_t)millis(), KNOBBY_FIRMWARE_URL);
+    http.begin(client, KNOBBY_FIRMWARE_URL);
+  } else {
+    log_i("[%d] GET %s", (uint32_t)millis(), firmwareURL);
+    http.begin(client, firmwareURL);
+  }
+  const char * headerKeys[] = { "x-amz-meta-git-version" };
+  http.collectHeaders(headerKeys, (sizeof(headerKeys) / sizeof(headerKeys[0])));
+  int code = http.GET();
+
+  if (code != 200) {
+    http.end();
+    setStatusMessage("update failed");
+    log_e("HTTP code %d", code);
+    return;
+  }
+
+  String version = http.header("x-amz-meta-git-version");
+  if (!version.isEmpty()) log_i("got version header %s", version);
+  if (version.equals(esp_ota_get_app_description()->version)) {
+    checkedForUpdateMillis = millis();
+    setStatusMessage("no update yet");
+    log_i("version matches, no update needed!");
+    return;
+  }
+
+  updateContentLength = http.getSize();
+  if (!Update.begin(updateContentLength > 0 ? updateContentLength : UPDATE_SIZE_UNKNOWN)) {
+    Update.printError(Serial);
+  }
+  disableCore1WDT();
+  Update.writeStream(http.getStream());
+  http.end();
+
+  if (!Update.end(true)){
+    updateContentLength = 0;
+    Update.printError(Serial);
+    enableCore1WDT();
+    setStatusMessage("update failed");
+    invalidateDisplay(true);
+  } else {
+    log_i("OTA: update complete");
+    Serial.flush();
+    delay(100);
+    ESP.restart();
+  }
 }

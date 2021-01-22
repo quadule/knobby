@@ -1,1 +1,8 @@
-{"configPassword":"","spotifyClientId":"","spotifyClientSecret":"","wifiSSID":"","wifiPassword":""}
+{
+  "configPassword": "",
+  "firmwareURL": "",
+  "spotifyClientId": "",
+  "spotifyClientSecret": "",
+  "wifiSSID": "",
+  "wifiPassword":""
+}

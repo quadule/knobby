@@ -33,19 +33,50 @@ extern const uint8_t icomoon31_vlw_size[] asm("_binary_icomoon31_vlw_size");
 extern const char index_html_start[] asm("_binary_index_html_start");
 extern const char index_html_size[] asm("_binary_index_html_size");
 
+const char *s3CACertificate =
+    "-----BEGIN CERTIFICATE-----\n"
+    "MIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhkiG9w0BAQUFADBaMQswCQYDVQQGEwJJ\n"
+    "RTESMBAGA1UEChMJQmFsdGltb3JlMRMwEQYDVQQLEwpDeWJlclRydXN0MSIwIAYD\n"
+    "VQQDExlCYWx0aW1vcmUgQ3liZXJUcnVzdCBSb290MB4XDTAwMDUxMjE4NDYwMFoX\n"
+    "DTI1MDUxMjIzNTkwMFowWjELMAkGA1UEBhMCSUUxEjAQBgNVBAoTCUJhbHRpbW9y\n"
+    "ZTETMBEGA1UECxMKQ3liZXJUcnVzdDEiMCAGA1UEAxMZQmFsdGltb3JlIEN5YmVy\n"
+    "VHJ1c3QgUm9vdDCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAKMEuyKr\n"
+    "mD1X6CZymrV51Cni4eiVgLGw41uOKymaZN+hXe2wCQVt2yguzmKiYv60iNoS6zjr\n"
+    "IZ3AQSsBUnuId9Mcj8e6uYi1agnnc+gRQKfRzMpijS3ljwumUNKoUMMo6vWrJYeK\n"
+    "mpYcqWe4PwzV9/lSEy/CG9VwcPCPwBLKBsua4dnKM3p31vjsufFoREJIE9LAwqSu\n"
+    "XmD+tqYF/LTdB1kC1FkYmGP1pWPgkAx9XbIGevOF6uvUA65ehD5f/xXtabz5OTZy\n"
+    "dc93Uk3zyZAsuT3lySNTPx8kmCFcB5kpvcY67Oduhjprl3RjM71oGDHweI12v/ye\n"
+    "jl0qhqdNkNwnGjkCAwEAAaNFMEMwHQYDVR0OBBYEFOWdWTCCR1jMrPoIVDaGezq1\n"
+    "BE3wMBIGA1UdEwEB/wQIMAYBAf8CAQMwDgYDVR0PAQH/BAQDAgEGMA0GCSqGSIb3\n"
+    "DQEBBQUAA4IBAQCFDF2O5G9RaEIFoN27TyclhAO992T9Ldcw46QQF+vaKSm2eT92\n"
+    "9hkTI7gQCvlYpNRhcL0EYWoSihfVCr3FvDB81ukMJY2GQE/szKN+OMY3EU/t3Wgx\n"
+    "jkzSswF07r51XgdIGn9w/xZchMB5hbgF/X++ZRGjD8ACtPhSNzkE1akxehi/oCr0\n"
+    "Epn3o0WC4zxe9Z2etciefC7IpJ5OCBRLbf1wbWsaY71k5h+3zvDyny67G7fyUIhz\n"
+    "ksLi4xaNmjICq44Y3ekQEe5+NauQrz4wlHrQMz2nZQ/1/I6eYs9HRCwBXbsdtTLS\n"
+    "R9I4LtD+gdwyah617jzV/OeBHRnDJELqYzmp\n"
+    "-----END CERTIFICATE-----\n";
+
 enum MenuModes {
   VolumeControl = -2,
   RootMenu = -1,
   DeviceList = 0,
-  PlaylistList = 1,
-  CountryList = 2,
-  GenreList = 3,
-  SimilarList = 4,
-  NowPlaying = 5,
-  UserList = 6
+  SettingsMenu = 1,
+  PlaylistList = 2,
+  CountryList = 3,
+  GenreList = 4,
+  SimilarList = 5,
+  NowPlaying = 6,
+  UserList = 7
 };
 enum GenreSortModes { AlphabeticSort, AlphabeticSuffixSort };
 enum NowPlayingButtons { VolumeButton = 0, ShuffleButton = 1, BackButton = 2, PlayPauseButton = 3, NextButton = 4 };
+enum SettingsMenuModes {
+  SettingsAbout = 0,
+  SettingsUpdate = 1,
+  SettingsAddUser = 2,
+  SettingsRemoveUser = 3,
+  SettingsResetAll = 4
+};
 enum EventsLogTypes { log_line, log_raw };
 
 typedef struct {
@@ -60,7 +91,13 @@ typedef struct {
 #define TFT_DARKERGREY 0x4A49 /*  72,  72,  72 */
 #define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
 
-const char *rootMenuItems[] = {"devices", "playlists", "countries", "genres", "similar", "now playing", "users"};
+template<typename C, typename T>
+bool contains(C&& c, T e) {
+  return std::find(std::begin(c), std::end(c), e) != std::end(c);
+};
+
+const char *rootMenuItems[] = {"devices", "settings", "playlists", "countries", "genres", "similar", "now playing", "users"};
+const char *settingsMenuItems[] = {"about", "update", "add user", "log out", "reset all"};
 const int centerX = 120;
 const unsigned int clickEffectMillis = 30;
 const unsigned int debounceMillis = 20;
@@ -70,13 +107,16 @@ const unsigned int extraLongPressMillis = 1250;
 const unsigned int inactivityFadeOutMillis = 6000;
 const unsigned int randomizingLengthMillis = 1300;
 const unsigned int newSessionSeconds = 60 * 40;
+const unsigned int statusMessageMillis = 2000;
+const int screenWidth = TFT_HEIGHT - 1;
 const int lineOne = 10;
 const int lineDivider = lineOne + LINE_HEIGHT + 2;
 const int lineTwo = lineOne + LINE_HEIGHT + 11;
 const int lineThree = lineTwo + LINE_HEIGHT;
+const int lineFour = lineThree + LINE_HEIGHT;
 const int lineSpacing = 3;
 const int textPadding = 10;
-const int textWidth = 239 - textPadding * 2;
+const int textWidth = screenWidth - textPadding * 2;
 const String nodeName = "knobby";
 const String ICON_VOLUME_UP = "\uE900";
 const String ICON_VOLUME_OFF = "\uE901";
@@ -106,6 +146,7 @@ const String ICON_BLUETOOTH_DISABLED = "\uE916";
 const String ICON_BLUETOOTH_SEARCHING = "\uE917";
 
 String configPassword;
+String firmwareURL;
 String wifiSSID;
 String wifiPassword;
 
@@ -157,6 +198,7 @@ int rootMenuUsersIndex = -1;
 int similarMenuGenreIndex = -1;
 std::vector<SimilarItem_t> similarMenuItems;
 long lastConnectedMillis = -1;
+unsigned long checkedForUpdateMillis = 0;
 unsigned long clickEffectEndMillis = 0;
 unsigned long inactivityMillis = 90000;
 unsigned long lastBatteryUpdateMillis = 0;
@@ -193,6 +235,7 @@ uint16_t checkMenuSize(MenuModes mode);
 void drawBattery(unsigned int percent, unsigned int y);
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1);
 void drawDivider(bool selected);
+void drawMenuHeader(bool selected, const char *text = "");
 void drawWifiSetup();
 void invalidateDisplay(bool eraseDisplay = false);
 void playPlaylist(const char *playlistId, const char *name = "");
@@ -201,11 +244,12 @@ void setActiveDevice(SpotifyDevice_t *device);
 void setActiveUser(SpotifyUser_t *user);
 void setMenuIndex(uint16_t newMenuIndex);
 void setMenuMode(MenuModes newMode, uint16_t newMenuIndex);
-void setStatusMessage(const char *message, unsigned long durationMs = 1800);
+void setStatusMessage(const char *message, unsigned long durationMs = statusMessageMillis);
 void shutdownIfLowBattery();
 void startDeepSleep();
 void startRandomizingMenu(bool autoplay = false);
 void updateDisplay();
+void updateFirmware();
 
 // Getters
 int formatMillis(char *output, unsigned long millis);

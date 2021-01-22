@@ -3,6 +3,7 @@
 
 #include "Arduino.h"
 #include "esp_adc_cal.h"
+#include "esp_ota_ops.h"
 #include "Wire.h"
 
 enum PowerStatus {
@@ -16,6 +17,8 @@ class Knobby {
     Knobby();
     void setup();
     void loop();
+
+    void printHeader();
 
     uint8_t batteryPercentage();
     float batteryVoltage();
@@ -74,6 +77,22 @@ void Knobby::setup() {
 
 void Knobby::loop() {
   if (shouldUpdateBattery()) updateBattery();
+}
+
+void Knobby::printHeader() {
+  const esp_app_desc_t *desc = esp_ota_get_app_description();
+  Serial.printf("\n\n    _                 _     _              |\n");
+  Serial.printf("   | |               | |   | |             |\n");
+  Serial.printf("   | |  _ ____   ___ | |__ | |__  _   _    |\n");
+  Serial.printf("   | |_/ )  _ \\ / _ \\|  _ \\|  _ \\| | | |   |   built %s %s\n", desc->date, desc->time);
+  Serial.printf("   |  _ (| | | | |_| | |_) ) |_) ) |_| |   |   git version %s\n", desc->version);
+  Serial.printf("   |_| \\_)_| |_|\\___/|____/|____/ \\__  |   |   esp-idf %s\n", desc->idf_ver);
+  Serial.printf("                                 (____/    |\n");
+  Serial.printf("    by milo winningham                     |\n");
+  Serial.printf("    https://knobby.quadule.com             |\n");
+  Serial.printf("                                           |\n");
+  Serial.printf("___________________________________________|____________________________________\n\n");
+  Serial.flush();
 }
 
 uint8_t Knobby::batteryPercentage() {
