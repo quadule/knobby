@@ -438,13 +438,12 @@ void loop() {
 
   ArduinoOTA.handle();
 
-  if ((spotifyAction == Idle || spotifyAction == CurrentlyPlaying) && inputDelta > 500 &&
-      randomizingMenuEndMillis == 0 && !shouldShowRandom()) {
+  if (inputDelta > 5000) {
+    lastDelayMillis = now;
     delay(30);
-  } else if (inputDelta > 500) {
+  } else if (inputDelta > 500 || lastDelayMillis > 500) {
+    lastDelayMillis = now;
     delay(10);
-  } else {
-    yield();
   }
 }
 

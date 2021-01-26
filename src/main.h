@@ -160,6 +160,7 @@ long lastConnectedMillis = -1;
 unsigned long clickEffectEndMillis = 0;
 unsigned long inactivityMillis = 90000;
 unsigned long lastBatteryUpdateMillis = 0;
+unsigned long lastDelayMillis = 0;
 unsigned long lastDisplayMillis = 0;
 unsigned long lastInputMillis = 1;
 unsigned long lastReconnectAttemptMillis = 0;
