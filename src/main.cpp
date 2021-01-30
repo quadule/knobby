@@ -577,12 +577,12 @@ void knobClicked() {
     case DeviceList:
       if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
         bool changed = strcmp(activeSpotifyUser->selectedDeviceId, spotifyDevices[menuIndex].id) != 0;
-        setActiveDevice(&spotifyDevices[menuIndex]);
-        if (changed) writeDataJson();
         if (spotifyState.isPlaying && !spotifyGettingToken &&
             (!activeSpotifyDevice || strcmp(activeSpotifyDevice->id, spotifyDevices[menuIndex].id) != 0)) {
           spotifyAction = TransferPlayback;
         }
+        setActiveDevice(&spotifyDevices[menuIndex]);
+        if (changed) writeDataJson();
       }
       break;
     case GenreList:
