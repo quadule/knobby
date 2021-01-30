@@ -57,6 +57,7 @@ const char *s3CACertificate =
     "-----END CERTIFICATE-----\n";
 
 enum MenuModes {
+  NoMenu = -99,
   VolumeControl = -2,
   RootMenu = -1,
   DeviceList = 0,
@@ -155,7 +156,7 @@ RTC_DATA_ATTR time_t bootSeconds = 0;
 RTC_DATA_ATTR time_t lastSleepSeconds = 0;
 RTC_DATA_ATTR MenuModes menuMode = GenreList;
 RTC_DATA_ATTR uint16_t menuIndex = 0;
-RTC_DATA_ATTR uint16_t menuSize = GENRE_COUNT;
+RTC_DATA_ATTR uint16_t menuSize = 0;
 RTC_DATA_ATTR uint16_t genreIndex = 0;
 RTC_DATA_ATTR GenreSortModes genreSort = AlphabeticSort;
 RTC_DATA_ATTR float lastBatteryVoltage = 0.0;

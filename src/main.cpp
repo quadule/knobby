@@ -196,7 +196,6 @@ void setup() {
     }
     if (spotifyAction == GetToken) {
       setStatusMessage("connecting...");
-      setMenuMode(GenreList, genreIndex);
       request->send(200, "text/plain",
                     "Authorized! Knobby should be ready to use in a moment. You can close this page now.");
     } else {
@@ -285,12 +284,16 @@ void setup() {
 
   xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
 
-  if (secondsAsleep > newSessionSeconds) genreSort = AlphabeticSort;
-  knobHeldForRandom = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
-  if (knobHeldForRandom) {
-    startRandomizingMenu(true);
-  } else if (secondsAsleep == 0 || secondsAsleep > newSessionSeconds) {
-    startRandomizingMenu(false);
+  if (spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
+    setMenuMode(NoMenu, 0);
+  } else {
+    if (secondsAsleep > newSessionSeconds) genreSort = AlphabeticSort;
+    knobHeldForRandom = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
+    if (knobHeldForRandom) {
+      startRandomizingMenu(true);
+    } else if (secondsAsleep == 0 || secondsAsleep > newSessionSeconds) {
+      startRandomizingMenu(false);
+    }
   }
 }
 
@@ -377,7 +380,10 @@ void loop() {
     spotifyAction = GetToken;
   }
 
-  if (!knobHeldForRandom && shouldShowRandom() && getExtraLongPressedMillis() >= extraLongPressMillis) {
+  if (menuMode == NoMenu && !spotifyUsers.empty()) {
+    setMenuMode(GenreList, 0);
+    startRandomizingMenu(false);
+  } else if (!knobHeldForRandom && shouldShowRandom() && getExtraLongPressedMillis() >= extraLongPressMillis) {
     knobHeldForRandom = true;
     longPressStartedMillis = 0;
     startRandomizingMenu(true);
@@ -659,6 +665,7 @@ void knobDoubleClicked() {
           updateDisplay();
           spotifyUsers.erase(activeItr);
           spotifyAccessToken[0] = '\0';
+          spotifyRefreshToken[0] = '\0';
           spotifyDevices.clear();
           spotifyDevicesLoaded = false;
           writeDataJson();
@@ -918,7 +925,7 @@ void updateDisplay() {
   tft.setTextDatum(MC_DATUM);
   unsigned long now = millis();
 
-  if (spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
+  if (menuMode == NoMenu) {
     menuSize = 0;
     drawMenuHeader(false, "setup knobby");
     tft.setCursor(textPadding, lineTwo);
