@@ -2165,11 +2165,6 @@ void spotifyGetDevices() {
       if (activeSpotifyDevice != nullptr && activeSpotifyUser->selectedDeviceId[0] == '\0') {
         setActiveDevice(activeSpotifyDevice);
         writeDataJson();
-        delay(100);
-        WiFi.disconnect(true);
-        gpio_hold_dis((gpio_num_t)TFT_BL);
-        esp_sleep_enable_timer_wakeup(100);
-        esp_deep_sleep_start();
       } else if (menuMode == DeviceList) {
         setMenuMode(DeviceList, activeDeviceIndex < 0 ? 0 : activeDeviceIndex);
       }
