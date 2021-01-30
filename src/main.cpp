@@ -195,7 +195,8 @@ void setup() {
       }
     }
     if (spotifyAction == GetToken) {
-      setStatusMessage("connecting");
+      setStatusMessage("connecting...");
+      setMenuMode(GenreList, genreIndex);
       request->send(200, "text/plain",
                     "Authorized! Knobby should be ready to use in a moment. You can close this page now.");
     } else {
@@ -644,7 +645,7 @@ void knobDoubleClicked() {
   if (menuMode == GenreList) {
     genreSort = genreSort == AlphabeticSort ? AlphabeticSuffixSort : AlphabeticSort;
     setMenuIndex(getMenuIndexForGenreIndex(genreIndex));
-    setStatusMessage(genreSort == AlphabeticSort ? "sorted by name" : "sorted by ending");
+    setStatusMessage(genreSort == AlphabeticSort ? "sorted by name" : "sorted by suffix");
   } else if (menuMode == SettingsMenu) {
     switch (menuIndex) {
       case SettingsUpdate:
@@ -867,13 +868,12 @@ void drawDivider(bool selected) {
 }
 
 void drawMenuHeader(bool selected, const char *text) {
+  tft.setCursor(textPadding * 2, lineOne);
   if (millis() < statusMessageUntilMillis && statusMessage[0] != '\0') {
     img.setTextColor(TFT_WHITE, TFT_BLACK);
-    tft.setCursor(textPadding, lineOne);
-    drawCenteredText(statusMessage, textWidth);
+    drawCenteredText(statusMessage, textWidth - textPadding * 2);
   } else {
     img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
-    tft.setCursor(textPadding * 2, lineOne);
     if (text[0] != '\0') {
       drawCenteredText(text, textWidth - textPadding * 2);
     } else if (menuSize > 0) {
@@ -919,9 +919,10 @@ void updateDisplay() {
   unsigned long now = millis();
 
   if (spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
-    drawMenuHeader(false, "setup");
+    menuSize = 0;
+    drawMenuHeader(false, "setup knobby");
     tft.setCursor(textPadding, lineTwo);
-    drawCenteredText(("log in with spotify at http://" + nodeName + ".local/authorize").c_str(), textWidth, 3);
+    drawCenteredText(("log in with spotify at http://" + nodeName + ".local").c_str(), textWidth, 3);
   } else if (now < randomizingMenuEndMillis) {
     if (now >= randomizingMenuNextMillis) {
       randomizingMenuNextMillis = millis() + max((int)pow(++randomizingMenuTicks, 3), 20);
@@ -965,7 +966,9 @@ void updateDisplay() {
     switch (menuIndex) {
       case SettingsAbout:
         tft.setCursor(0, lineTwo);
-        drawCenteredText(("knobby.quadule.com by milo winningham code: " + configPassword).c_str(), screenWidth, 3);
+        char about[100];
+        sprintf(about, "knobby.quadule.com by milo winningham ver %s", esp_ota_get_app_description()->version);
+        drawCenteredText(about, screenWidth, 3);
         break;
       case SettingsUpdate:
         drawCenteredText("double click to begin updating", textWidth, 3);
@@ -2316,7 +2319,7 @@ void spotifyGetPlaylists() {
 }
 
 void updateFirmware() {
-  if (checkedForUpdateMillis > 0 && millis() - checkedForUpdateMillis < 10000) {
+  if (checkedForUpdateMillis > 0 && millis() - checkedForUpdateMillis < 60000) {
     setStatusMessage("up to date");
     return;
   }
