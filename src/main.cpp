@@ -1206,7 +1206,7 @@ void updateDisplay() {
         if (spotifyAction == PlayPlaylist && now < clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
         drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
       } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
-        char playing[201];
+        char playing[205];
         snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
         if (playingGenreIndex >= 0) img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
         drawCenteredText(playing, textWidth, maxTextLines);

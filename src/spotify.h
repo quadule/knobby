@@ -62,8 +62,8 @@ typedef struct {
 } SpotifyPlaylist_t;
 
 typedef struct {
-  char name[64] = "";
-  char artistName[64] = "";
+  char name[100] = "";
+  char artistName[100] = "";
   char albumName[64] = "";
   char trackId[SPOTIFY_ID_SIZE + 1] = "";
   char contextName[64] = "";
