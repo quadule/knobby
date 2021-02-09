@@ -319,6 +319,17 @@ void setup() {
   }
 }
 
+void delayIfIdle() {
+  auto now = millis();
+  auto inputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
+  if (inputDelta > 3000 || now - lastDelayMillis > 1000) {
+    delay(30);
+    lastDelayMillis = millis();
+  } else {
+    delay(10);
+  }
+}
+
 void loop() {
   uint32_t now = millis();
   unsigned long previousInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
@@ -481,12 +492,7 @@ void loop() {
   }
 
   ArduinoOTA.handle();
-
-  now = millis();
-  if (inputDelta > 3000 || now - lastDelayMillis > 1000) {
-    lastDelayMillis = now;
-    delay(30);
-  }
+  delayIfIdle();
 }
 
 void backgroundApiLoop(void *params) {
@@ -550,7 +556,7 @@ void backgroundApiLoop(void *params) {
           break;
       }
     }
-    delay(30);
+    delayIfIdle();
   }
 }
 
@@ -1717,7 +1723,7 @@ void onOTAProgress(unsigned int progress, unsigned int total) {
   sprintf(status, "%u%%", (progress / (total / 100)));
   tft.setCursor(textPadding, lineTwo);
   drawCenteredText(status, textWidth, 1);
-  esp_task_wdt_reset();
+  ESP_ERROR_CHECK(esp_task_wdt_reset());
 }
 
 HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {
