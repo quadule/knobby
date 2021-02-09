@@ -895,7 +895,10 @@ void drawBattery(unsigned int percent, unsigned int y) {
 }
 
 void shutdownIfLowBattery() {
-  if (knobby.shouldUpdateBattery() || knobby.powerStatus() == PowerStatusPowered || knobby.batteryVoltage() >= 3.2) return;
+  if (knobby.shouldUpdateBattery() || knobby.powerStatus() == PowerStatusPowered) return;
+  float batteryVoltage = knobby.batteryVoltage();
+  if (batteryVoltage >= 3.1 || batteryVoltage < 0.01) return;
+  log_i("Battery voltage is %.3f V, shutting down!", knobby.batteryVoltage());
   tft.fillScreen(TFT_BLACK);
   drawBattery(0, 50);
   delay(333);
