@@ -798,6 +798,9 @@ void knobDoubleClicked() {
         break;
       case SettingsResetAll:
         tft.fillScreen(TFT_BLACK);
+        tft.setCursor(textPadding, lineTwo);
+        img.setTextColor(TFT_WHITE, TFT_BLACK);
+        drawCenteredText("resetting...", textWidth, 1);
         spotifyAccessToken[0] = '\0';
         spotifyRefreshToken[0] = '\0';
         configPassword.clear();
@@ -806,6 +809,7 @@ void knobDoubleClicked() {
         spotifyUsers.clear();
         writeDataJson();
         WiFi.disconnect(true, true);
+        delay(statusMessageMillis);
         ESP.restart();
         break;
       default:
