@@ -468,8 +468,8 @@ void loop() {
     } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
       clickEffectEndMillis = 0;
       invalidateDisplay();
-    } else if ((randomizingMenuNextMillis > 0 && now >= randomizingMenuNextMillis) || lastInputMillis > lastDisplayMillis ||
-               (spotifyState.isPlaying && now - lastDisplayMillis > 950) ||
+    } else if ((randomizingMenuNextMillis > 0 && now >= randomizingMenuNextMillis) ||
+               lastInputMillis > lastDisplayMillis || (now - lastDisplayMillis > 950) ||
                (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2)) {
       invalidateDisplay();
     }
