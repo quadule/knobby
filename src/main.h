@@ -25,13 +25,9 @@
 #include "time.h"
 
 extern const uint8_t GillSans24_vlw_start[] asm("_binary_GillSans24_vlw_start");
-extern const uint8_t GillSans24_vlw_size[] asm("_binary_GillSans24_vlw_size");
 extern const uint8_t icomoon24_vlw_start[] asm("_binary_icomoon24_vlw_start");
-extern const uint8_t icomoon24_vlw_size[] asm("_binary_icomoon24_vlw_size");
 extern const uint8_t icomoon31_vlw_start[] asm("_binary_icomoon31_vlw_start");
-extern const uint8_t icomoon31_vlw_size[] asm("_binary_icomoon31_vlw_size");
 extern const char index_html_start[] asm("_binary_index_html_start");
-extern const char index_html_size[] asm("_binary_index_html_size");
 
 const char *s3CACertificate =
     "-----BEGIN CERTIFICATE-----\n"
