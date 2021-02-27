@@ -879,14 +879,14 @@ void drawBattery(unsigned int percent, unsigned int y) {
   batterySprite.setTextColor(TFT_DARKERGREY, TFT_BLACK);
   batterySprite.setCursor(1, 3);
   if (knobby.powerStatus() == PowerStatusOnBattery) {
-    if (percent >= 85) {
+    if (percent >= 80) {
       batterySprite.printToSprite(ICON_BATTERY_FULL);
-    } else if (percent >= 60) {
+    } else if (percent >= 55) {
       batterySprite.printToSprite(ICON_BATTERY_HIGH);
-    } else if (percent >= 35) {
+    } else if (percent >= 30) {
       batterySprite.printToSprite(ICON_BATTERY_MID);
     } else {
-      batterySprite.setTextColor(TFT_RED, TFT_BLACK);
+      if (percent < 20) batterySprite.setTextColor(TFT_RED, TFT_BLACK);
       batterySprite.printToSprite(ICON_BATTERY_LOW);
     }
   } else  {
