@@ -154,9 +154,6 @@ void setup() {
   MDNS.addService("http", "tcp", 80);
 
   // Initialize HTTP server handlers
-  events.onConnect([](AsyncEventSourceClient *client) { log_i("[%d] events.onConnect", (int)millis()); });
-  server.addHandler(&events);
-
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     inactivityMillis = 1000 * 60 * 3;
     uint32_t ts = millis();
@@ -232,11 +229,6 @@ void setup() {
     uint32_t ts = millis();
     log_i("[%d] server.on /sleep", ts);
     startDeepSleep();
-  });
-
-  server.on("/toggleevents", HTTP_GET, [](AsyncWebServerRequest *request) {
-    sendLogEvents = !sendLogEvents;
-    request->send(200, "text/plain", sendLogEvents ? "1" : "0");
   });
 
   server.on("/update", HTTP_POST,
@@ -1610,11 +1602,6 @@ int formatMillis(char *output, unsigned long millis) {
   } else {
     return sprintf(output, "%d:%02d:%02d", hours, minutes, seconds);
   }
-}
-
-void eventsSendLog(const char *logData, EventsLogTypes type) {
-  if (!sendLogEvents) return;
-  events.send(logData, type == log_line ? "line" : "raw");
 }
 
 void setActiveUser(SpotifyUser_t *user) {

@@ -74,7 +74,6 @@ enum SettingsMenuModes {
   SettingsRemoveUser = 3,
   SettingsResetAll = 4
 };
-enum EventsLogTypes { log_line, log_raw };
 
 typedef struct {
   char playlistId[SPOTIFY_ID_SIZE + 1];
@@ -178,7 +177,6 @@ ESP32Encoder knob;
 OneButton button(ROTARY_ENCODER_BUTTON_PIN, true, true);
 
 TaskHandle_t backgroundApiTask;
-AsyncEventSource events("/events");
 AsyncWebServer server(80);
 DNSServer dnsServer;
 ESPAsync_WiFiManager *wifiManager;
@@ -192,7 +190,6 @@ bool knobHeldForRandom = false;
 bool knobRotatedWhileLongPressed = false;
 bool randomizingMenuAutoplay = false;
 time_t secondsAsleep = 0;
-bool sendLogEvents = true;
 bool showingProgressBar = false;
 char statusMessage[24] = "";
 int rootMenuNowPlayingIndex = -1;
@@ -230,7 +227,6 @@ void knobLongPressStarted();
 void knobLongPressStopped();
 
 // Actions
-void eventsSendLog(const char *logData, EventsLogTypes type = log_line);
 bool readDataJson();
 bool writeDataJson();
 void onOTAProgress(unsigned int progress, unsigned int total);
