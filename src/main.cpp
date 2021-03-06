@@ -788,7 +788,7 @@ void knobDoubleClicked() {
           ESP.restart();
         }
         break;
-      case SettingsResetAll:
+      case SettingsReset:
         tft.fillScreen(TFT_BLACK);
         tft.setCursor(textPadding, lineTwo);
         img.setTextColor(TFT_WHITE, TFT_BLACK);
@@ -1030,7 +1030,7 @@ void updateDisplay() {
       case SettingsRemoveUser:
         drawCenteredText("double click to log out of spotify", textWidth, 3);
         break;
-      case SettingsResetAll:
+      case SettingsReset:
         drawCenteredText("double click to erase all data and enter setup mode", textWidth, 3);;
         break;
       default:

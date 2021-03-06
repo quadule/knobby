@@ -72,7 +72,7 @@ enum SettingsMenuModes {
   SettingsUpdate = 1,
   SettingsAddUser = 2,
   SettingsRemoveUser = 3,
-  SettingsResetAll = 4
+  SettingsReset = 4
 };
 
 typedef struct {
@@ -80,12 +80,10 @@ typedef struct {
   char name[18];
 } SimilarItem_t;
 
-#define FONT_NAME "GillSans24"
 #define ICON_SIZE 24
 #define LINE_HEIGHT 27
 #define TFT_LIGHTBLACK 0x1082 /*  16,  16,  16 */
 #define TFT_DARKERGREY 0x4A49 /*  72,  72,  72 */
-#define startsWith(STR, SEARCH) (strncmp(STR, SEARCH, strlen(SEARCH)) == 0)
 
 template<typename C, typename T>
 bool contains(C&& c, T e) {
@@ -93,7 +91,7 @@ bool contains(C&& c, T e) {
 };
 
 const char *rootMenuItems[] = {"devices", "settings", "playlists", "countries", "genres", "similar", "now playing", "users"};
-const char *settingsMenuItems[] = {"about", "update", "add user", "log out", "reset all"};
+const char *settingsMenuItems[] = {"about", "update", "add user", "log out", "reset settings"};
 const int screenWidth = TFT_HEIGHT - 1;
 const int screenHeight = TFT_WIDTH - 1;
 const int centerX = screenWidth / 2;
