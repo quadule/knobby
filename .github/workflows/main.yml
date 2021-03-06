@@ -7,10 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: Extract branch name
+    - name: Extract git branch and tag
       shell: bash
-      run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
-      id: extract_branch
+      run: |
+        echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+        echo "##[set-output name=tag;]$(echo ${GITHUB_REF#refs/tags/})"
+      id: gitinfo
     - name: Cache pip
       uses: actions/cache@v2
       with:
@@ -32,9 +34,12 @@ jobs:
     - name: Run PlatformIO
       run: |
         pio run -e knobby -e twatch
+        pio run -e knobby -e twatch -t buildfs
         mkdir upload
         cp .pio/build/knobby/firmware.bin upload/knobby.bin
         cp .pio/build/twatch/firmware.bin upload/twatch.bin
+        zip -j knobby-firmware.zip flash.bat flash.sh .pio/build/knobby/*.bin
+        zip -j twatch-firmware.zip flash.bat flash.sh .pio/build/twatch/*.bin
     - name: Archive firmware artifacts
       uses: actions/upload-artifact@v2
       with:
@@ -53,4 +58,16 @@ jobs:
           --metadata "{\"git-version\":\"$(git describe --match="" --dirty --always)\"}"
           --recursive
           upload
-          s3://knobby/firmware/${{ steps.extract_branch.outputs.branch }}/
+          s3://knobby/firmware/${{ steps.gitinfo.outputs.branch }}/
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/v')
+      with:
+        draft: true
+        files: |
+          knobby-firmware.zip
+          twatch-firmware.zip
+          upload/knobby.bin
+          upload/twatch.bin
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
