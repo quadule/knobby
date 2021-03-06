@@ -314,10 +314,10 @@ void setup() {
 void delayIfIdle() {
   auto now = millis();
   auto inputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
-  if (inputDelta > 3000 || now - lastDelayMillis > 1000) {
+  if (inputDelta > 5000 || now - lastDelayMillis > 1000) {
     delay(30);
     lastDelayMillis = millis();
-  } else {
+  } else if (randomizingMenuEndMillis == 0) {
     delay(10);
   }
 }
@@ -1008,7 +1008,7 @@ void updateDisplay() {
         drawCenteredText(rootMenuItems[menuIndex], textWidth);
       }
     }
-    tft.drawRoundRect(8, lineTwo - 15, 223, 49, 5, TFT_WHITE);
+    tft.drawRoundRect(8, lineTwo - 15, 224, 49, 5, TFT_WHITE);
 
   } else if (menuMode == SettingsMenu) {
     drawMenuHeader(false, settingsMenuItems[menuIndex]);
@@ -2221,13 +2221,13 @@ void spotifyGetDevices() {
 }
 
 void spotifySetVolume() {
-  spotifySetVolumeAtMillis = -1;
   if (activeSpotifyDevice == nullptr) return;
   int setpoint = spotifySetVolumeTo;
   char path[74];
   snprintf(path, sizeof(path), "me/player/volume?volume_percent=%d", setpoint);
   HTTP_response_t response;
   response = spotifyApiRequest("PUT", path);
+  if (millis() <= spotifySetVolumeAtMillis) spotifySetVolumeAtMillis = -1;
   if (activeSpotifyDevice != nullptr) activeSpotifyDevice->volumePercent = setpoint;
   spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
 }
