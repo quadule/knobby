@@ -337,7 +337,10 @@ void loop() {
   bool connected = WiFi.isConnected();
 
   if (inputDelta < previousInputDelta && previousInputDelta > inactivityMillis) {
-    if (menuMode == NowPlaying) spotifyAction = CurrentlyPlaying;
+    if (menuMode == NowPlaying) {
+      spotifyAction = CurrentlyPlaying;
+      nextCurrentlyPlayingMillis = 1;
+    }
     #ifdef LILYGO_WATCH_2019_WITH_TOUCH
       ttgo->bl->begin();
       ttgo->bl->adjust(255);
@@ -380,6 +383,8 @@ void loop() {
     #endif
   } else if (menuMode == VolumeControl && inputDelta > volumeMenuTimeoutMillis) {
     setMenuMode(NowPlaying, VolumeButton);
+    spotifyAction = CurrentlyPlaying;
+    if (nextCurrentlyPlayingMillis == 0) nextCurrentlyPlayingMillis = 1;
   }
 
   if (connected && (lastConnectedMillis < 0 || lastReconnectAttemptMillis > lastConnectedMillis)) {
@@ -532,7 +537,7 @@ void backgroundApiLoop(void *params) {
           spotifyGetDevices();
           break;
         case SetVolume:
-          if (spotifySetVolumeAtMillis > 0 && millis() >= spotifySetVolumeAtMillis) spotifySetVolume();
+          if (spotifySetVolumeTo >= 0) spotifySetVolume();
           break;
         case ToggleShuffle:
           spotifyToggleShuffle();
@@ -654,7 +659,6 @@ void knobRotated() {
     setMenuIndex(newMenuIndex);
     spotifyAction = SetVolume;
     spotifySetVolumeTo = menuIndex;
-    spotifySetVolumeAtMillis = lastInputMillis + 100;
   } else {
     int newMenuIndex = ((int)menuIndex + positionDelta) % (int)menuSize;
     if (newMenuIndex < 0) newMenuIndex += menuSize;
@@ -718,8 +722,9 @@ void knobClicked() {
       playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name);
       break;
     case VolumeControl:
-      spotifySetVolumeAtMillis = millis();
       setMenuMode(NowPlaying, VolumeButton);
+      spotifyAction = CurrentlyPlaying;
+      nextCurrentlyPlayingMillis = 1;
       break;
     case NowPlaying:
       switch (menuIndex) {
@@ -2121,7 +2126,7 @@ void spotifyToggle() {
     invalidateDisplay();
   } else {
     spotifyResetProgress(true);
-    nextCurrentlyPlayingMillis = millis();
+    nextCurrentlyPlayingMillis = 1;
     if (!retry) spotifyAction = CurrentlyPlaying;
   }
 };
@@ -2221,15 +2226,17 @@ void spotifyGetDevices() {
 }
 
 void spotifySetVolume() {
-  if (activeSpotifyDevice == nullptr) return;
+  if (activeSpotifyDevice == nullptr || spotifySetVolumeTo < 0) {
+    spotifySetVolumeTo = -1;
+    return;
+  }
   int setpoint = spotifySetVolumeTo;
   char path[74];
   snprintf(path, sizeof(path), "me/player/volume?volume_percent=%d", setpoint);
   HTTP_response_t response;
   response = spotifyApiRequest("PUT", path);
-  if (millis() <= spotifySetVolumeAtMillis) spotifySetVolumeAtMillis = -1;
   if (activeSpotifyDevice != nullptr) activeSpotifyDevice->volumePercent = setpoint;
-  spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
+  if (spotifySetVolumeTo == setpoint) spotifySetVolumeTo = -1;
 }
 
 void spotifyToggleShuffle() {

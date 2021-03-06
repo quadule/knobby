@@ -117,7 +117,6 @@ bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = CurrentlyPlaying;
 const char *spotifyPlayPlaylistId = nullptr;
 int spotifySeekToMillis = -1;
-int spotifySetVolumeAtMillis = -1;
 int spotifySetVolumeTo = -1;
 
 std::vector<SpotifyUser_t> spotifyUsers;
