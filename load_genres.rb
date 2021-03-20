@@ -1,8 +1,13 @@
 #!/usr/bin/env ruby
 
-require "open-uri"
-require "nokogiri"
+require "bundler/inline"
 require "erb"
+require "open-uri"
+
+gemfile do
+  source "https://rubygems.org"
+  gem "nokogiri"
+end
 
 ID_PATTERN = /:playlist:([A-Za-z0-9]{22})/
 Genre = Struct.new(:name, :id, :label, :color)
@@ -28,14 +33,14 @@ end
 sorted_genres = Hash.new { [] }
 %w[popularity].each do |vector|
   print "Fetching rankings by #{vector}... "
-  doc = Nokogiri::HTML(open("http://everynoise.com/everynoise1d.cgi?vector=#{vector}&scope=all"))
+  doc = Nokogiri::HTML(URI.open("http://everynoise.com/everynoise1d.cgi?vector=#{vector}&scope=all"))
   sorted_genres[vector] = doc.css("body > table > tr").map(&method(:build_genre))
   puts "done"
 end
 
 print "Fetching countries... "
-doc = Nokogiri::HTML(open("http://everynoise.com/countries.html"))
-countries = doc.css(".country a").map { |c| [c.text, c[:href].split(":").last] }.sort_by(&:first).to_h
+doc = Nokogiri::HTML(URI.open("http://everynoise.com/countries.html"))
+countries = doc.css("td.column .country a").map { |c| [c.text, c[:href].split(":").last] }.sort_by(&:first).to_h
 puts "done"
 
 genres = sorted_genres.values.first
