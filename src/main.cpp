@@ -2389,7 +2389,7 @@ void updateFirmware() {
 
   spotifyWifiClient.stop();
   WiFiClientSecure client;
-  client.setCACert(s3CACertificate);
+  client.setCACert(s3CACertificates);
   HTTPClient http;
   http.setUserAgent("Knobby/1.0");
   http.setConnectTimeout(4000);
