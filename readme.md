@@ -12,18 +12,28 @@
 
 ## Hardware
 
-* LilyGO TTGO T-Display ESP32 board with ST7789 240x135 display
-* Bourns PEC11R-4215F-S0024 rotary encoder
-* MakerFocus 1000mAh LiPo battery
-* [3D printed case and knob](/case)
-
 Connect the rotary encoder A and B pins to GPIO 12 and 13 and the button pin to GPIO 15.
 
-## Setup
+## Make it
+
+* LilyGO TTGO T-Display ESP32 board with ST7789 240x135 display
+* Bourns PEC11R-4215F-S0024 rotary encoder
+* MakerFocus 1100mAh LiPo battery
+* [3D printed case and knob](/case)
+
+### Flashing the firmware
+
+To flash the firmware, you will need to have Python and [esptool.py](https://github.com/espressif/esptool) installed. If the serial device is not detected, you might need to install [the CP210x drivers](https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers).
+
+1. [Go to the latest release](https://github.com/quadule/knobby/releases/latest) and download the firmware zip for your hardware: knobby-firmware.zip for the original knobby or twatch-firmware.zip for the T-Watch encoder version.
+2. With the USB cable connected, run the flash script in the directory of the extracted firmware zip:
+  - on Linux or Mac: `./flash.sh`
+  - on Windows: `./flash.bat`
+
+### Compiling from source
 
 1. Edit `data/data.json` and enter your wifi network information (if you want; it can also be configured later)
 2. Build and upload with [PlatformIO](https://platformio.org/): `platformio run && platformio run --target upload && platformio run --target uploadfs`
-3. Visit http://knobby.local to authorize your Spotify account
 
 If data.json is not configured or there is a problem connecting to your network, knobby will enter configuration mode. Join the temporary wifi network displayed on screen and wait for the configuration portal to appear or visit http://192.168.4.1. Enter your wifi network information, then switch back to your normal wifi network and visit http://knobby.local to continue.
 
