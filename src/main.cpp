@@ -2378,7 +2378,7 @@ void updateFirmware() {
     setStatusMessage("up to date");
     return;
   }
-  if (knobby.batteryPercentage() < 20) {
+  if (knobby.powerStatus() == PowerStatusOnBattery && knobby.batteryPercentage() < 10) {
     setStatusMessage("battery too low");
     return;
   }
