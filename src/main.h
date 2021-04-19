@@ -96,9 +96,10 @@ enum NowPlayingButtons { VolumeButton = 0, ShuffleButton = 1, BackButton = 2, Pl
 enum SettingsMenuModes {
   SettingsAbout = 0,
   SettingsUpdate = 1,
-  SettingsAddUser = 2,
-  SettingsRemoveUser = 3,
-  SettingsReset = 4
+  SettingsOrientation = 2,
+  SettingsAddUser = 3,
+  SettingsRemoveUser = 4,
+  SettingsReset = 5
 };
 
 typedef struct {
@@ -117,7 +118,7 @@ bool contains(C&& c, T e) {
 };
 
 const char *rootMenuItems[] = {"devices", "settings", "playlists", "countries", "genres", "similar", "now playing", "users"};
-const char *settingsMenuItems[] = {"about", "update", "add user", "log out", "reset settings"};
+const char *settingsMenuItems[] = {"about", "update", "orientation", "add user", "log out", "reset settings"};
 const int screenWidth = TFT_HEIGHT - 1;
 const int screenHeight = TFT_WIDTH - 1;
 const int centerX = screenWidth / 2;
@@ -209,6 +210,7 @@ ESPAsync_WMParameter *spotifyClientSecretParam;
 
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = true;
+bool flipDisplay = false;
 int lastKnobCount = 0;
 bool knobHeldForRandom = false;
 bool knobRotatedWhileLongPressed = false;

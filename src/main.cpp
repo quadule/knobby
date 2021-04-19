@@ -21,6 +21,7 @@ void setup() {
   spotifyUsers.reserve(10);
   spotifyPlaylists.reserve(100);
   SPIFFS.begin(true);
+  readDataJson();
 
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     ttgo = TTGOClass::getWatch();
@@ -47,7 +48,7 @@ void setup() {
     ledcWrite(TFT_BL, 255);
   #endif
 
-  tft.setRotation(3);
+  tft.setRotation(flipDisplay ? 1 : 3);
   tft.loadFont(GillSans24_vlw_start);
   img.loadFont(GillSans24_vlw_start);
   ico.loadFont(icomoon24_vlw_start);
@@ -89,8 +90,6 @@ void setup() {
   button.attachDoubleClick(knobDoubleClicked);
   button.attachLongPressStart(knobLongPressStarted);
   button.attachLongPressStop(knobLongPressStopped);
-
-  readDataJson();
 
   if (configPassword.isEmpty()) {
     unsigned char randomBytes[8];
@@ -643,7 +642,8 @@ void selectRootMenuItem() {
 void knobRotated() {
   int newCount = knob.getCount();
   int knobDelta = newCount - lastKnobCount;
-  int positionDelta = knobDelta / ROTARY_ENCODER_PULSE_COUNT;
+  int reversingMultiplier = flipDisplay ? -1 : 1;
+  int positionDelta = knobDelta / ROTARY_ENCODER_PULSE_COUNT * reversingMultiplier;
   if (positionDelta == 0) return;
   lastKnobCount = newCount;
 
@@ -776,6 +776,12 @@ void knobDoubleClicked() {
     switch (menuIndex) {
       case SettingsUpdate:
         updateFirmware();
+        break;
+      case SettingsOrientation:
+        flipDisplay = !flipDisplay;
+        writeDataJson();
+        tft.setRotation(flipDisplay ? 1 : 3);
+        invalidateDisplay(true);
         break;
       case SettingsRemoveUser:
         if (activeSpotifyUser) {
@@ -1028,6 +1034,9 @@ void updateDisplay() {
         break;
       case SettingsUpdate:
         drawCenteredText("double click to begin updating", textWidth, 3);
+        break;
+      case SettingsOrientation:
+        drawCenteredText("double click to rotate the display", textWidth, 3);
         break;
       case SettingsAddUser:
         drawCenteredText(("log in with spotify at http://" + nodeName + ".local/authorize").c_str(), textWidth, 3);
@@ -1652,6 +1661,7 @@ bool readDataJson() {
 
   configPassword = doc["configPassword"] | "";
   firmwareURL = doc["firmwareURL"] | "";
+  flipDisplay = doc["flipDisplay"];
   wifiSSID = doc["wifiSSID"] | WiFi.SSID();
   wifiPassword = doc["wifiPassword"] | WiFi.psk();
 
@@ -1682,6 +1692,7 @@ bool writeDataJson() {
 
   doc["configPassword"] = configPassword;
   doc["firmwareURL"] = firmwareURL;
+  if (flipDisplay) doc["flipDisplay"] = true;
   doc["wifiSSID"] = wifiSSID;
   doc["wifiPassword"] = wifiPassword;
 
