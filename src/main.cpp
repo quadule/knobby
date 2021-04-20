@@ -647,11 +647,28 @@ void knobRotated() {
   if (positionDelta == 0) return;
   lastKnobCount = newCount;
 
+  unsigned long lastInputDelta = millis() - lastInputMillis;
   lastInputMillis = millis();
   if (button.isLongPressed()) knobRotatedWhileLongPressed = true;
 
   menuSize = checkMenuSize(menuMode);
   if (menuSize == 0) return;
+
+  if (lastInputDelta > 333) {
+    knobVelocity.fill(0.0f);
+  } else if (menuMode != VolumeControl && menuSize >= 50 && lastInputDelta > 0) {
+    float velocity = abs((float)positionDelta / (float)min(lastInputDelta, (unsigned long)50));
+    knobVelocity[knobVelocityPosition] = velocity;
+    knobVelocityPosition = (knobVelocityPosition + 1) % knobVelocity.size();
+    float averageKnobVelocity = 0.0;
+    for (auto v : knobVelocity) averageKnobVelocity += (v);
+    averageKnobVelocity = averageKnobVelocity / (float)knobVelocity.size();
+    if(averageKnobVelocity > 0.04) {
+      positionDelta *= 10;
+    } else if (averageKnobVelocity > 0.08) {
+      positionDelta *= 100;
+    }
+  }
 
   if (menuMode == VolumeControl) {
     int newMenuIndex = ((int)menuIndex + positionDelta);

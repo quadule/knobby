@@ -214,6 +214,8 @@ bool flipDisplay = false;
 int lastKnobCount = 0;
 bool knobHeldForRandom = false;
 bool knobRotatedWhileLongPressed = false;
+std::array<float, 16> knobVelocity;
+int knobVelocityPosition = 0;
 bool randomizingMenuAutoplay = false;
 time_t secondsAsleep = 0;
 bool showingProgressBar = false;
