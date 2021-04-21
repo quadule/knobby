@@ -444,7 +444,7 @@ void loop() {
         playPlaylist(countryPlaylists[menuIndex], countries[menuIndex]);
         playingCountryIndex = lastMenuIndex;
       } else if (lastPlaylistMenuMode == PlaylistList) {
-        playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name);
+        playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name.c_str());
       }
       displayInvalidatedPartial = true;
     } else {
@@ -736,7 +736,7 @@ void knobClicked() {
       playingCountryIndex = lastMenuIndex;
       break;
     case PlaylistList:
-      playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name);
+      playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name.c_str());
       break;
     case VolumeControl:
       setMenuMode(NowPlaying, VolumeButton);
@@ -1014,7 +1014,7 @@ void updateDisplay() {
       } else if (lastPlaylistMenuMode == CountryList) {
         drawCenteredText(countries[menuIndex], textWidth, 3);
       } else if (lastPlaylistMenuMode == PlaylistList) {
-        drawCenteredText(spotifyPlaylists[menuIndex].name, textWidth, maxTextLines);
+        drawCenteredText(spotifyPlaylists[menuIndex].name.c_str(), textWidth, maxTextLines);
       }
     }
   } else if (menuMode == RootMenu) {
@@ -1266,7 +1266,7 @@ void updateDisplay() {
       } else if (spotifyPlaylists.empty()) {
         text = "no playlists yet";
       } else {
-        text = spotifyPlaylists[menuIndex].name;
+        text = spotifyPlaylists[menuIndex].name.c_str();
         selected = strcmp(spotifyState.playlistId, spotifyPlaylists[menuIndex].id) == 0;
       }
     } else if (menuMode == SimilarList) {
@@ -2378,16 +2378,22 @@ void spotifyGetPlaylists() {
           const char *name = item["name"];
           SpotifyPlaylist_t playlist;
           strncpy(playlist.id, id, sizeof(playlist.id) - 1);
-          strncpy(playlist.name, name, sizeof(playlist.name) - 1);
+          playlist.name = String(name);
           spotifyPlaylists.push_back(playlist);
         }
 
-        if (json["next"].isNull()) {
-          spotifyPlaylistsLoaded = true;
-          if (menuMode == PlaylistList) {
-            setMenuMode(PlaylistList, 0);
-          }
+        uint32_t heap = ESP.getFreeHeap();
+        bool heapTooSmall = heap < 80000;
+
+        spotifyPlaylistsLoaded = true;
+        if (menuMode == PlaylistList) {
+          menuSize = checkMenuSize(PlaylistList);
+          invalidateDisplay(true);
+        }
+
+        if (json["next"].isNull() || heapTooSmall) {
           nextOffset = -1;
+          if (heapTooSmall) log_e("Skipping remaining playlists, only %d bytes heap left", heap);
         } else {
           nextOffset = offset + limit;
         }

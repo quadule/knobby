@@ -58,7 +58,7 @@ typedef struct {
 
 typedef struct {
   char id[41] = "";
-  char name[64] = "";
+  String name;
 } SpotifyPlaylist_t;
 
 typedef struct {
