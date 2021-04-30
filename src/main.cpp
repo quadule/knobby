@@ -300,11 +300,10 @@ void setup() {
   if (spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
     setMenuMode(NoMenu, 0);
   } else {
-    if (secondsAsleep > newSessionSeconds) genreSort = AlphabeticSort;
     knobHeldForRandom = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
     if (knobHeldForRandom) {
       startRandomizingMenu(true);
-    } else if (secondsAsleep == 0 || secondsAsleep > newSessionSeconds) {
+    } else if (secondsAsleep == 0) {
       startRandomizingMenu(false);
     }
   }
