@@ -67,6 +67,7 @@ typedef struct {
   char albumName[64] = "";
   char trackId[SPOTIFY_ID_SIZE + 1] = "";
   char contextName[64] = "";
+  bool isLiked = false;
   bool isPlaying = false;
   bool isShuffled = false;
   bool disallowsSkippingNext = true;
@@ -91,6 +92,8 @@ enum SpotifyActions {
   PlayPlaylist,
   GetDevices,
   SetVolume,
+  CheckLike,
+  ToggleLike,
   ToggleShuffle,
   TransferPlayback,
   GetPlaylistDescription,
@@ -144,6 +147,8 @@ void spotifyToggle();
 void spotifyPlayPlaylist();
 void spotifyGetDevices();
 void spotifySetVolume();
+void spotifyCheckLike();
+void spotifyToggleLike();
 void spotifyToggleShuffle();
 void spotifyTransferPlayback();
 void spotifyGetPlaylistDescription();

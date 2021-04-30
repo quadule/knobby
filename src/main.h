@@ -92,7 +92,7 @@ enum MenuModes {
   UserList = 7
 };
 enum GenreSortModes { AlphabeticSort, AlphabeticSuffixSort };
-enum NowPlayingButtons { VolumeButton = 0, ShuffleButton = 1, BackButton = 2, PlayPauseButton = 3, NextButton = 4 };
+enum NowPlayingButtons { LikeButton = 0, ShuffleButton = 1, BackButton = 2, PlayPauseButton = 3, NextButton = 4, VolumeButton = 5 };
 enum SettingsMenuModes {
   SettingsAbout = 0,
   SettingsUpdate = 1,
@@ -261,6 +261,7 @@ uint16_t checkMenuSize(MenuModes mode);
 void drawBattery(unsigned int percent, unsigned int y);
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1);
 void drawDivider(bool selected);
+void drawIcon(const String& icon, bool selected = false, bool active = false, bool disabled = false, bool filled = false);
 void drawMenuHeader(bool selected, const char *text = "");
 void drawWifiSetup();
 void invalidateDisplay(bool eraseDisplay = false);
