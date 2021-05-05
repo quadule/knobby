@@ -1869,6 +1869,9 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
       log_e("[%d] Unable to parse response payload: %s", (int)millis(), payload.c_str());
       delay(4000);
     }
+  } else if (httpCode == HTTPC_ERROR_CONNECTION_REFUSED) {
+    setStatusMessage("can't connect!", spotifyPollInterval);
+    delay(spotifyPollInterval);
   } else if (httpCode < 0) {
     // retry immediately
   } else {
