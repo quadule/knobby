@@ -551,6 +551,9 @@ void backgroundApiLoop(void *params) {
         case ToggleShuffle:
           spotifyToggleShuffle();
           break;
+        case ToggleRepeat:
+          spotifyToggleRepeat();
+          break;
         case TransferPlayback:
           spotifyTransferPlayback();
           break;
@@ -587,7 +590,7 @@ void selectRootMenuItem() {
   } else if (menuIndex == rootMenuNowPlayingIndex) {
     nextCurrentlyPlayingMillis = lastInputMillis;
     setMenuMode(NowPlaying, lastMenuMode == NowPlaying ? lastMenuIndex : (uint16_t)PlayPauseButton);
-    if (spotifyAction != GetToken) spotifyAction = CurrentlyPlaying;
+    if (spotifyAction != GetToken && spotifyAction != PlayPlaylist) spotifyAction = CurrentlyPlaying;
   } else if (menuIndex == rootMenuUsersIndex) {
     if (!spotifyUsers.empty()) {
       uint16_t newMenuIndex = lastMenuMode == UserList ? lastMenuIndex : 0;
@@ -767,11 +770,6 @@ void knobClicked() {
             spotifyAction = ToggleLike;
           }
           break;
-        case VolumeButton:
-          if (activeSpotifyDevice != nullptr) {
-            setMenuMode(VolumeControl, activeSpotifyDevice->volumePercent);
-          }
-          break;
         case ShuffleButton:
           if (!spotifyState.disallowsTogglingShuffle) {
             spotifyAction = ToggleShuffle;
@@ -792,6 +790,15 @@ void knobClicked() {
           if (!spotifyState.disallowsSkippingNext) {
             spotifyAction = Next;
           }
+          break;
+        case RepeatButton:
+          spotifyAction = ToggleRepeat;
+          break;
+        case VolumeButton:
+          if (activeSpotifyDevice != nullptr) {
+            setMenuMode(VolumeControl, activeSpotifyDevice->volumePercent);
+          }
+          break;
         default:
           break;
       }
@@ -972,24 +979,27 @@ void drawDivider(bool selected) {
 void drawIcon(const String& icon, bool selected, bool active, bool disabled, bool filled) {
   ico.setTextDatum(MC_DATUM);
   const int width = ICON_SIZE + 2;
-  const int height = ICON_SIZE;
+  const int height = ICON_SIZE + 2;
   ico.createSprite(width, height + 1);
 
   const uint16_t bg = TFT_BLACK;
-  const uint16_t fg = TFT_LIGHTGREY;
-  const uint16_t fgDisabled = TFT_DARKGREY;
+  const uint16_t fg = TFT_DARKGREY;
+  const uint16_t fgActive = TFT_LIGHTGREY;
+  const uint16_t fgDisabled = TFT_DARKERGREY;
 
   ico.fillSprite(bg);
-  ico.fillRoundRect(0, 0, width, height, 3, active ? fg : bg);
+  ico.fillRoundRect(0, 0, width, height, 3, active ? fgActive : bg);
   if (active || filled) {
-    ico.setTextColor(bg, fg);
-    if (filled) ico.fillRoundRect(2, 2, width - 4, height - 4, 3, fg);
+    ico.setTextColor(bg, fgActive);
+    if (filled) ico.fillRoundRect(2, 2, width - 4, height - 4, 3, fgActive);
+  } else if (selected) {
+    ico.setTextColor(disabled ? fgDisabled : fgActive, bg);
   } else {
     ico.setTextColor(disabled ? fgDisabled : fg, bg);
   }
-  ico.setCursor(1, 3);
+  ico.setCursor(1, 4);
   ico.printToSprite(icon);
-  if (selected) ico.drawRoundRect(0, 0, width, height, 3, fg);
+  if (selected) ico.drawRoundRect(0, 0, width, height, 3, fgActive);
   ico.pushSprite(tft.getCursorX(), tft.getCursorY());
   ico.deleteSprite();
 }
@@ -1170,53 +1180,60 @@ void updateDisplay() {
     img.deleteSprite();
   } else if (menuMode == NowPlaying) {
     if (now < statusMessageUntilMillis && statusMessage[0] != '\0') {
-      tft.setCursor(textPadding, lineOne);
-      img.createSprite(textWidth, img.gFont.yAdvance);
-      img.setTextColor(TFT_WHITE, TFT_BLACK);
-      img.printToSprite(String(statusMessage));
-      img.pushSprite(tft.getCursorX(), tft.getCursorY());
-      img.deleteSprite();
-    }
+      tft.fillRect(0, 1, screenWidth, lineOne, TFT_BLACK);
+      tft.setCursor(0, lineOne);
+      drawCenteredText(statusMessage, screenWidth);
+    } else {
+      const int iconTop = lineOne - 4;
+      const int width = ICON_SIZE + 2;
+      const int extraSpace = 10;
 
-    const int width = ICON_SIZE + 2;
+      bool likeClicked = menuIndex == LikeButton && spotifyAction == ToggleLike && now < clickEffectEndMillis;
+      tft.setCursor(5, iconTop);
+      drawIcon(spotifyState.isLiked ? ICON_FAVORITE : ICON_FAVORITE_OUTLINE, menuIndex == LikeButton, likeClicked,
+              spotifyState.trackId[0] == '\0' && !spotifyState.isPlaying);
 
-    bool likeClicked = menuIndex == LikeButton && spotifyAction == ToggleLike && now < clickEffectEndMillis;
-    tft.setCursor(4, lineOne - 2);
-    drawIcon(spotifyState.isLiked ? ICON_FAVORITE : ICON_FAVORITE_OUTLINE, menuIndex == LikeButton, likeClicked,
-             spotifyState.trackId[0] == '\0' && !spotifyState.isPlaying);
+      tft.setCursor(screenWidth / 2 - ICON_SIZE / 2 - ICON_SIZE * 2 - 1 - extraSpace, iconTop);
+      drawIcon(ICON_SHUFFLE, menuIndex == ShuffleButton, false, spotifyState.disallowsTogglingShuffle, spotifyState.isShuffled);
 
-    tft.setCursor(tft.getCursorX() + width, lineOne - 2);
-    drawIcon(ICON_SHUFFLE, menuIndex == ShuffleButton, false, spotifyState.disallowsTogglingShuffle, spotifyState.isShuffled);
+      bool backClicked = menuIndex == BackButton && (spotifyAction == Previous || (spotifyAction == Seek && spotifySeekToMillis == 0)) && now < clickEffectEndMillis;
+      tft.setCursor(tft.getCursorX() + width + extraSpace, iconTop);
+      drawIcon(ICON_SKIP_PREVIOUS, menuIndex == BackButton, backClicked, spotifyState.disallowsSkippingPrev);
 
-    bool backClicked = menuIndex == BackButton && (spotifyAction == Previous || (spotifyAction == Seek && spotifySeekToMillis == 0)) && now < clickEffectEndMillis;
-    tft.setCursor(screenWidth / 2 - 22, lineOne - 2);
-    drawIcon(ICON_SKIP_PREVIOUS, menuIndex == BackButton, backClicked, spotifyState.disallowsSkippingPrev);
+      const String& playPauseIcon = spotifyState.isPlaying ? ICON_PAUSE : ICON_PLAY_ARROW;
+      bool playPauseClicked = menuIndex == PlayPauseButton && spotifyAction == Toggle && now < clickEffectEndMillis;
+      tft.setCursor(tft.getCursorX() + width, iconTop);
+      drawIcon(playPauseIcon, menuIndex == PlayPauseButton, playPauseClicked);
 
-    const String& playPauseIcon = spotifyState.isPlaying ? ICON_PAUSE : ICON_PLAY_ARROW;
-    bool playPauseClicked = menuIndex == PlayPauseButton && spotifyAction == Toggle && now < clickEffectEndMillis;
-    tft.setCursor(tft.getCursorX() + width, lineOne - 2);
-    drawIcon(playPauseIcon, menuIndex == PlayPauseButton, playPauseClicked);
+      bool nextClicked = menuIndex == NextButton && spotifyAction == Next && now < clickEffectEndMillis;
+      tft.setCursor(tft.getCursorX() + width, iconTop);
+      drawIcon(ICON_SKIP_NEXT, menuIndex == NextButton, nextClicked, spotifyState.disallowsSkippingNext);
 
-    bool nextClicked = menuIndex == NextButton && spotifyAction == Next && now < clickEffectEndMillis;
-    tft.setCursor(tft.getCursorX() + width, lineOne - 2);
-    drawIcon(ICON_SKIP_NEXT, menuIndex == NextButton, nextClicked, spotifyState.disallowsSkippingNext);
+      tft.setCursor(tft.getCursorX() + width + extraSpace, iconTop);
+      if (spotifyState.repeatMode == RepeatOff) {
+        drawIcon(ICON_REPEAT, menuIndex == RepeatButton, false, spotifyState.disallowsTogglingRepeatContext && spotifyState.disallowsTogglingRepeatTrack);
+      } else if (spotifyState.repeatMode == RepeatContext) {
+        drawIcon(ICON_REPEAT, menuIndex == RepeatButton, false, false, true);
+      } else if (spotifyState.repeatMode == RepeatTrack) {
+        drawIcon(ICON_REPEAT_ONE, menuIndex == RepeatButton, false, false, true);
+      }
 
-    tft.setCursor(screenWidth - 4 - width, lineOne - 2);
-    String volumeIcon;
-    if (activeSpotifyDevice != nullptr) {
-      if (activeSpotifyDevice->volumePercent > 50) {
-        volumeIcon = ICON_VOLUME_UP;
-      } else if (activeSpotifyDevice->volumePercent >= 10) {
-        volumeIcon = ICON_VOLUME_DOWN;
+      tft.setCursor(screenWidth - 4 - width, iconTop);
+      String volumeIcon;
+      if (activeSpotifyDevice != nullptr) {
+        if (activeSpotifyDevice->volumePercent > 50) {
+          volumeIcon = ICON_VOLUME_UP;
+        } else if (activeSpotifyDevice->volumePercent >= 10) {
+          volumeIcon = ICON_VOLUME_DOWN;
+        } else {
+          volumeIcon = ICON_VOLUME_MUTE;
+        }
       } else {
         volumeIcon = ICON_VOLUME_MUTE;
       }
-    } else {
-      volumeIcon = ICON_VOLUME_MUTE;
+      drawIcon(volumeIcon, menuIndex == VolumeButton, false, activeSpotifyDevice == nullptr);
     }
-    drawIcon(volumeIcon, menuIndex == VolumeButton, false, activeSpotifyDevice == nullptr);
 
-    const int dividerWidth = screenWidth - 12;
     tft.drawFastHLine(6, lineDivider, dividerWidth, TFT_LIGHTBLACK);
     if (spotifyState.estimatedProgressMillis > 0 && spotifyState.durationMillis > 0) {
       float progress = (float)spotifyState.estimatedProgressMillis / (float)spotifyState.durationMillis;
@@ -1483,7 +1500,7 @@ uint16_t checkMenuSize(MenuModes mode) {
     case VolumeControl:
       return 101; // 0-100%
     case NowPlaying:
-      return 6; // like, shuffle, previous, play/pause, next, volume
+      return 7; // like, shuffle, previous, play/pause, next, repeat, volume
     default:
       return 0;
   }
@@ -1738,11 +1755,12 @@ void onOTAProgress(unsigned int progress, unsigned int total) {
   if (progress == 0) {
     inactivityMillis = 1000 * 60 * 5;
     tft.fillScreen(TFT_BLACK);
+    tft.drawFastHLine(6, lineDivider, dividerWidth, TFT_LIGHTBLACK);
     tft.setCursor(textPadding, lineOne);
     img.setTextColor(TFT_WHITE, TFT_BLACK);
     drawCenteredText("updating...", textWidth, 1);
-    drawDivider(true);
   }
+  tft.drawFastHLine(6, lineDivider, round(((float)progress / total) * dividerWidth), TFT_LIGHTGREY);
   char status[5];
   sprintf(status, "%u%%", (progress / (total / 100)));
   tft.setCursor(textPadding, lineTwo);
@@ -1929,6 +1947,15 @@ void spotifyCurrentlyPlaying() {
       spotifyState.isShuffled = json["shuffle_state"];
       spotifyState.progressMillis = spotifyState.estimatedProgressMillis = json["progress_ms"];
 
+      const String repeatState = json["repeat_state"];
+      if (repeatState == "track") {
+        spotifyState.repeatMode = RepeatTrack;
+      } else if (repeatState == "context") {
+        spotifyState.repeatMode = RepeatContext;
+      } else {
+        spotifyState.repeatMode = RepeatOff;
+      }
+
       JsonObject context = json["context"];
       if (context.isNull() || strcmp(context["type"], "playlist") != 0) {
         spotifyState.contextName[0] = '\0';
@@ -1993,6 +2020,8 @@ void spotifyCurrentlyPlaying() {
       spotifyState.disallowsSkippingNext = false;
       spotifyState.disallowsSkippingPrev = false;
       spotifyState.disallowsTogglingShuffle = false;
+      spotifyState.disallowsTogglingRepeatContext = false;
+      spotifyState.disallowsTogglingRepeatTrack = false;
       JsonObject actions = json["actions"];
       JsonObject disallows = actions["disallows"];
       for (JsonPair disallow : disallows) {
@@ -2003,6 +2032,10 @@ void spotifyCurrentlyPlaying() {
           spotifyState.disallowsSkippingPrev = disallow.value();
         } else if (strcmp(key, "toggling_shuffle") == 0) {
           spotifyState.disallowsTogglingShuffle = disallow.value();
+        } else if (strcmp(key, "toggling_repeat_context") == 0) {
+          spotifyState.disallowsTogglingRepeatContext = disallow.value();
+        } else if (strcmp(key, "toggling_repeat_track") == 0) {
+          spotifyState.disallowsTogglingRepeatTrack = disallow.value();
         }
       }
 
@@ -2033,6 +2066,7 @@ void spotifyCurrentlyPlaying() {
     }
   } else if (response.httpCode == 204) {
     spotifyState.isShuffled = false;
+    spotifyState.repeatMode = RepeatOff;
     spotifyResetProgress();
     nextCurrentlyPlayingMillis = millis() + spotifyPollInterval;
   } else if (response.httpCode < 0 || response.httpCode > 500) {
@@ -2337,6 +2371,36 @@ void spotifyToggleShuffle() {
     invalidateDisplay();
   }
   spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
+};
+
+void spotifyToggleRepeat() {
+  if (spotifyAccessToken[0] == '\0') return;
+  HTTP_response_t response;
+  const char *pathTemplate = "me/player/repeat?state=%s";
+  char path[35];
+
+  if (spotifyState.repeatMode == RepeatOff && !spotifyState.disallowsTogglingRepeatContext) {
+    spotifyState.repeatMode = RepeatContext;
+    snprintf(path, sizeof(path), pathTemplate, "context");
+  } else if ((spotifyState.repeatMode == RepeatOff || spotifyState.repeatMode == RepeatContext) &&
+             !spotifyState.disallowsTogglingRepeatTrack) {
+    spotifyState.repeatMode = RepeatTrack;
+    snprintf(path, sizeof(path), pathTemplate, "track");
+  } else {
+    spotifyState.repeatMode = RepeatOff;
+    snprintf(path, sizeof(path), pathTemplate, "off");
+  }
+  invalidateDisplay();
+  response = spotifyApiRequest("PUT", path);
+
+  if (response.httpCode == 204) {
+    nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
+  } else {
+    log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
+    spotifyState.repeatMode = RepeatOff;
+    invalidateDisplay();
+  }
+  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyTransferPlayback() {

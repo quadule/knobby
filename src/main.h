@@ -92,7 +92,15 @@ enum MenuModes {
   UserList = 7
 };
 enum GenreSortModes { AlphabeticSort, AlphabeticSuffixSort };
-enum NowPlayingButtons { LikeButton = 0, ShuffleButton = 1, BackButton = 2, PlayPauseButton = 3, NextButton = 4, VolumeButton = 5 };
+enum NowPlayingButtons {
+  LikeButton = 0,
+  ShuffleButton = 1,
+  BackButton = 2,
+  PlayPauseButton = 3,
+  NextButton = 4,
+  RepeatButton = 5,
+  VolumeButton = 6
+};
 enum SettingsMenuModes {
   SettingsAbout = 0,
   SettingsUpdate = 1,
@@ -132,19 +140,22 @@ const unsigned int randomizingLengthMillis = 900;
 const unsigned int statusMessageMillis = 2000;
 const unsigned int newSessionSeconds = 60 * 60 * 10;
 const int lineOne = 9;
-const int lineDivider = lineOne + LINE_HEIGHT + 1;
-const int lineTwo = lineOne + LINE_HEIGHT + 11;
+const int lineDivider = lineOne + LINE_HEIGHT + 2;
+const int lineTwo = lineOne + LINE_HEIGHT + 12;
 const int lineThree = lineTwo + LINE_HEIGHT;
 const int lineFour = lineThree + LINE_HEIGHT;
 const int lineSpacing = 3;
 const int textPadding = 9;
 const int textWidth = screenWidth + 1 - textPadding * 2;
+const int dividerWidth = screenWidth - 12;
 #ifdef LILYGO_WATCH_2019_WITH_TOUCH
   const int maxTextLines = 5;
 #else
   const int maxTextLines = 3;
 #endif
 const String nodeName = "knobby";
+
+// icomoon23.vlw
 const String ICON_VOLUME_UP = "\uE900";
 const String ICON_VOLUME_OFF = "\uE901";
 const String ICON_VOLUME_MUTE = "\uE902";
@@ -160,17 +171,23 @@ const String ICON_SKIP_NEXT = "\uE90B";
 const String ICON_PLAY_ARROW = "\uE90C";
 const String ICON_PAUSE = "\uE90D";
 const String ICON_WIFI = "\uE90E";
-const String ICON_SPOTIFY = "\uEA94";
-const String ICON_WIFI_OFF = "\uE918";
-const String ICON_BATTERY_CHARGE = "\uE90F";
-const String ICON_BATTERY_LOW = "\uE912";
-const String ICON_BATTERY_MID = "\uE911";
-const String ICON_BATTERY_HIGH = "\uE910";
-const String ICON_BATTERY_FULL = "\uE913";
+const String ICON_REPEAT = "\uE90F";
+const String ICON_REPEAT_ON = "\uE910";
+const String ICON_REPEAT_ONE_ON = "\uE911";
+const String ICON_WIFI_OFF = "\uE912";
+const String ICON_REPEAT_ONE = "\uE913";
 const String ICON_BLUETOOTH = "\uE914";
 const String ICON_BLUETOOTH_CONNECTED = "\uE915";
 const String ICON_BLUETOOTH_DISABLED = "\uE916";
 const String ICON_BLUETOOTH_SEARCHING = "\uE917";
+const String ICON_SPOTIFY = "\uEA94";
+
+// icomoon31.vlw
+const String ICON_BATTERY_CHARGE = "\uE90F";
+const String ICON_BATTERY_HIGH = "\uE910";
+const String ICON_BATTERY_MID = "\uE911";
+const String ICON_BATTERY_LOW = "\uE912";
+const String ICON_BATTERY_FULL = "\uE913";
 
 String configPassword;
 String firmwareURL;

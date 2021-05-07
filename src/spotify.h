@@ -56,6 +56,12 @@ typedef struct {
   String name;
 } SpotifyPlaylist_t;
 
+enum SpotifyRepeatModes {
+  RepeatOff = 0,
+  RepeatTrack = 1,
+  RepeatContext = 2
+};
+
 typedef struct {
   char name[100] = "";
   char artistName[100] = "";
@@ -65,9 +71,12 @@ typedef struct {
   bool isLiked = false;
   bool isPlaying = false;
   bool isShuffled = false;
+  SpotifyRepeatModes repeatMode = RepeatOff;
   bool disallowsSkippingNext = true;
   bool disallowsSkippingPrev = true;
   bool disallowsTogglingShuffle = true;
+  bool disallowsTogglingRepeatContext = true;
+  bool disallowsTogglingRepeatTrack = true;
   uint32_t progressMillis = 0;
   uint32_t durationMillis = 0;
   uint32_t estimatedProgressMillis = 0;
@@ -90,6 +99,7 @@ enum SpotifyActions {
   CheckLike,
   ToggleLike,
   ToggleShuffle,
+  ToggleRepeat,
   TransferPlayback,
   GetPlaylistDescription,
   GetPlaylists
@@ -145,6 +155,7 @@ void spotifySetVolume();
 void spotifyCheckLike();
 void spotifyToggleLike();
 void spotifyToggleShuffle();
+void spotifyToggleRepeat();
 void spotifyTransferPlayback();
 void spotifyGetPlaylistDescription();
 void spotifyGetPlaylists();
