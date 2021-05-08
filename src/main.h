@@ -130,6 +130,7 @@ const unsigned int extraLongPressMillis = 1250;
 const unsigned int inactivityFadeOutMillis = 4000;
 const unsigned int randomizingLengthMillis = 1330;
 const unsigned int statusMessageMillis = 2000;
+const unsigned int newSessionSeconds = 60 * 60 * 10;
 const int lineOne = 9;
 const int lineDivider = lineOne + LINE_HEIGHT + 1;
 const int lineTwo = lineOne + LINE_HEIGHT + 11;

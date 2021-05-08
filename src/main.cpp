@@ -58,7 +58,7 @@ void setup() {
   if (bootCount == 0) {
     log_d("Boot #%d", bootCount);
     genreIndex = random(GENRE_COUNT);
-    setMenuMode(GenreList, genreIndex);
+    setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
   } else {
     struct timeval tod;
     gettimeofday(&tod, NULL);
@@ -300,6 +300,10 @@ void setup() {
   if (spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
     setMenuMode(NoMenu, 0);
   } else {
+    if (secondsAsleep > newSessionSeconds) {
+      genreSort = AlphabeticSort;
+      setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
+    }
     knobHeldForRandom = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
     if (knobHeldForRandom) {
       startRandomizingMenu(true);
@@ -767,7 +771,7 @@ void knobClicked() {
           }
           break;
         case BackButton:
-          if (spotifyState.disallowsSkippingPrev || spotifyState.estimatedProgressMillis > 3000) {
+          if (spotifyState.disallowsSkippingPrev || spotifyState.estimatedProgressMillis > 5000) {
             spotifySeekToMillis = 0;
             spotifyAction = Seek;
           } else {
@@ -1555,7 +1559,7 @@ void saveAndSleep() {
 
 void startDeepSleep() {
   log_i("[%d] Entering deep sleep.", (uint32_t)millis());
-  if (isTransientMenu(menuMode)) setMenuMode(GenreList, genreIndex);
+  if (isTransientMenu(menuMode)) setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
   if (isTransientMenu(lastMenuMode)) lastMenuMode = GenreList;
   if (isTransientMenu(lastPlaylistMenuMode)) lastPlaylistMenuMode = GenreList;
   struct timeval tod;
@@ -2007,8 +2011,12 @@ void spotifyCurrentlyPlaying() {
       if (spotifyState.isPlaying && nextCurrentlyPlayingMillis == 0) {
         nextCurrentlyPlayingMillis = millis() + (spotifyState.durationMillis == 0 ? 2000 : spotifyPollInterval);
       }
-      if (spotifyState.isPlaying && lastInputMillis <= 1 && menuMode != NowPlaying && millis() < 10000) {
-        setMenuMode(NowPlaying, PlayPauseButton);
+      if (lastInputMillis <= 1 && millis() < 10000) {
+        if (spotifyState.trackId[0] != '\0' && menuMode != NowPlaying) {
+          setMenuMode(NowPlaying, PlayPauseButton);
+        } else if (spotifyState.trackId[0] == '\0' && menuMode == NowPlaying) {
+          setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
+        }
       } else {
         invalidateDisplay();
       }
