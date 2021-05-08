@@ -1244,7 +1244,7 @@ void updateDisplay() {
         drawCenteredText(playing, textWidth, maxTextLines);
       } else if (spotifyApiRequestStartedMillis < 0 && !spotifyState.isPlaying) {
         img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
-        drawCenteredText("- none -", textWidth, maxTextLines);
+        drawCenteredText("- nothing playing -", textWidth, maxTextLines);
       }
 
       nowPlayingDisplayMillis = millis();
@@ -2030,10 +2030,9 @@ void spotifyCurrentlyPlaying() {
       log_e("[%d] Error %s parsing response: %s", ts, error.c_str(), response.payload.c_str());
     }
   } else if (response.httpCode == 204) {
-    spotifyAction = Idle;
     spotifyState.isShuffled = false;
     spotifyResetProgress();
-    nextCurrentlyPlayingMillis = 0;
+    nextCurrentlyPlayingMillis = millis() + spotifyPollInterval;
   } else if (response.httpCode < 0 || response.httpCode > 500) {
     nextCurrentlyPlayingMillis = 1; // retry immediately
   } else {
