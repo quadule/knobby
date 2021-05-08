@@ -661,6 +661,7 @@ void knobRotated() {
   lastInputMillis = millis();
   if (button.isLongPressed()) knobRotatedWhileLongPressed = true;
 
+  if (randomizingMenuEndMillis > 0) return;
   menuSize = checkMenuSize(menuMode);
   if (menuSize == 0) return;
 
@@ -1049,9 +1050,10 @@ void updateDisplay() {
     drawMenuHeader(false, "setup knobby");
     tft.setCursor(textPadding, lineTwo);
     drawCenteredText(("log in with spotify at http://" + nodeName + ".local").c_str(), textWidth, 3);
-  } else if (now < randomizingMenuEndMillis) {
+  } else if (now < randomizingMenuEndMillis + 250) {
     if (now >= randomizingMenuNextMillis) {
-      randomizingMenuNextMillis = millis() + max((int)pow(++randomizingMenuTicks, 3), 20);
+      randomizingMenuTicks++;
+      randomizingMenuNextMillis = millis() + max((int)(pow(randomizingMenuTicks, 3) + pow(randomizingMenuTicks, 2)), 20);
       setMenuIndex(random(checkMenuSize(lastPlaylistMenuMode)));
       tft.setCursor(textPadding, lineTwo);
       if (isGenreMenu(lastPlaylistMenuMode)) {
