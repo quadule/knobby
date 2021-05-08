@@ -737,8 +737,14 @@ void knobClicked() {
       break;
     case SimilarList:
       if (!similarMenuItems.empty()) {
-        playPlaylist(similarMenuItems[menuIndex].playlistId);
-        playingGenreIndex = similarMenuGenreIndex;
+        const auto name = similarMenuItems[menuIndex].name;
+        if (name[0] == '\0') {
+          playPlaylist(similarMenuItems[menuIndex].playlistId);
+          playingGenreIndex = genreIndex;
+        } else {
+          playPlaylist(similarMenuItems[menuIndex].playlistId, name);
+          playingGenreIndex = similarMenuGenreIndex;
+        }
       }
       break;
     case CountryList:
@@ -1610,7 +1616,6 @@ void playPlaylist(const char *playlistId, const char *name) {
   lastMenuIndex = menuIndex;
   if (isPlaylistMenu(menuMode)) lastPlaylistMenuMode = menuMode;
   setMenuMode(NowPlaying, PlayPauseButton);
-  setStatusMessage("play");
 }
 
 int formatMillis(char *output, unsigned long millis) {
