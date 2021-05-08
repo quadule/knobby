@@ -1,7 +1,7 @@
 # knobby
 **🎵 A little remote to remind you that there's a lot of music out there.**
 
-* Spin the knob and explore over 5,200 music genres and 160 countries with playlists from [everynoise.com](http://everynoise.com) and your own library
+* Spin the knob and explore over 5,400 music genres and 160 countries with playlists from [everynoise.com](http://everynoise.com) and your own library
 * Control playback and see what's playing on any Spotify Connect device
 * Switch between multiple Spotify accounts and devices
 
@@ -28,7 +28,7 @@ To flash the firmware, you will need to have Python and [esptool.py](https://git
 1. [Go to the latest release](https://github.com/quadule/knobby/releases/latest) and download the firmware zip for your hardware: knobby-firmware.zip for the original knobby or twatch-firmware.zip for the T-Watch encoder version.
 2. With the USB cable connected, run the flash script in the directory of the extracted firmware zip:
   - on Linux or Mac: `./flash.sh`
-  - on Windows: `./flash.bat`
+  - on Windows: `flash.bat`
 
 ### Compiling from source
 
