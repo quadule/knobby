@@ -976,7 +976,7 @@ void drawDivider(bool selected) {
   }
 }
 
-void drawIcon(const String& icon, bool selected, bool active, bool disabled, bool filled) {
+void drawIcon(const String& icon, bool selected, bool clicked, bool disabled, bool filled) {
   ico.setTextDatum(MC_DATUM);
   const int width = ICON_SIZE + 2;
   const int height = ICON_SIZE + 2;
@@ -988,14 +988,18 @@ void drawIcon(const String& icon, bool selected, bool active, bool disabled, boo
   const uint16_t fgDisabled = TFT_DARKERGREY;
 
   ico.fillSprite(bg);
-  ico.fillRoundRect(0, 0, width, height, 3, active ? fgActive : bg);
-  if (active || filled) {
+  if (clicked) {
+    ico.fillRoundRect(0, 0, width, height, 3, fgActive);
     ico.setTextColor(bg, fgActive);
-    if (filled) ico.fillRoundRect(2, 2, width - 4, height - 4, 3, fgActive);
+  } else if (filled) {
+    ico.fillRoundRect(2, 2, width - 4, height - 4, 3, selected ? fgActive : fg);
+    ico.setTextColor(bg, selected ? fgActive : fg);
+  } else if (disabled) {
+    ico.setTextColor(fgDisabled, bg);
   } else if (selected) {
-    ico.setTextColor(disabled ? fgDisabled : fgActive, bg);
+    ico.setTextColor(fgActive, bg);
   } else {
-    ico.setTextColor(disabled ? fgDisabled : fg, bg);
+    ico.setTextColor(fg, bg);
   }
   ico.setCursor(1, 4);
   ico.printToSprite(icon);

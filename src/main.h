@@ -279,7 +279,7 @@ uint16_t checkMenuSize(MenuModes mode);
 void drawBattery(unsigned int percent, unsigned int y);
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1);
 void drawDivider(bool selected);
-void drawIcon(const String& icon, bool selected = false, bool active = false, bool disabled = false, bool filled = false);
+void drawIcon(const String& icon, bool selected = false, bool clicked = false, bool disabled = false, bool filled = false);
 void drawMenuHeader(bool selected, const char *text = "");
 void drawWifiSetup();
 void invalidateDisplay(bool eraseDisplay = false);
