@@ -193,7 +193,7 @@ void setup() {
         "https://accounts.spotify.com/authorize/?response_type=code&scope="
         "user-read-private+user-read-currently-playing+user-read-playback-state+"
         "user-modify-playback-state+playlist-read-private+"
-        "user-library-read+user-follow-read+user-follow-modify"
+        "user-library-read+user-library-modify+user-follow-read+user-follow-modify"
         "&code_challenge_method=S256&code_challenge=" + String(spotifyCodeChallenge) +
         "&show_dialog=true&redirect_uri=http%3A%2F%2F" +
         nodeName + ".local%2Fcallback&client_id=" + String(spotifyClientId);
