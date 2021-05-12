@@ -87,6 +87,7 @@ void setup() {
   button.attachDoubleClick(knobDoubleClicked);
   button.attachLongPressStart(knobLongPressStarted);
   button.attachLongPressStop(knobLongPressStopped);
+  button.attachPressStart(knobPressStarted);
 
   if (configPassword.isEmpty()) {
     unsigned char randomBytes[8];
@@ -693,21 +694,27 @@ void knobRotated() {
   }
 }
 
+void knobPressStarted() {
+  pressedMenuIndex = menuIndex;
+}
+
 void knobClicked() {
   lastInputMillis = millis();
   if (knobHeldForRandom && randomizingMenuEndMillis > 0) {
     knobHeldForRandom = false;
     return;
   }
+  if (pressedMenuIndex < 0) return;
   clickEffectEndMillis = lastInputMillis + clickEffectMillis;
   if (randomizingMenuEndMillis > 0) randomizingMenuEndMillis = 0;
+  auto pressedGenreIndex = getGenreIndexForMenuIndex(pressedMenuIndex, menuMode);
 
   switch (menuMode) {
     case RootMenu:
       selectRootMenuItem();
       break;
     case UserList:
-      if (!spotifyUsers.empty() && activeSpotifyUser != &spotifyUsers[menuIndex]) {
+      if (!spotifyUsers.empty() && activeSpotifyUser != &spotifyUsers[pressedMenuIndex]) {
         spotifyAction = Idle;
         spotifyTokenLifetime = 0;
         spotifyTokenSeconds = 0;
@@ -715,44 +722,43 @@ void knobClicked() {
         spotifyDevicesLoaded = false;
         spotifyDevices.clear();
         spotifyResetProgress();
-        setActiveUser(&spotifyUsers[menuIndex]);
+        setActiveUser(&spotifyUsers[pressedMenuIndex]);
         writeDataJson();
         invalidateDisplay();
       }
       break;
     case DeviceList:
       if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
-        bool changed = strcmp(activeSpotifyUser->selectedDeviceId, spotifyDevices[menuIndex].id) != 0;
+        bool changed = strcmp(activeSpotifyUser->selectedDeviceId, spotifyDevices[pressedMenuIndex].id) != 0;
         if (spotifyState.isPlaying && !spotifyGettingToken &&
-            (!activeSpotifyDevice || strcmp(activeSpotifyDevice->id, spotifyDevices[menuIndex].id) != 0)) {
+            (!activeSpotifyDevice || strcmp(activeSpotifyDevice->id, spotifyDevices[pressedMenuIndex].id) != 0)) {
           spotifyAction = TransferPlayback;
         }
-        setActiveDevice(&spotifyDevices[menuIndex]);
+        setActiveDevice(&spotifyDevices[pressedMenuIndex]);
         if (changed) writeDataJson();
       }
       break;
     case GenreList:
-      playPlaylist(genrePlaylists[genreIndex]);
-      playingGenreIndex = genreIndex;
+      playPlaylist(genrePlaylists[pressedGenreIndex]);
+      playingGenreIndex = pressedGenreIndex;
       break;
     case SimilarList:
       if (!similarMenuItems.empty()) {
-        const auto name = similarMenuItems[menuIndex].name;
+        const auto name = similarMenuItems[pressedMenuIndex].name;
         if (name[0] == '\0') {
-          playPlaylist(similarMenuItems[menuIndex].playlistId);
-          playingGenreIndex = genreIndex;
+          playPlaylist(similarMenuItems[pressedMenuIndex].playlistId);
         } else {
-          playPlaylist(similarMenuItems[menuIndex].playlistId, name);
-          playingGenreIndex = similarMenuGenreIndex;
+          playPlaylist(similarMenuItems[pressedMenuIndex].playlistId, name);
         }
+        playingGenreIndex = pressedGenreIndex;
       }
       break;
     case CountryList:
-      playPlaylist(countryPlaylists[menuIndex], countries[menuIndex]);
-      playingCountryIndex = lastMenuIndex;
+      playPlaylist(countryPlaylists[pressedMenuIndex], countries[pressedMenuIndex]);
+      playingCountryIndex = pressedMenuIndex;
       break;
     case PlaylistList:
-      playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name.c_str());
+      playPlaylist(spotifyPlaylists[pressedMenuIndex].id, spotifyPlaylists[pressedMenuIndex].name.c_str());
       break;
     case VolumeControl:
       setMenuMode(NowPlaying, VolumeButton);
@@ -760,7 +766,7 @@ void knobClicked() {
       nextCurrentlyPlayingMillis = 1;
       break;
     case NowPlaying:
-      switch (menuIndex) {
+      switch (pressedMenuIndex) {
         case LikeButton:
           if (spotifyState.trackId[0] != '\0') {
             spotifyAction = ToggleLike;

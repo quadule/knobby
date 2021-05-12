@@ -236,6 +236,7 @@ bool randomizingMenuAutoplay = false;
 time_t secondsAsleep = 0;
 bool showingProgressBar = false;
 char statusMessage[24] = "";
+int pressedMenuIndex = -1;
 int rootMenuNowPlayingIndex = -1;
 int rootMenuSimilarIndex = -1;
 int rootMenuUsersIndex = -1;
@@ -269,6 +270,7 @@ void knobClicked();
 void knobDoubleClicked();
 void knobLongPressStarted();
 void knobLongPressStopped();
+void knobPressStarted();
 
 // Actions
 bool readDataJson();
