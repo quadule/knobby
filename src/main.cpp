@@ -1188,7 +1188,7 @@ void updateDisplay() {
       tft.setCursor(0, lineOne);
       drawCenteredText(statusMessage, screenWidth);
     } else {
-      const int iconTop = lineOne - 4;
+      const int iconTop = 4;
       const int width = ICON_SIZE + 2;
       const int extraSpace = 10;
 
@@ -1197,11 +1197,11 @@ void updateDisplay() {
       drawIcon(spotifyState.isLiked ? ICON_FAVORITE : ICON_FAVORITE_OUTLINE, menuIndex == LikeButton, likeClicked,
               spotifyState.trackId[0] == '\0' && !spotifyState.isPlaying);
 
-      tft.setCursor(screenWidth / 2 - ICON_SIZE / 2 - ICON_SIZE * 2 - 1 - extraSpace, iconTop);
+      tft.setCursor(screenWidth / 2 - ICON_SIZE / 2 - ICON_SIZE * 2 - 3 - extraSpace, iconTop);
       drawIcon(ICON_SHUFFLE, menuIndex == ShuffleButton, false, spotifyState.disallowsTogglingShuffle, spotifyState.isShuffled);
 
       bool backClicked = menuIndex == BackButton && (spotifyAction == Previous || (spotifyAction == Seek && spotifySeekToMillis == 0)) && now < clickEffectEndMillis;
-      tft.setCursor(tft.getCursorX() + width + extraSpace, iconTop);
+      tft.setCursor(tft.getCursorX() + width + extraSpace + 1, iconTop);
       drawIcon(ICON_SKIP_PREVIOUS, menuIndex == BackButton, backClicked, spotifyState.disallowsSkippingPrev);
 
       const String& playPauseIcon = spotifyState.isPlaying ? ICON_PAUSE : ICON_PLAY_ARROW;
@@ -2290,6 +2290,7 @@ void spotifyGetDevices() {
         writeDataJson();
       } else if (menuMode == DeviceList) {
         setMenuMode(DeviceList, activeDeviceIndex < 0 ? 0 : activeDeviceIndex);
+        invalidateDisplay(true);
       }
     }
   }
