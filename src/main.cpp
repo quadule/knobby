@@ -76,9 +76,6 @@ void setup() {
   bootCount++;
 
   knobby.printHeader();
-
-  // Restore battery level from RTC memory after sleep first
-  if (lastBatteryVoltage > 0.0) knobby.setBatteryVoltage(lastBatteryVoltage);
   knobby.setup();
 
   ESP32Encoder::useInternalWeakPullResistors = UP;
@@ -331,7 +328,6 @@ void loop() {
   if (knob.getCount() != lastKnobCount) knobRotated();
   button.tick();
   knobby.loop();
-  lastBatteryVoltage = knobby.batteryVoltage();
   shutdownIfLowBattery();
 
   now = millis();
@@ -921,13 +917,16 @@ void knobLongPressStopped() {
   #endif
 }
 
-void drawBattery(unsigned int percent, unsigned int y) {
+void drawBattery(unsigned int percent, unsigned int y, bool charging) {
   const unsigned int batterySize = 31;
   batterySprite.setTextDatum(MC_DATUM);
   batterySprite.createSprite(batterySize, batterySize);
   batterySprite.setTextColor(TFT_DARKERGREY, TFT_BLACK);
   batterySprite.setCursor(1, 3);
-  if (knobby.powerStatus() == PowerStatusOnBattery) {
+  if (charging) {
+    batterySprite.setTextColor(TFT_GREEN, TFT_BLACK);
+    batterySprite.printToSprite(ICON_BATTERY_CHARGE);
+  } else {
     if (percent >= 80) {
       batterySprite.printToSprite(ICON_BATTERY_FULL);
     } else if (percent >= 55) {
@@ -938,9 +937,6 @@ void drawBattery(unsigned int percent, unsigned int y) {
       if (percent < 20) batterySprite.setTextColor(TFT_RED, TFT_BLACK);
       batterySprite.printToSprite(ICON_BATTERY_LOW);
     }
-  } else  {
-    batterySprite.setTextColor(TFT_GREEN, TFT_BLACK);
-    batterySprite.printToSprite(ICON_BATTERY_CHARGE);
   }
   tft.setCursor(centerX - batterySize / 2, y);
   batterySprite.pushSprite(tft.getCursorX(), tft.getCursorY());
@@ -948,7 +944,7 @@ void drawBattery(unsigned int percent, unsigned int y) {
 }
 
 void shutdownIfLowBattery() {
-  if (knobby.shouldUpdateBattery() || knobby.powerStatus() == PowerStatusPowered) return;
+  if (knobby.shouldUpdateBattery() || knobby.powerStatus() != PowerStatusOnBattery) return;
   float batteryVoltage = knobby.batteryVoltage();
   if (batteryVoltage >= 3.1 || batteryVoltage < 0.01) return;
   log_i("Battery voltage is %.3f V, shutting down!", knobby.batteryVoltage());
@@ -1317,10 +1313,12 @@ void updateDisplay() {
     drawCenteredText(text, textWidth, 3);
   }
 
+  auto batteryY = screenHeight - 43;
+  bool charging = knobby.powerStatus() == PowerStatusPowered;
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
-    drawBattery(knobby.batteryPercentage(), screenHeight - 43);
+    drawBattery(knobby.batteryPercentage(), batteryY, charging);
   #else
-    if (menuMode == RootMenu) drawBattery(knobby.batteryPercentage(), screenHeight - 43);
+    if (menuMode == RootMenu) drawBattery(knobby.batteryPercentage(), batteryY, charging);
   #endif
 
   lastDisplayMillis = millis();

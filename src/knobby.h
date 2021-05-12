@@ -40,7 +40,7 @@ class Knobby {
     void updateBattery();
 
   private:
-    void _readSettledBatteryVoltage();
+    float _readSettledBatteryVoltage();
     uint8_t _batteryPercentage = 0;
     float _batteryVoltage = 0.0;
     const float _batteryVoltageLevels[101] = {
@@ -53,12 +53,11 @@ class Knobby {
         4.092, 4.100, 4.111, 4.122, 4.133, 4.144, 4.156, 4.167, 4.178, 4.189, 4.200};
     enum BatteryReadingRate {
       BatteryReadingOff = 0,
-      BatteryReadingFast = 70,
+      BatteryReadingFast = 50,
       BatteryReadingSlow = 3000
     };
     std::vector<float> _batteryReadings;
-    const unsigned int _batteryReadingsMax = 5;
-    unsigned int _batteryReadingMillis = 0;
+    const unsigned int _batteryReadingsMax = 10;
     BatteryReadingRate _batteryReadingRate = BatteryReadingOff;
     float _batteryVoltageThreshold = 4.4;
     unsigned int _batteryUpdatedMillis = 0;
@@ -138,7 +137,8 @@ bool Knobby::shouldUpdateBattery() {
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     return false;
   #else
-    return _batteryUpdatedMillis == 0 || millis() - _batteryUpdatedMillis >= _batteryReadingRate;
+    return _powerStatus == PowerStatusUnknown || _batteryReadings.size() < _batteryReadingsMax ||
+           millis() - _batteryUpdatedMillis >= _batteryReadingRate;
   #endif
 }
 
@@ -148,7 +148,7 @@ void Knobby::setBatteryVoltage(float voltage) {
 
   float averageVoltage = 0.0;
   for (auto v : _batteryReadings) averageVoltage += v;
-  averageVoltage /= (float)_batteryReadings.size();
+  averageVoltage /= _batteryReadings.size();
   _batteryVoltage = averageVoltage;
 
   if (_batteryVoltage < _batteryVoltageLevels[0]) {
@@ -162,7 +162,7 @@ void Knobby::setBatteryVoltage(float voltage) {
   }
 }
 
-void Knobby::_readSettledBatteryVoltage() {
+float Knobby::_readSettledBatteryVoltage() {
   const float voltageSettlingThreshold = 0.015;
   float previousVoltage = _batteryVoltage;
   float voltage = 0.0;
@@ -172,36 +172,43 @@ void Knobby::_readSettledBatteryVoltage() {
     previousVoltage = voltage;
     delayMicroseconds(100 + random(100));
   }
-
-  PowerStatus oldPowerStatus = _powerStatus;
-  _powerStatus = voltage < _batteryVoltageThreshold ? PowerStatusOnBattery : PowerStatusPowered;
-  if (_powerStatus != oldPowerStatus && oldPowerStatus != PowerStatusUnknown) {
-    _batteryReadings.clear();
-    _batteryReadingRate = BatteryReadingFast;
-  }
-
-  setBatteryVoltage(voltage);
+  return voltage;
 }
 
 void Knobby::updateBattery() {
+  float newVoltage = 0.0;
   switch (_batteryReadingRate) {
     case BatteryReadingOff:
       digitalWrite(ADC_EN, HIGH);
       _batteryReadingRate = BatteryReadingFast;
       break;
     case BatteryReadingSlow:
-      _readSettledBatteryVoltage();
+      digitalWrite(ADC_EN, HIGH);
+      newVoltage = _readSettledBatteryVoltage();
       digitalWrite(ADC_EN, LOW);
-      _batteryReadingRate = BatteryReadingOff;
       break;
     case BatteryReadingFast:
-      _readSettledBatteryVoltage();
-      if (_batteryReadings.size() == _batteryReadingsMax && _batteryPercentage > 0) {
-        _batteryReadingRate = BatteryReadingSlow;
-      }
+      newVoltage = _readSettledBatteryVoltage();
       break;
   }
-  _batteryUpdatedMillis = millis();
+
+  if (newVoltage > 0.0) {
+    PowerStatus oldPowerStatus = _powerStatus;
+    _powerStatus = newVoltage < _batteryVoltageThreshold ? PowerStatusOnBattery : PowerStatusPowered;
+    bool powerStatusChanged = _powerStatus != oldPowerStatus && oldPowerStatus != PowerStatusUnknown;
+    float voltageChange = abs(newVoltage - _batteryVoltage);
+    if (powerStatusChanged || voltageChange > 0.1) {
+      digitalWrite(ADC_EN, HIGH);
+      _batteryReadings.clear();
+      _batteryReadingRate = BatteryReadingFast;
+    } else if (_batteryReadings.size() == _batteryReadingsMax) {
+      digitalWrite(ADC_EN, LOW);
+      _batteryReadingRate = BatteryReadingSlow;
+    }
+
+    setBatteryVoltage(newVoltage);
+    _batteryUpdatedMillis = millis();
+  }
 }
 
 #endif // KNOBBY_H
