@@ -2059,23 +2059,22 @@ void spotifyCurrentlyPlaying() {
       if (spotifyState.isPlaying && nextCurrentlyPlayingMillis == 0) {
         nextCurrentlyPlayingMillis = millis() + (spotifyState.durationMillis == 0 ? 2000 : spotifyPollInterval);
       }
-      if (lastInputMillis <= 1 && millis() < 10000) {
-        if (spotifyState.trackId[0] != '\0' && menuMode != NowPlaying) {
-          setMenuMode(NowPlaying, PlayPauseButton);
-        } else if (spotifyState.trackId[0] == '\0' && menuMode == NowPlaying) {
-          setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
-        }
-      } else {
-        invalidateDisplay();
+      if (lastInputMillis <= 1 && millis() < 10000 && spotifyState.trackId[0] != '\0' && menuMode != NowPlaying) {
+        setMenuMode(NowPlaying, PlayPauseButton);
       }
+      invalidateDisplay();
     } else {
       log_e("[%d] Heap free: %d", ts, ESP.getFreeHeap());
       log_e("[%d] Error %s parsing response: %s", ts, error.c_str(), response.payload.c_str());
     }
   } else if (response.httpCode == 204) {
+    bool trackWasLoaded = spotifyState.trackId[0] != '\0';
     spotifyState.isShuffled = false;
     spotifyState.repeatMode = RepeatOff;
     spotifyResetProgress();
+    if (!trackWasLoaded && lastInputMillis <= 1 && millis() < 10000 && menuMode == NowPlaying) {
+      setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
+    }
     nextCurrentlyPlayingMillis = millis() + spotifyPollInterval;
   } else if (response.httpCode < 0 || response.httpCode > 500) {
     nextCurrentlyPlayingMillis = 1; // retry immediately
