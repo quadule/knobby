@@ -566,9 +566,9 @@ void backgroundApiLoop(void *params) {
   }
 }
 
-void selectRootMenuItem() {
+void selectRootMenuItem(uint16_t index) {
   checkMenuSize(RootMenu);
-  if (menuIndex == rootMenuSimilarIndex) {
+  if (index == rootMenuSimilarIndex) {
     if (similarMenuGenreIndex == genreIndex) {
       setMenuMode(SimilarList, lastMenuMode == SimilarList ? lastMenuIndex : 0);
     } else {
@@ -584,11 +584,11 @@ void selectRootMenuItem() {
       setMenuMode(SimilarList, 0);
       spotifyAction = GetPlaylistDescription;
     }
-  } else if (menuIndex == rootMenuNowPlayingIndex) {
+  } else if (index == rootMenuNowPlayingIndex) {
     nextCurrentlyPlayingMillis = lastInputMillis;
     setMenuMode(NowPlaying, lastMenuMode == NowPlaying ? lastMenuIndex : (uint16_t)PlayPauseButton);
     if (spotifyAction != GetToken && spotifyAction != PlayPlaylist) spotifyAction = CurrentlyPlaying;
-  } else if (menuIndex == rootMenuUsersIndex) {
+  } else if (index == rootMenuUsersIndex) {
     if (!spotifyUsers.empty()) {
       uint16_t newMenuIndex = lastMenuMode == UserList ? lastMenuIndex : 0;
       auto usersCount = spotifyUsers.size();
@@ -603,7 +603,7 @@ void selectRootMenuItem() {
     }
   } else {
     uint16_t newMenuIndex = lastMenuIndex;
-    switch (menuIndex) {
+    switch (index) {
       case SettingsMenu:
         if (lastMenuMode != SettingsMenu) newMenuIndex = 0;
         break;
@@ -645,7 +645,7 @@ void selectRootMenuItem() {
         break;
     }
 
-    setMenuMode((MenuModes)menuIndex, newMenuIndex);
+    setMenuMode((MenuModes)index, newMenuIndex);
   }
 }
 
@@ -711,7 +711,7 @@ void knobClicked() {
 
   switch (menuMode) {
     case RootMenu:
-      selectRootMenuItem();
+      selectRootMenuItem(pressedMenuIndex);
       break;
     case UserList:
       if (!spotifyUsers.empty() && activeSpotifyUser != &spotifyUsers[pressedMenuIndex]) {
@@ -917,9 +917,9 @@ void knobLongPressStopped() {
   if (!knobHeldForRandom && shouldShowRandom()) startRandomizingMenu();
   longPressStartedMillis = 0;
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
-    if (menuMode == RootMenu && knobRotatedWhileLongPressed && randomizingMenuEndMillis == 0) selectRootMenuItem();
+    if (menuMode == RootMenu && knobRotatedWhileLongPressed && randomizingMenuEndMillis == 0) selectRootMenuItem(menuIndex);
   #else
-    if (menuMode == RootMenu && randomizingMenuEndMillis == 0) selectRootMenuItem();
+    if (menuMode == RootMenu && randomizingMenuEndMillis == 0) selectRootMenuItem(menuIndex);
   #endif
 }
 
