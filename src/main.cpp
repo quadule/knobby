@@ -933,14 +933,14 @@ void drawBattery(unsigned int percent, unsigned int y, bool charging) {
     batterySprite.setTextColor(TFT_GREEN, TFT_BLACK);
     batterySprite.printToSprite(ICON_BATTERY_CHARGE);
   } else {
-    if (percent >= 80) {
+    if (percent >= 75) {
       batterySprite.printToSprite(ICON_BATTERY_FULL);
-    } else if (percent >= 55) {
+    } else if (percent >= 50) {
       batterySprite.printToSprite(ICON_BATTERY_HIGH);
-    } else if (percent >= 30) {
+    } else if (percent >= 25) {
       batterySprite.printToSprite(ICON_BATTERY_MID);
     } else {
-      if (percent < 20) batterySprite.setTextColor(TFT_RED, TFT_BLACK);
+      if (percent < 10) batterySprite.setTextColor(TFT_RED, TFT_BLACK);
       batterySprite.printToSprite(ICON_BATTERY_LOW);
     }
   }
