@@ -68,6 +68,8 @@ void setup() {
     if (secondsAsleep > 60 * 10 ||
         (spotifyState.isPlaying &&
          (spotifyState.estimatedProgressMillis + secondsAsleep * 1000 > spotifyState.durationMillis))) {
+      spotifyState.isShuffled = false;
+      spotifyState.repeatMode = RepeatOff;
       spotifyResetProgress();
       strcpy(spotifyState.contextName, "loading...");
     }
