@@ -2077,7 +2077,11 @@ void spotifyCurrentlyPlaying() {
     if (!trackWasLoaded && lastInputMillis <= 1 && millis() < 10000 && menuMode == NowPlaying) {
       setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
     }
-    nextCurrentlyPlayingMillis = millis() + spotifyPollInterval;
+    if (spotifyPlayAtMillis > 0 && millis() - spotifyPlayAtMillis < SPOTIFY_WAIT_MILLIS * 3) {
+      nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
+    } else {
+      nextCurrentlyPlayingMillis = millis() + spotifyPollInterval;
+    }
   } else if (response.httpCode < 0 || response.httpCode > 500) {
     nextCurrentlyPlayingMillis = 1; // retry immediately
   } else {
@@ -2180,6 +2184,7 @@ void spotifyToggle() {
   if (spotifyAccessToken[0] == '\0') return;
 
   bool wasPlaying = spotifyState.isPlaying;
+  if (!wasPlaying) spotifyPlayAtMillis = millis();
   spotifyState.isPlaying = !wasPlaying;
   spotifyState.lastUpdateMillis = millis();
   spotifyState.progressMillis = spotifyState.estimatedProgressMillis;
@@ -2198,7 +2203,7 @@ void spotifyToggle() {
   if (response.httpCode == 204) {
     spotifyState.lastUpdateMillis = millis();
     nextCurrentlyPlayingMillis = spotifyState.lastUpdateMillis + SPOTIFY_WAIT_MILLIS;
-    spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
+    spotifyAction = CurrentlyPlaying;
     invalidateDisplay();
   } else {
     spotifyResetProgress(true);
@@ -2209,6 +2214,7 @@ void spotifyToggle() {
 
 void spotifyPlayPlaylist() {
   if (spotifyAccessToken[0] == '\0' || spotifyPlayPlaylistId == nullptr) return;
+  spotifyPlayAtMillis = millis();
 
   char requestContent[59];
   snprintf(requestContent, sizeof(requestContent), "{\"context_uri\":\"spotify:playlist:%s\"}", spotifyPlayPlaylistId);
@@ -2340,7 +2346,7 @@ void spotifyCheckLike() {
   } else {
     log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
   }
-  spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
+  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyToggleLike() {
@@ -2359,7 +2365,7 @@ void spotifyToggleLike() {
     spotifyState.isLiked = !spotifyState.isLiked;
     invalidateDisplay();
   }
-  spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
+  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyToggleShuffle() {
@@ -2380,7 +2386,7 @@ void spotifyToggleShuffle() {
     spotifyState.isShuffled = !spotifyState.isShuffled;
     invalidateDisplay();
   }
-  spotifyAction = spotifyState.isPlaying ? CurrentlyPlaying : Idle;
+  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyToggleRepeat() {

@@ -124,6 +124,7 @@ uint32_t nextCurrentlyPlayingMillis = 1;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = CurrentlyPlaying;
 const char *spotifyPlayPlaylistId = nullptr;
+int spotifyPlayAtMillis = -1;
 int spotifySeekToMillis = -1;
 int spotifySetVolumeTo = -1;
 
