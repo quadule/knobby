@@ -2486,10 +2486,10 @@ void spotifyGetPlaylistDescription() {
 void spotifyGetPlaylists() {
   if (spotifyAccessToken[0] == '\0') return;
   HTTP_response_t response;
-  int nextOffset = 0;
-  unsigned int limit = 50;
-  unsigned int offset = 0;
-  char url[60];
+  int16_t nextOffset = 0;
+  uint16_t limit = 50;
+  uint16_t offset = 0;
+  char url[64];
 
   spotifyPlaylists.clear();
 
