@@ -2082,11 +2082,12 @@ void spotifyCurrentlyPlaying() {
     } else {
       nextCurrentlyPlayingMillis = millis() + spotifyPollInterval;
     }
-  } else if (response.httpCode < 0 || response.httpCode > 500) {
+  } else if (response.httpCode < 0) {
     nextCurrentlyPlayingMillis = 1; // retry immediately
   } else {
     log_e("[%d] %d - %s", ts, response.httpCode, response.payload.c_str());
-    delay(4000);
+    setStatusMessage("spotify error");
+    nextCurrentlyPlayingMillis = millis() + spotifyPollInterval;
   }
 }
 
