@@ -459,19 +459,17 @@ void loop() {
         min(spotifyState.durationMillis, spotifyState.progressMillis + (now - spotifyState.lastUpdateMillis));
   }
 
-  if (!displayInvalidated) {
-    if (statusMessage[0] != '\0' && now > statusMessageUntilMillis) {
-      statusMessageUntilMillis = 0;
-      statusMessage[0] = '\0';
-      invalidateDisplay(true);
-    } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
-      clickEffectEndMillis = 0;
-      invalidateDisplay();
-    } else if ((randomizingMenuNextMillis > 0 && now >= randomizingMenuNextMillis) ||
-               lastInputMillis > lastDisplayMillis || (now - lastDisplayMillis > 950) ||
-               (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2)) {
-      invalidateDisplay();
-    }
+  if (statusMessage[0] != '\0' && now > statusMessageUntilMillis) {
+    statusMessageUntilMillis = 0;
+    statusMessage[0] = '\0';
+    invalidateDisplay(true);
+  } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
+    clickEffectEndMillis = 0;
+    invalidateDisplay();
+  } else if ((randomizingMenuNextMillis > 0 && now >= randomizingMenuNextMillis) ||
+              lastInputMillis > lastDisplayMillis || (now - lastDisplayMillis > 950) ||
+              (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2)) {
+    invalidateDisplay();
   }
 
   if (displayInvalidated && updateContentLength == 0) updateDisplay();
