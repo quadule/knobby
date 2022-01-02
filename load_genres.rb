@@ -7,7 +7,10 @@ require "open-uri"
 gemfile do
   source "https://rubygems.org"
   gem "nokogiri"
+  gem "i18n"
 end
+
+I18n.available_locales = [:en]
 
 ID_PATTERN = /:playlist:([A-Za-z0-9]{22})/
 Genre = Struct.new(:name, :id, :label, :color)
@@ -40,7 +43,10 @@ end
 
 print "Fetching countries... "
 doc = Nokogiri::HTML(URI.open("http://everynoise.com/countries.html"))
-countries = doc.css("td.column .country a").map { |c| [c.text, c[:href].split(":").last] }.sort_by(&:first).to_h
+countries = doc.css("td.column .country a")
+  .map { |c| [c.text, c[:href].split(":").last] }
+  .sort_by { |c| I18n.transliterate(c.first) }
+  .to_h
 puts "done"
 
 genres = sorted_genres.values.first
