@@ -1197,7 +1197,7 @@ void updateDisplay() {
       bool likeClicked = menuIndex == LikeButton && spotifyAction == ToggleLike && now < clickEffectEndMillis;
       tft.setCursor(5, iconTop);
       drawIcon(spotifyState.isLiked ? ICON_FAVORITE : ICON_FAVORITE_OUTLINE, menuIndex == LikeButton, likeClicked,
-              spotifyState.trackId[0] == '\0' && !spotifyState.isPlaying);
+              spotifyState.trackId[0] == '\0' && (spotifyAction != Previous && spotifyAction != Next));
 
       tft.setCursor(screenWidth / 2 - ICON_SIZE / 2 - ICON_SIZE * 2 - 3 - extraSpace, iconTop);
       drawIcon(ICON_SHUFFLE, menuIndex == ShuffleButton, false, spotifyState.disallowsTogglingShuffle, spotifyState.isShuffled);
@@ -1981,10 +1981,18 @@ void spotifyCurrentlyPlaying() {
       }
 
       JsonObject item = json["item"];
-      if (!item.isNull() && strcmp(spotifyState.trackId, item["id"]) != 0) {
+
+      if (!item.isNull()) {
+        char oldTrackId[SPOTIFY_ID_SIZE + 1];
+        strncpy(oldTrackId, spotifyState.trackId, SPOTIFY_ID_SIZE);
+        if (!item["id"].isNull()) {
+          strncpy(spotifyState.trackId, item["id"], SPOTIFY_ID_SIZE);
+        } else {
+          spotifyState.trackId[0] = '\0';
+        }
+
         spotifyState.durationMillis = item["duration_ms"];
         strncpy(spotifyState.name, item["name"], sizeof(spotifyState.name) - 1);
-        strncpy(spotifyState.trackId, item["id"], SPOTIFY_ID_SIZE);
 
         JsonObject album = item["album"];
         if (!album.isNull()) {
@@ -2000,7 +2008,7 @@ void spotifyCurrentlyPlaying() {
           spotifyState.artistName[0] = '\0';
         }
 
-        spotifyAction = CheckLike;
+        if (spotifyState.trackId[0] != '\0' && strcmp(oldTrackId, spotifyState.trackId) != 0) spotifyAction = CheckLike;
       }
 
       if (json.containsKey("device")) {
@@ -2059,7 +2067,7 @@ void spotifyCurrentlyPlaying() {
       if (spotifyState.isPlaying && nextCurrentlyPlayingMillis == 0) {
         nextCurrentlyPlayingMillis = millis() + (spotifyState.durationMillis == 0 ? 2000 : spotifyPollInterval);
       }
-      if (lastInputMillis <= 1 && millis() < 10000 && spotifyState.trackId[0] != '\0' && menuMode != NowPlaying) {
+      if (lastInputMillis <= 1 && millis() < 10000 && spotifyState.name[0] != '\0' && menuMode != NowPlaying) {
         setMenuMode(NowPlaying, PlayPauseButton);
       }
       invalidateDisplay();
@@ -2068,7 +2076,7 @@ void spotifyCurrentlyPlaying() {
       log_e("[%d] Error %s parsing response: %s", ts, error.c_str(), response.payload.c_str());
     }
   } else if (response.httpCode == 204) {
-    bool trackWasLoaded = spotifyState.trackId[0] != '\0';
+    bool trackWasLoaded = spotifyState.name[0] != '\0';
     spotifyState.isShuffled = false;
     spotifyState.repeatMode = RepeatOff;
     spotifyResetProgress();
