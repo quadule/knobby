@@ -1,9 +1,12 @@
-name: Build and Release
+name: Build and upload
 
 on: [push]
 
 jobs:
   build:
+    strategy:
+      matrix:
+        target: [knobby, twatch]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -27,18 +30,32 @@ jobs:
         pip install --upgrade platformio
     - name: Run PlatformIO
       run: |
-        pio run -e knobby -e twatch
-        pio run -e knobby -e twatch -t buildfs
+        pio run -e ${{ matrix.target }}
+        pio run -e ${{ matrix.target }} -t buildfs
         mkdir upload
-        cp .pio/build/knobby/firmware.bin upload/knobby.bin
-        cp .pio/build/twatch/firmware.bin upload/twatch.bin
-        zip -j upload/knobby-firmware.zip flash.bat flash.sh .pio/build/knobby/*.bin
-        zip -j upload/twatch-firmware.zip flash.bat flash.sh .pio/build/twatch/*.bin
+        zip -j upload/${{ matrix.target }}-firmware.zip .pio/build/${{ matrix.target }}/*.bin flash.bat flash.sh
     - name: Archive firmware artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: knobby-firmware-artifacts
-        path: upload/*
+        name: ${{ matrix.target }}-firmware.zip
+        path: upload/${{ matrix.target }}-firmware.zip
+  upload:
+    if: github.repository_owner == 'quadule'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Download artifacts
+      uses: actions/download-artifact@v2
+      with:
+        path: ~/artifacts
+    - name: Merge artifacts
+      run: |
+        mkdir upload
+        cd upload
+        mv ~/artifacts/*/* .
+        unzip -p knobby-firmware.zip firmware.bin > knobby.bin
+        unzip -p twatch-firmware.zip firmware.bin > twatch.bin
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v1
       with:
@@ -68,10 +85,6 @@ jobs:
       if: github.ref_type == 'tag'
       with:
         draft: true
-        files: |
-          upload/knobby.bin
-          upload/knobby-firmware.zip
-          upload/twatch.bin
-          upload/twatch-firmware.zip
+        files: upload/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
