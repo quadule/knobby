@@ -62,7 +62,7 @@ jobs:
           s3://knobby/firmware/${{ steps.gitinfo.outputs.branch }}/
     - name: Release
       uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/v')
+      if: startsWith(github.ref, 'refs/tags/')
       with:
         draft: true
         files: |
