@@ -37,7 +37,7 @@ jobs:
     - name: Archive firmware artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: ${{ matrix.target }}-firmware.zip
+        name: ${{ matrix.target }}-firmware
         path: upload/${{ matrix.target }}-firmware.zip
   upload:
     if: github.repository_owner == 'quadule'
@@ -74,6 +74,8 @@ jobs:
     - name: Upload release firmware to S3
       if: github.ref_type == 'tag'
       run:
+        mv upload/knobby-firmware.zip upload/knobby-firmware-${{ github.ref_name }}.zip;
+        mv upload/twatch-firmware.zip upload/twatch-firmware-${{ github.ref_name }}.zip;
         aws s3 cp
           --acl public-read
           --metadata "{\"git-version\":\"$(git describe --match="" --dirty --always)\"}"
