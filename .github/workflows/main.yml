@@ -1,4 +1,4 @@
-name: PlatformIO Build
+name: Build and Release
 
 on: [push]
 
@@ -7,12 +7,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: Extract git branch and tag
-      shell: bash
-      run: |
-        echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
-        echo "##[set-output name=tag;]$(echo ${GITHUB_REF#refs/tags/})"
-      id: gitinfo
     - name: Cache pip
       uses: actions/cache@v2
       with:
@@ -38,12 +32,12 @@ jobs:
         mkdir upload
         cp .pio/build/knobby/firmware.bin upload/knobby.bin
         cp .pio/build/twatch/firmware.bin upload/twatch.bin
-        zip -j knobby-firmware.zip flash.bat flash.sh .pio/build/knobby/*.bin
-        zip -j twatch-firmware.zip flash.bat flash.sh .pio/build/twatch/*.bin
+        zip -j upload/knobby-firmware.zip flash.bat flash.sh .pio/build/knobby/*.bin
+        zip -j upload/twatch-firmware.zip flash.bat flash.sh .pio/build/twatch/*.bin
     - name: Archive firmware artifacts
       uses: actions/upload-artifact@v2
       with:
-        name: firmware
+        name: knobby-firmware-artifacts
         path: upload/*
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v1
@@ -51,24 +45,33 @@ jobs:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: us-west-2
-    - name: Upload firmware to S3
-      if: startsWith(github.ref, 'refs/heads/')
+    - name: Upload branch firmware to S3
+      if: github.ref_type == 'branch'
       run:
         aws s3 cp
           --acl public-read
           --metadata "{\"git-version\":\"$(git describe --match="" --dirty --always)\"}"
           --recursive
           upload
-          s3://knobby/firmware/${{ steps.gitinfo.outputs.branch }}/
-    - name: Release
+          s3://knobby/firmware/${{ github.ref_name }}/
+    - name: Upload release firmware to S3
+      if: github.ref_type == 'tag'
+      run:
+        aws s3 cp
+          --acl public-read
+          --metadata "{\"git-version\":\"$(git describe --match="" --dirty --always)\"}"
+          --recursive
+          upload
+          s3://knobby/firmware/
+    - name: Draft release
       uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
+      if: github.ref_type == 'tag'
       with:
         draft: true
         files: |
-          knobby-firmware.zip
-          twatch-firmware.zip
           upload/knobby.bin
+          upload/knobby-firmware.zip
           upload/twatch.bin
+          upload/twatch-firmware.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

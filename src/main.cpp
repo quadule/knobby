@@ -1110,7 +1110,7 @@ void updateDisplay() {
       case SettingsAbout:
         tft.setCursor(0, lineTwo);
         char about[100];
-        sprintf(about, "knobby.quadule.com by milo winningham %s", esp_ota_get_app_description()->version);
+        sprintf(about, "knobby.quadule.com by milo winningham %s", KNOBBY_VERSION);
         drawCenteredText(about, screenWidth, 3);
         break;
       case SettingsUpdate:
