@@ -2587,7 +2587,7 @@ void updateFirmware() {
 
   String version = http.header("x-amz-meta-git-version");
   if (!version.isEmpty()) log_i("got version header %s", version);
-  if (version.equals(esp_ota_get_app_description()->version)) {
+  if (version.equals(GIT_VERSION)) {
     checkedForUpdateMillis = millis();
     setStatusMessage("no update yet");
     log_i("version matches, no update needed!");
