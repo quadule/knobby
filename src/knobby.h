@@ -99,7 +99,7 @@ void Knobby::printHeader() {
   Serial.printf("   | |               | |   | |             |\n");
   Serial.printf("   | |  _ ____   ___ | |__ | |__  _   _    |\n");
   Serial.printf("   | |_/ )  _ \\ / _ \\|  _ \\|  _ \\| | | |   |   built %s %s\n", desc->date, desc->time);
-  Serial.printf("   |  _ (| | | | |_| | |_) ) |_) ) |_| |   |   git version %s\n", desc->version);
+  Serial.printf("   |  _ (| | | | |_| | |_) ) |_) ) |_| |   |   git version %s\n", GIT_VERSION);
   Serial.printf("   |_| \\_)_| |_|\\___/|____/|____/ \\__  |   |   esp-idf %s\n", desc->idf_ver);
   Serial.printf("                                 (____/    |\n");
   Serial.printf("    by milo winningham                     |\n");
