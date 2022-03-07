@@ -1,6 +1,11 @@
 #include "main.h"
 
 void setup() {
+  similarMenuItems.reserve(16);
+  spotifyDevices.reserve(10);
+  spotifyUsers.reserve(10);
+  spotifyPlaylists.reserve(100);
+
   Serial.begin(115200);
   Serial.print("\r\n");
 
@@ -15,13 +20,6 @@ void setup() {
   };
   ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
   ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
-
-  similarMenuItems.reserve(16);
-  spotifyDevices.reserve(10);
-  spotifyUsers.reserve(10);
-  spotifyPlaylists.reserve(100);
-  SPIFFS.begin(true);
-  readDataJson();
 
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     ttgo = TTGOClass::getWatch();
@@ -47,13 +45,16 @@ void setup() {
     ledcAttachPin(TFT_BL, TFT_BL);
     ledcWrite(TFT_BL, 255);
   #endif
+  gpio_hold_en((gpio_num_t)TFT_BL);
+
+  SPIFFS.begin(true);
+  readDataJson();
 
   tft.setRotation(flipDisplay ? 1 : 3);
   tft.loadFont(GillSans24_vlw_start);
   img.loadFont(GillSans24_vlw_start);
   ico.loadFont(icomoon24_vlw_start);
   batterySprite.loadFont(icomoon31_vlw_start);
-  gpio_hold_en((gpio_num_t)TFT_BL);
 
   if (bootCount == 0) {
     log_d("Boot #%d", bootCount);
