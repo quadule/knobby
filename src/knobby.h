@@ -59,7 +59,7 @@ class Knobby {
     std::vector<float> _batteryReadings;
     const unsigned int _batteryReadingsMax = 10;
     BatteryReadingRate _batteryReadingRate = BatteryReadingOff;
-    float _batteryVoltageThreshold = 4.4;
+    float _batteryVoltageThreshold = 4.33;
     unsigned int _batteryUpdatedMillis = 0;
     PowerStatus _powerStatus = PowerStatusUnknown;
     int _vref = 1100;
