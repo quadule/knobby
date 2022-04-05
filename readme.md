@@ -8,7 +8,7 @@ Knobby is a remote made for discovering new music and rediscovering your own col
 
 ### Untether music from your phone
 
-Bring music discovery into your living room with a device that’s meant to be shared and free from distracting apps or notifications. Show off your meticulously curated collection to people in your home, or pass it around at a party and put your guests in control.
+Bring music discovery into your living room with a device that’s meant to be shared and free from distracting apps or notifications. Show off your meticulously curated collection to anyone in your home, or pass it around at a party and put your guests in control.
 
 ### Pop your filter bubble
 
@@ -50,9 +50,9 @@ Streaming services feed you new releases and top hits through algorithmic recomm
 <img src="images/soldering.gif?raw=true" width="439" height="240" alt="soldering rotary encoder’s wires to the circuit board">
 
 ### Install the firmware
-#### ➡️ [knobby.quadule.com/install](https://knobby.quadule.com/install)
+#### ➡️ [knobby.quadule.com/setup](https://knobby.quadule.com/setup)
 
-The [Knobby firmware installer](https://knobby.quadule.com/install) can flash your device over USB if you’re using Google Chrome or Microsoft Edge.
+The [Knobby setup tool](https://knobby.quadule.com/setup) can flash the latest firmware and configure wifi credentials over USB (requires Google Chrome or Microsoft Edge for Web Serial API support).
 
 Alternatively, you can download [the latest release](https://github.com/quadule/knobby/releases/latest) and flash it yourself. You will need to have Python and [esptool.py](https://github.com/espressif/esptool) installed. With the USB cable connected, run the flash script in the directory of the extracted firmware zip:
 

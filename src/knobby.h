@@ -97,7 +97,7 @@ void Knobby::printHeader() {
   const esp_app_desc_t *desc = esp_ota_get_app_description();
   Serial.printf("\n\n    _                 _     _              |\n");
   Serial.printf("   | |               | |   | |             |\n");
-  Serial.printf("   | |  _ ____   ___ | |__ | |__  _   _    |\n");
+  Serial.printf("   | |  _ ____   ___ | |__ | |__  _   _    |   mac %s\n", WiFi.macAddress().c_str());
   Serial.printf("   | |_/ )  _ \\ / _ \\|  _ \\|  _ \\| | | |   |   built %s %s\n", desc->date, desc->time);
   Serial.printf("   |  _ (| | | | |_| | |_) ) |_) ) |_| |   |   git version %s\n", GIT_VERSION);
   Serial.printf("   |_| \\_)_| |_|\\___/|____/|____/ \\__  |   |   esp-idf %s\n", desc->idf_ver);

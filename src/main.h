@@ -6,6 +6,7 @@
 #include "ESPAsyncWebServer.h"
 #include "ESPAsync_WiFiManager.h"
 #include "ESPmDNS.h"
+#include "ImprovSerial.h"
 #include "OneButton.h"
 #include "SPIFFS.h"
 #include "StreamString.h"
@@ -79,7 +80,7 @@ const char *s3CACertificates =
     "-----END CERTIFICATE-----\n";
 
 enum MenuModes {
-  NoMenu = -99,
+  InitialSetup = -99,
   VolumeControl = -2,
   RootMenu = -1,
   DeviceList = 0,
@@ -207,7 +208,6 @@ RTC_DATA_ATTR uint16_t lastMenuIndex = 0;
 RTC_DATA_ATTR MenuModes lastPlaylistMenuMode = GenreList;
 RTC_DATA_ATTR int playingCountryIndex = -1;
 RTC_DATA_ATTR int playingGenreIndex = -1;
-RTC_DATA_ATTR bool forceStartConfigPortalOnBoot = false;
 
 Knobby knobby;
 TFT_eSPI tft = TFT_eSPI(TFT_WIDTH, TFT_HEIGHT);
@@ -221,8 +221,6 @@ TaskHandle_t backgroundApiTask;
 AsyncWebServer server(80);
 DNSServer dnsServer;
 ESPAsync_WiFiManager *wifiManager;
-ESPAsync_WMParameter *spotifyClientIdParam;
-ESPAsync_WMParameter *spotifyClientSecretParam;
 
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = true;
@@ -257,8 +255,9 @@ unsigned long randomizingMenuEndMillis = 0;
 unsigned long randomizingMenuNextMillis = 0;
 unsigned long randomizingMenuTicks = 0;
 unsigned long statusMessageUntilMillis = 0;
-unsigned long volumeMenuTimeoutMillis = 15000;
+unsigned long menuTimeoutMillis = 15000;
 unsigned long wifiConnectTimeoutMillis = 45000;
+bool wifiConnectWarning = false;
 size_t updateContentLength = 0;
 
 // Events
@@ -294,6 +293,7 @@ void setStatusMessage(const char *message, unsigned long durationMs = statusMess
 void shutdownIfLowBattery();
 void startDeepSleep();
 void startRandomizingMenu(bool autoplay = false);
+void startWifiManager();
 void updateDisplay();
 void updateFirmware();
 
