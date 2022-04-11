@@ -7,7 +7,8 @@ void setup() {
   spotifyPlaylists.reserve(100);
 
   Serial.begin(115200);
-  Serial.print("\r\n");
+  improvSerial.setup(String("knobby"), String(KNOBBY_VERSION), String(PLATFORMIO_ENV), WiFi.macAddress());
+  improvSerial.loop();
 
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_A_PIN);
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_B_PIN);
@@ -47,6 +48,7 @@ void setup() {
   #endif
   gpio_hold_en((gpio_num_t)TFT_BL);
 
+  improvSerial.loop();
   SPIFFS.begin(true);
   readDataJson();
 
@@ -104,14 +106,12 @@ void setup() {
     writeDataJson();
   }
 
-  improvSerial.setup(String("knobby"), String(KNOBBY_VERSION), String(PLATFORMIO_ENV), WiFi.macAddress());
-  improvSerial.loop();
-
   if (wifiSSID.isEmpty()) {
     wifiConnectWarning = true;
     setMenuMode(InitialSetup, 0);
     menuSize = 0;
     drawWifiSetup();
+    improvSerial.loop();
     startWifiManager();
   } else {
     log_i("Connecting to saved wifi SSID: %s...", wifiSSID.c_str());
@@ -316,7 +316,7 @@ void startWifiManager() {
   wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
   wifiManager->setBreakAfterConfig(true);
   wifiManager->setSaveConfigCallback(saveAndSleep);
-  wifiManager->startConfigPortalModeless(nodeName.c_str(), configPassword.c_str());
+  wifiManager->startConfigPortalModeless(nodeName.c_str(), configPassword.c_str(), false);
   dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
   dnsServer.start(53, "*", WiFi.softAPIP());
 }

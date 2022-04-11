@@ -147,6 +147,7 @@ bool ImprovSerial::parsePayload(improv::ImprovCommand &command) {
       std::vector<uint8_t> data =
           improv::build_rpc_response(improv::GET_WIFI_NETWORKS, std::vector<std::string>{}, false);
       sendResponse(data);
+      WiFi.mode(WIFI_AP);
       return true;
     }
     default: {
