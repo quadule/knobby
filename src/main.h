@@ -138,6 +138,7 @@ const unsigned int longPressMillis = 450;
 const unsigned int extraLongPressMillis = 1250;
 const unsigned int inactivityFadeOutMillis = 4000;
 const unsigned int randomizingLengthMillis = 900;
+const unsigned int waitToShowProgressMillis = 2000;
 const unsigned int statusMessageMillis = 2000;
 const unsigned int newSessionSeconds = 60 * 60 * 10;
 const int lineOne = 9;

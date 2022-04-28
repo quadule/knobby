@@ -1495,9 +1495,7 @@ unsigned long getExtraLongPressedMillis() {
 
 bool shouldShowProgressBar() {
   if (menuMode == InitialSetup || wifiSSID.isEmpty()) return false;
-  return spotifyAction == GetToken || spotifyAction == PlayPlaylist || spotifyAction == GetDevices ||
-         spotifyAction == GetPlaylists || spotifyAction == GetPlaylistDescription ||
-         (spotifyApiRequestStartedMillis > 0 && millis() - spotifyApiRequestStartedMillis > 950);
+  return spotifyApiRequestStartedMillis > 0 && millis() - spotifyApiRequestStartedMillis > waitToShowProgressMillis;
 }
 
 bool shouldShowRandom() {
