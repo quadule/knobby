@@ -324,7 +324,7 @@ void startWifiManager() {
 void delayIfIdle() {
   auto now = millis();
   auto inputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
-  if (!wifiSSID.isEmpty() && (inputDelta > 5000 || now - lastDelayMillis > 1000)) {
+  if (!displayInvalidated && !wifiSSID.isEmpty() && (inputDelta > 5000 || now - lastDelayMillis > 1000)) {
     delay(30);
     lastDelayMillis = millis();
   } else if (randomizingMenuEndMillis == 0) {
@@ -700,12 +700,14 @@ void knobRotated() {
     }
   }
 
-  if (menuMode == VolumeControl) {
+  if (menuMode == SeekControl || menuMode == VolumeControl) {
     int newMenuIndex = ((int)menuIndex + positionDelta);
     newMenuIndex = newMenuIndex < 0 ? 0 : min(newMenuIndex, menuSize - 1);
     setMenuIndex(newMenuIndex);
-    spotifyAction = SetVolume;
-    spotifySetVolumeTo = menuIndex;
+    if (menuMode == VolumeControl) {
+      spotifyAction = SetVolume;
+      spotifySetVolumeTo = menuIndex;
+    }
   } else {
     int newMenuIndex = ((int)menuIndex + positionDelta) % (int)menuSize;
     if (newMenuIndex < 0) newMenuIndex += menuSize;
@@ -779,6 +781,13 @@ void knobClicked() {
     case PlaylistList:
       playPlaylist(spotifyPlaylists[pressedMenuIndex].id, spotifyPlaylists[pressedMenuIndex].name.c_str());
       break;
+    case SeekControl:
+      spotifySeekToMillis = pressedMenuIndex * 1000;
+      spotifyState.progressMillis = spotifyState.estimatedProgressMillis = spotifySeekToMillis;
+      spotifyState.lastUpdateMillis = millis();
+      spotifyAction = Seek;
+      setMenuMode(NowPlaying, SeekButton);
+      break;
     case VolumeControl:
       setMenuMode(NowPlaying, VolumeButton);
       spotifyAction = CurrentlyPlaying;
@@ -818,6 +827,11 @@ void knobClicked() {
         case VolumeButton:
           if (activeSpotifyDevice != nullptr) {
             setMenuMode(VolumeControl, activeSpotifyDevice->volumePercent);
+          }
+          break;
+        case SeekButton:
+          if (spotifyState.durationMillis > 0) {
+            setMenuMode(SeekControl, spotifyState.estimatedProgressMillis / 1000);
           }
           break;
         default:
@@ -918,7 +932,7 @@ void knobLongPressStarted() {
     }
   } else if (menuMode == SimilarList) {
     setMenuMode(RootMenu, rootMenuSimilarIndex);
-  } else if (spotifyState.isPlaying || menuMode == VolumeControl) {
+  } else if (spotifyState.isPlaying || menuMode == SeekControl || menuMode == VolumeControl) {
     setMenuMode(RootMenu, rootMenuNowPlayingIndex);
   } else if (menuMode == UserList) {
     setMenuMode(RootMenu, rootMenuUsersIndex);
@@ -1215,12 +1229,16 @@ void updateDisplay() {
     tft.drawRect(0, 0, x - 1, y - 1, TFT_BLACK);
     img.pushSprite(x, y);
     img.deleteSprite();
-  } else if (menuMode == NowPlaying) {
+  } else if (menuMode == NowPlaying || menuMode == SeekControl) {
+    tft.setCursor(0, lineOne);
     if (now < statusMessageUntilMillis && statusMessage[0] != '\0') {
       tft.fillRect(0, 1, screenWidth, lineOne, TFT_BLACK);
-      tft.setCursor(0, lineOne);
       drawCenteredText(statusMessage, screenWidth);
-    } else {
+    } else if (menuMode == SeekControl) {
+      char elapsed[11];
+      formatMillis(elapsed, menuIndex * 1000);
+      drawCenteredText(elapsed, screenWidth);
+    } else if (menuMode == NowPlaying) {
       const int iconTop = 4;
       const int width = ICON_SIZE + 2;
       const int extraSpace = 10;
@@ -1271,26 +1289,39 @@ void updateDisplay() {
       drawIcon(volumeIcon, menuIndex == VolumeButton, false, activeSpotifyDevice == nullptr);
     }
 
-    tft.drawFastHLine(6, lineDivider, dividerWidth, TFT_LIGHTBLACK);
+    const int seekRadius = 4;
+    const bool seekSelected = menuMode == SeekControl || menuIndex == SeekButton;
+    img.createSprite(dividerWidth + seekRadius * 2, seekRadius * 2 + 1);
+    img.fillSprite(TFT_BLACK);
+    img.drawFastHLine(seekRadius, seekRadius, dividerWidth, seekSelected ? TFT_DARKERGREY : TFT_LIGHTBLACK);
     if (spotifyState.estimatedProgressMillis > 0 && spotifyState.durationMillis > 0) {
       float progress = (float)spotifyState.estimatedProgressMillis / (float)spotifyState.durationMillis;
-      tft.drawFastHLine(6, lineDivider, round(dividerWidth * progress), TFT_LIGHTGREY);
+      img.drawFastHLine(seekRadius, seekRadius, round(dividerWidth * progress), seekSelected ? TFT_WHITE : TFT_LIGHTGREY);
+      if (menuMode == SeekControl) {
+        img.fillCircle(seekRadius + round(dividerWidth * ((float)menuIndex / (float)menuSize)), seekRadius, seekRadius, TFT_WHITE);
+      } else if (menuIndex == SeekButton) {
+        img.fillCircle(seekRadius + round(dividerWidth * progress), seekRadius, seekRadius, TFT_WHITE);
+        img.fillCircle(seekRadius + round(dividerWidth * progress), seekRadius, 2, TFT_BLACK);
+      }
     }
+    img.pushSprite(6 - seekRadius, lineDivider - seekRadius);
+    img.deleteSprite();
 
     if (millis() - nowPlayingDisplayMillis >= 50) {
       tft.setCursor(textPadding, lineTwo);
       img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-      bool isActivePlaylist =
+      const bool isActivePlaylist =
           playingGenreIndex >= 0 &&
           (strcmp(genrePlaylists[playingGenreIndex], spotifyState.playlistId) == 0 ||
            (spotifyPlayPlaylistId != nullptr && strcmp(genrePlaylists[playingGenreIndex], spotifyPlayPlaylistId) == 0));
-      if (isActivePlaylist &&
-          (spotifyState.isPlaying || spotifyPlayPlaylistId != nullptr || spotifyAction == Previous || spotifyAction == Next) &&
-          (spotifyState.durationMillis == 0 || spotifyState.estimatedProgressMillis % 6000 > 3000)) {
+      const bool showPlaylistName = menuMode == NowPlaying && (spotifyState.durationMillis == 0 ||
+                                                               spotifyState.estimatedProgressMillis % 6000 > 3000);
+      if (isActivePlaylist && showPlaylistName &&
+          (spotifyState.isPlaying || spotifyPlayPlaylistId != nullptr || spotifyAction == Previous ||
+           spotifyAction == Next)) {
         img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
         drawCenteredText(genres[playingGenreIndex], textWidth, maxTextLines);
-      } else if (spotifyState.contextName[0] != '\0' &&
-                 (spotifyState.durationMillis == 0 || spotifyState.estimatedProgressMillis % 6000 > 3000)) {
+      } else if (spotifyState.contextName[0] != '\0' && showPlaylistName) {
         if (spotifyAction == PlayPlaylist && now < clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
         drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
       } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
@@ -1501,7 +1532,7 @@ bool shouldShowProgressBar() {
 bool shouldShowRandom() {
   if (randomizingMenuEndMillis > 0 || knobRotatedWhileLongPressed || checkMenuSize(lastMenuMode) < 2) return false;
   return (knobHeldForRandom || getLongPressedMillis() > extraLongPressMillis) &&
-         (isPlaylistMenu(lastMenuMode) || lastMenuMode == NowPlaying || lastMenuMode == VolumeControl);
+         (isPlaylistMenu(lastMenuMode) || lastMenuMode == NowPlaying || lastMenuMode == SeekControl || lastMenuMode == VolumeControl);
 }
 
 bool shouldShowSimilarMenu() {
@@ -1537,10 +1568,12 @@ uint16_t checkMenuSize(MenuModes mode) {
       return GENRE_COUNT;
     case SimilarList:
       return similarMenuItems.size();
+    case SeekControl:
+      return spotifyState.durationMillis / 1000;
     case VolumeControl:
       return 101; // 0-100%
     case NowPlaying:
-      return 7; // like, shuffle, previous, play/pause, next, repeat, volume
+      return 8; // like, shuffle, previous, play/pause, next, repeat, volume, seek
     default:
       return 0;
   }
@@ -1963,7 +1996,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
       spotifyAction = GetPlaylists;
     } else if (spotifyPlayPlaylistId != nullptr) {
       spotifyAction = PlayPlaylist;
-    } else {
+    } else if (spotifyAction == GetToken) {
       spotifyAction = CurrentlyPlaying;
     }
   }
@@ -2209,7 +2242,6 @@ void spotifySeek() {
     spotifyState.lastUpdateMillis = millis();
     spotifyState.progressMillis = spotifyState.estimatedProgressMillis = spotifySeekToMillis;
     nextCurrentlyPlayingMillis = spotifyState.lastUpdateMillis + SPOTIFY_WAIT_MILLIS;
-    spotifyState.isPlaying = true;
     invalidateDisplay();
   } else {
     log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());

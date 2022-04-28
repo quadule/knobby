@@ -81,6 +81,7 @@ const char *s3CACertificates =
 
 enum MenuModes {
   InitialSetup = -99,
+  SeekControl = -3,
   VolumeControl = -2,
   RootMenu = -1,
   DeviceList = 0,
@@ -93,14 +94,15 @@ enum MenuModes {
   UserList = 7
 };
 enum GenreSortModes { AlphabeticSort, AlphabeticSuffixSort };
-enum NowPlayingButtons {
+enum NowPlayingItems {
   LikeButton = 0,
   ShuffleButton = 1,
   BackButton = 2,
   PlayPauseButton = 3,
   NextButton = 4,
   RepeatButton = 5,
-  VolumeButton = 6
+  VolumeButton = 6,
+  SeekButton = 7
 };
 enum SettingsMenuModes {
   SettingsAbout = 0,
