@@ -2047,10 +2047,9 @@ void spotifyCurrentlyPlaying() {
       JsonObject item = json["item"];
 
       if (!item.isNull()) {
-        char oldTrackId[SPOTIFY_ID_SIZE + 1];
-        strncpy(oldTrackId, spotifyState.trackId, SPOTIFY_ID_SIZE);
         if (!item["id"].isNull()) {
           strncpy(spotifyState.trackId, item["id"], SPOTIFY_ID_SIZE);
+          if (!spotifyState.checkedLike) spotifyAction = CheckLike;
         } else {
           spotifyState.trackId[0] = '\0';
         }
@@ -2071,8 +2070,6 @@ void spotifyCurrentlyPlaying() {
         } else {
           spotifyState.artistName[0] = '\0';
         }
-
-        if (spotifyState.trackId[0] != '\0' && strcmp(oldTrackId, spotifyState.trackId) != 0) spotifyAction = CheckLike;
       }
 
       if (json.containsKey("device")) {
@@ -2320,6 +2317,7 @@ void spotifyResetProgress(bool keepContext) {
   spotifyState.lastUpdateMillis = millis();
   spotifyState.isLiked = false;
   spotifyState.isPlaying = false;
+  spotifyState.checkedLike = false;
   nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   if (!keepContext) {
     nowPlayingDisplayMillis = 0;
@@ -2413,6 +2411,7 @@ void spotifyCheckLike() {
     } else {
       log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
     }
+    spotifyState.checkedLike = true;
   } else {
     log_e("[%d] %d - %s", (uint32_t)millis(), response.httpCode, response.payload.c_str());
   }

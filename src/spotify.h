@@ -72,6 +72,7 @@ typedef struct {
   bool isPlaying = false;
   bool isShuffled = false;
   SpotifyRepeatModes repeatMode = RepeatOff;
+  bool checkedLike = false;
   bool disallowsSkippingNext = true;
   bool disallowsSkippingPrev = true;
   bool disallowsTogglingShuffle = true;
