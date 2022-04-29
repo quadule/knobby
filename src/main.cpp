@@ -40,11 +40,11 @@ void setup() {
     ttgo->power->setPowerOutPut(AXP202_LDO3, AXP202_OFF);
     ttgo->power->setPowerOutPut(AXP202_LDO4, AXP202_OFF);
   #else
-    tft.init();
-    tft.fillScreen(TFT_BLACK);
     ledcSetup(TFT_BL, 12000, 8);
     ledcAttachPin(TFT_BL, TFT_BL);
     ledcWrite(TFT_BL, 255);
+    tft.init();
+    tft.fillScreen(TFT_BLACK);
   #endif
   gpio_hold_en((gpio_num_t)TFT_BL);
 
