@@ -49,7 +49,6 @@ void setup() {
     tft.init();
   #endif
 
-  improvSerial.loop();
   SPIFFS.begin(true);
   readDataJson();
 
@@ -108,6 +107,8 @@ void setup() {
   }
   log_i("Config password: %s", configPassword.c_str());
 
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(nodeName.c_str());
   if (wifiSSID.isEmpty()) {
     wifiConnectWarning = true;
     setMenuMode(InitialSetup, 0);
@@ -117,11 +118,9 @@ void setup() {
     startWifiManager();
   } else {
     log_i("Connecting to saved wifi SSID: %s...", wifiSSID.c_str());
-    WiFi.mode(WIFI_STA);
     WiFi.setAutoConnect(true);
     WiFi.setAutoReconnect(true);
     WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
-    WiFi.setHostname(nodeName.c_str());
   }
 
   Update.onProgress(onOTAProgress);
