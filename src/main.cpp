@@ -68,15 +68,17 @@ void setup() {
     time_t currentSeconds = tod.tv_sec;
     secondsAsleep = currentSeconds - lastSleepSeconds;
     log_d("Boot #%d, asleep for %ld seconds", bootCount, secondsAsleep);
-    if (secondsAsleep > 60 * 10 ||
-        (spotifyState.isPlaying &&
-         (spotifyState.estimatedProgressMillis + secondsAsleep * 1000 > spotifyState.durationMillis))) {
+    uint32_t millisPassed = secondsAsleep * 1000 + millis();
+    if (secondsAsleep > newSessionSeconds ||
+        (spotifyState.isPlaying && (spotifyState.estimatedProgressMillis + millisPassed > spotifyState.durationMillis))) {
       spotifyState.isShuffled = false;
       spotifyState.repeatMode = RepeatOff;
       spotifyResetProgress();
       strcpy(spotifyState.contextName, "loading...");
+    } else if (spotifyState.isPlaying) {
+      spotifyState.progressMillis = spotifyState.estimatedProgressMillis =
+          spotifyState.estimatedProgressMillis + millisPassed;
     }
-    nextCurrentlyPlayingMillis = 1;
   }
   bootCount++;
 
