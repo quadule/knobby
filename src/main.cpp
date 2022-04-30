@@ -105,6 +105,7 @@ void setup() {
     configPassword.replace('/', '&');
     writeDataJson();
   }
+  log_i("Config password: %s", configPassword.c_str());
 
   if (wifiSSID.isEmpty()) {
     wifiConnectWarning = true;
@@ -221,9 +222,14 @@ void setup() {
             [](AsyncWebServerRequest *request) { request->send(200, "text/plain", String(ESP.getFreeHeap())); });
 
   server.on("/sleep", HTTP_GET, [](AsyncWebServerRequest *request) {
-    uint32_t ts = millis();
-    log_i("[%d] server.on /sleep", ts);
-    startDeepSleep();
+    AsyncWebParameter *passwordParam = request->getParam("password");
+    if (!passwordParam || passwordParam->value() != configPassword) {
+      request->send(403, "text/plain", "Incorrect password");
+    } else {
+      request->send(200, "text/plain", "OK, sleeping");
+      delay(100);
+      startDeepSleep();
+    }
   });
 
   server.on("/update", HTTP_POST,
