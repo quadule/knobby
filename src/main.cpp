@@ -39,14 +39,15 @@ void setup() {
     ttgo->power->setPowerOutPut(AXP202_DCDC2, AXP202_OFF);
     ttgo->power->setPowerOutPut(AXP202_LDO3, AXP202_OFF);
     ttgo->power->setPowerOutPut(AXP202_LDO4, AXP202_OFF);
+
+    gpio_hold_en((gpio_num_t)TFT_BL);
   #else
     ledcSetup(TFT_BL, 12000, 8);
     ledcAttachPin(TFT_BL, TFT_BL);
     ledcWrite(TFT_BL, 255);
+    gpio_hold_en((gpio_num_t)TFT_BL);
     tft.init();
-    tft.fillScreen(TFT_BLACK);
   #endif
-  gpio_hold_en((gpio_num_t)TFT_BL);
 
   improvSerial.loop();
   SPIFFS.begin(true);
