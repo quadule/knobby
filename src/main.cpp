@@ -7,8 +7,6 @@ void setup() {
   spotifyPlaylists.reserve(100);
 
   Serial.begin(115200);
-  improvSerial.setup(String("knobby"), String(KNOBBY_VERSION), String(PLATFORMIO_ENV), WiFi.macAddress());
-  improvSerial.loop();
 
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_A_PIN);
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_B_PIN);
@@ -21,6 +19,10 @@ void setup() {
   };
   ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
   ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setHostname(nodeName.c_str());
+  improvSerial.setup(std::string("knobby"), std::string(KNOBBY_VERSION), std::string(PLATFORMIO_ENV), std::string(WiFi.macAddress().c_str()));
 
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     ttgo = TTGOClass::getWatch();
@@ -39,13 +41,10 @@ void setup() {
     ttgo->power->setPowerOutPut(AXP202_DCDC2, AXP202_OFF);
     ttgo->power->setPowerOutPut(AXP202_LDO3, AXP202_OFF);
     ttgo->power->setPowerOutPut(AXP202_LDO4, AXP202_OFF);
-
-    gpio_hold_en((gpio_num_t)TFT_BL);
   #else
     ledcSetup(TFT_BL, 12000, 8);
     ledcAttachPin(TFT_BL, TFT_BL);
     ledcWrite(TFT_BL, 255);
-    gpio_hold_en((gpio_num_t)TFT_BL);
     tft.init();
   #endif
 
@@ -109,8 +108,6 @@ void setup() {
   }
   log_i("Config password: %s", configPassword.c_str());
 
-  WiFi.mode(WIFI_STA);
-  WiFi.setHostname(nodeName.c_str());
   if (wifiSSID.isEmpty()) {
     wifiConnectWarning = true;
     setMenuMode(InitialSetup, 0);
@@ -119,11 +116,27 @@ void setup() {
     improvSerial.loop();
     startWifiManager();
   } else {
-    log_i("Connecting to saved wifi SSID: %s...", wifiSSID.c_str());
-    WiFi.setAutoConnect(true);
-    WiFi.setAutoReconnect(true);
-    WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
+    log_i("Connecting to saved wifi SSID: %s", wifiSSID.c_str());
+    WiFi.reconnect();
+    improvSerial.loop();
   }
+
+  if (wifiSSID.isEmpty() || spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
+    setMenuMode(InitialSetup, 0);
+  } else {
+    if (secondsAsleep > newSessionSeconds) {
+      genreSort = AlphabeticSort;
+      setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
+    }
+    knobHeldForRandom = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
+    if (knobHeldForRandom) {
+      startRandomizingMenu(true);
+    } else if (secondsAsleep == 0) {
+      startRandomizingMenu(false);
+    }
+  }
+
+  updateDisplay();
 
   Update.onProgress(onOTAProgress);
   ArduinoOTA.setHostname(nodeName.c_str());
@@ -301,21 +314,6 @@ void setup() {
   }
 
   xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
-
-  if (wifiSSID.isEmpty() || spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
-    setMenuMode(InitialSetup, 0);
-  } else {
-    if (secondsAsleep > newSessionSeconds) {
-      genreSort = AlphabeticSort;
-      setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
-    }
-    knobHeldForRandom = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
-    if (knobHeldForRandom) {
-      startRandomizingMenu(true);
-    } else if (secondsAsleep == 0) {
-      startRandomizingMenu(false);
-    }
-  }
 }
 
 void startWifiManager() {
@@ -343,11 +341,12 @@ void delayIfIdle() {
 void saveWifiConfig(const String ssid, const String password) {
   wifiSSID = ssid;
   wifiPassword = password;
+  WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
   writeDataJson();
 }
 
 void loop() {
-  if (improvSerial.loop()) saveWifiConfig(improvSerial.getSSID(), improvSerial.getPassword());
+  if (improvSerial.loop()) saveWifiConfig(String(improvSerial.getSSID().c_str()), String(improvSerial.getPassword().c_str()));
   if (wifiManager) wifiManager->loop();
 
   uint32_t now = millis();
@@ -374,7 +373,6 @@ void loop() {
       ttgo->bl->adjust(255);
     #else
       ledcDetachPin(TFT_BL);
-      gpio_hold_en((gpio_num_t)TFT_BL);
       digitalWrite(TFT_BL, HIGH);
       esp_pm_config_esp32_t pm_config_ls_enable = {
         .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
@@ -401,7 +399,6 @@ void loop() {
         .light_sleep_enable = false
       };
       ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
-      gpio_hold_dis((gpio_num_t)TFT_BL);
     }
     #ifdef LILYGO_WATCH_2019_WITH_TOUCH
       ttgo->setBrightness(duty);
@@ -1241,11 +1238,11 @@ void updateDisplay() {
     tft.setCursor(0, lineOne);
     if (now < statusMessageUntilMillis && statusMessage[0] != '\0') {
       tft.fillRect(0, 1, screenWidth, lineOne, TFT_BLACK);
-      drawCenteredText(statusMessage, screenWidth);
+      drawMenuHeader(false);
     } else if (menuMode == SeekControl) {
       char elapsed[11];
       formatMillis(elapsed, menuIndex * 1000);
-      drawCenteredText(elapsed, screenWidth);
+      drawMenuHeader(false, elapsed);
     } else if (menuMode == NowPlaying) {
       const int iconTop = 4;
       const int width = ICON_SIZE + 2;
@@ -1672,7 +1669,6 @@ void startDeepSleep() {
   spotifyAction = Idle;
   tft.fillScreen(TFT_BLACK);
   WiFi.disconnect(true);
-  gpio_hold_dis((gpio_num_t)TFT_BL);
   digitalWrite(TFT_BL, LOW);
   tft.writecommand(TFT_DISPOFF);
   tft.writecommand(TFT_SLPIN);
@@ -1681,7 +1677,6 @@ void startDeepSleep() {
   rtc_gpio_isolate(GPIO_NUM_39);
   rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_A_PIN);
   rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_B_PIN);
-  adc_power_off();
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
   esp_deep_sleep_disable_rom_logging();

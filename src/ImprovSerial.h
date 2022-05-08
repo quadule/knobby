@@ -15,11 +15,11 @@ static const uint8_t IMPROV_SERIAL_VERSION = 1;
 
 class ImprovSerial {
  public:
-  void setup(String firmware, String version, String variant, String name);
+  void setup(std::string firmware, std::string version, std::string variant, std::string name);
   bool loop(bool timeout = false);
   improv::State getState();
-  String getSSID();
-  String getPassword();
+  std::string getSSID();
+  std::string getPassword();
 
  protected:
   bool parseByte(uint8_t byte);
@@ -41,10 +41,10 @@ class ImprovSerial {
   improv::State _state{improv::STATE_AUTHORIZED};
   improv::ImprovCommand _command{improv::Command::UNKNOWN, "", ""};
 
-  String _firmwareName;
-  String _firmwareVersion;
-  String _hardwareVariant;
-  String _deviceName;
+  std::string _firmwareName;
+  std::string _firmwareVersion;
+  std::string _hardwareVariant;
+  std::string _deviceName;
 };
 
 extern ImprovSerial improvSerial;

@@ -1,6 +1,6 @@
 #include "ImprovSerial.h"
 
-void ImprovSerial::setup(String firmware, String version, String variant, String name) {
+void ImprovSerial::setup(std::string firmware, std::string version, std::string variant, std::string name) {
   _firmwareName = firmware;
   _firmwareVersion = version;
   _hardwareVariant = variant;
@@ -14,9 +14,9 @@ void ImprovSerial::setup(String firmware, String version, String variant, String
 
 improv::State ImprovSerial::getState() { return _state; }
 
-String ImprovSerial::getSSID() { return String(_command.ssid.c_str()); }
+std::string ImprovSerial::getSSID() { return _command.ssid; }
 
-String ImprovSerial::getPassword() { return String(_command.password.c_str()); }
+std::string ImprovSerial::getPassword() { return _command.password; }
 
 uint8_t ImprovSerial::readByte() {
   uint8_t data;
@@ -57,15 +57,15 @@ bool ImprovSerial::loop(bool timeout) {
 }
 
 std::vector<uint8_t> ImprovSerial::buildResponse(improv::Command command) {
-  std::vector<String> urls;
-  String webserver_url = String("http://") + String(WiFi.getHostname()) + String(".local");
+  std::vector<std::string> urls;
+  std::string webserver_url = std::string("http://") + std::string(WiFi.getHostname()) + std::string(".local");
   urls.push_back(webserver_url);
   std::vector<uint8_t> data = improv::build_rpc_response(command, urls, false);
   return data;
 }
 
 std::vector<uint8_t> ImprovSerial::buildVersionInfo() {
-  std::vector<String> infos = {_firmwareName, _firmwareVersion, _hardwareVariant, _deviceName};
+  std::vector<std::string> infos = {_firmwareName, _firmwareVersion, _hardwareVariant, _deviceName};
   std::vector<uint8_t> data = improv::build_rpc_response(improv::GET_DEVICE_INFO, infos, false);
   return data;
 };
@@ -141,7 +141,7 @@ bool ImprovSerial::parsePayload(improv::ImprovCommand &command) {
       for (int32_t i = 0; i < networkCount; i++) {
         std::vector<uint8_t> data = improv::build_rpc_response(
             improv::GET_WIFI_NETWORKS,
-            {String(WiFi.SSID(i)), String(WiFi.RSSI(i)), WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "YES" : "NO"}, false);
+            {std::string(WiFi.SSID(i).c_str()), std::string(String(WiFi.RSSI(i)).c_str()), WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "YES" : "NO"}, false);
         sendResponse(data);
       }
       std::vector<uint8_t> data =
