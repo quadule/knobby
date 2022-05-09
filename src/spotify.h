@@ -1,3 +1,4 @@
+#include <list>
 #include "Arduino.h"
 #include "HTTPClient.h"
 #include "WiFiClientSecure.h"
@@ -123,11 +124,12 @@ char spotifyCodeVerifier[44] = "";
 char spotifyCodeChallenge[44] = "";
 uint32_t nextCurrentlyPlayingMillis = 1;
 bool spotifyGettingToken = false;
-SpotifyActions spotifyAction = CurrentlyPlaying;
+SpotifyActions spotifyAction = Idle;
 const char *spotifyPlayPlaylistId = nullptr;
 int spotifyPlayAtMillis = -1;
 int spotifySeekToMillis = -1;
 int spotifySetVolumeTo = -1;
+std::list<SpotifyActions> spotifyActionQueue;
 
 std::vector<SpotifyUser_t> spotifyUsers;
 SpotifyUser_t *activeSpotifyUser = nullptr;
@@ -142,6 +144,8 @@ bool spotifyPlaylistsLoaded = false;
 // Utility functions
 bool spotifyNeedsNewAccessToken();
 void spotifyResetProgress(bool keepContext = false);
+bool spotifyActionIsQueued(SpotifyActions action);
+bool spotifyQueueAction(SpotifyActions action);
 
 // Spotify Web API methods
 void spotifyGetToken(const char *code, GrantTypes grant_type);

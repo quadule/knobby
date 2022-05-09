@@ -217,12 +217,12 @@ void setup() {
       AsyncWebParameter *p = request->getParam(i);
       if (p->name() == "code") {
         spotifyAuthCode = p->value();
-        spotifyAction = GetToken;
         spotifyGettingToken = true;
+        spotifyQueueAction(GetToken);
         break;
       }
     }
-    if (spotifyAction == GetToken) {
+    if (spotifyActionIsQueued(GetToken)) {
       setStatusMessage("connecting...");
       request->send(200, "text/plain",
                     "Authorized! Knobby should be ready to use in a moment. You can close this page now.");
@@ -308,7 +308,7 @@ void setup() {
 
   if (spotifyNeedsNewAccessToken()) {
     spotifyGettingToken = true;
-    spotifyAction = GetToken;
+    spotifyActionQueue.push_front(GetToken);
   }
 
   xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
@@ -363,7 +363,6 @@ void loop() {
     setMenuMode(InitialSetup, 0);
   } else if (inputDelta < previousInputDelta && previousInputDelta > inactivityMillis) {
     if (menuMode == NowPlaying) {
-      spotifyAction = CurrentlyPlaying;
       nextCurrentlyPlayingMillis = 1;
     }
     #ifdef LILYGO_WATCH_2019_WITH_TOUCH
@@ -390,7 +389,7 @@ void loop() {
     #endif
     uint32_t duty = min(max((int)round(fadeProgress * 255.0), minimumDuty), 255);
     if (duty >= 250) {
-      spotifyAction = Idle;
+      spotifyActionQueue.clear();
       esp_pm_config_esp32_t pm_config_ls_enable = {
         .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
         .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
@@ -406,7 +405,6 @@ void loop() {
     #endif
   } else if (menuMode == VolumeControl && inputDelta > menuTimeoutMillis) {
     setMenuMode(NowPlaying, VolumeButton);
-    spotifyAction = CurrentlyPlaying;
     if (nextCurrentlyPlayingMillis == 0) nextCurrentlyPlayingMillis = 1;
   }
 
@@ -445,7 +443,7 @@ void loop() {
 
   if (connected && !spotifyGettingToken && spotifyNeedsNewAccessToken()) {
     spotifyGettingToken = true;
-    spotifyAction = GetToken;
+    spotifyActionQueue.push_front(GetToken);
   }
 
   if (menuMode == InitialSetup && !spotifyUsers.empty()) {
@@ -461,6 +459,7 @@ void loop() {
     randomizingMenuEndMillis = 0;
     randomizingMenuNextMillis = 0;
     if (randomizingMenuAutoplay) {
+      spotifyActionQueue.clear();
       if (isGenreMenu(lastPlaylistMenuMode)) {
         playPlaylist(genrePlaylists[genreIndex]);
         playingGenreIndex = genreIndex;
@@ -471,6 +470,7 @@ void loop() {
         playPlaylist(spotifyPlaylists[menuIndex].id, spotifyPlaylists[menuIndex].name.c_str());
       }
       displayInvalidatedPartial = true;
+      nowPlayingDisplayMillis = 0;
     } else {
       invalidateDisplay();
     }
@@ -484,7 +484,8 @@ void loop() {
   if (statusMessage[0] != '\0' && now > statusMessageUntilMillis) {
     statusMessageUntilMillis = 0;
     statusMessage[0] = '\0';
-    invalidateDisplay(true);
+    drawCenteredText("", screenWidth);
+    invalidateDisplay();
   } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
     clickEffectEndMillis = 0;
     invalidateDisplay();
@@ -520,8 +521,10 @@ void loop() {
 
 void backgroundApiLoop(void *params) {
   for (;;) {
-    if (WiFi.status() == WL_CONNECTED) {
-      uint32_t now = millis();
+    uint32_t now = millis();
+    if (WiFi.status() == WL_CONNECTED && spotifyActionQueue.size() > 0) {
+      spotifyAction = spotifyActionQueue.front();
+      spotifyActionQueue.pop_front();
 
       switch (spotifyAction) {
         case Idle:
@@ -533,13 +536,11 @@ void backgroundApiLoop(void *params) {
             spotifyGetToken(spotifyRefreshToken, gt_refresh_token);
           } else {
             spotifyGettingToken = false;
-            spotifyAction = Idle;
+            spotifyActionQueue.clear();
           }
           break;
         case CurrentlyPlaying:
-          if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis) {
-            spotifyCurrentlyPlaying();
-          }
+          spotifyCurrentlyPlaying();
           break;
         case CurrentProfile:
           spotifyCurrentProfile();
@@ -587,8 +588,12 @@ void backgroundApiLoop(void *params) {
           spotifyGetPlaylists();
           break;
       }
+      spotifyAction = Idle;
+    } else if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis) {
+      spotifyQueueAction(CurrentlyPlaying);
+    } else {
+      delayIfIdle();
     }
-    delayIfIdle();
   }
 }
 
@@ -608,12 +613,11 @@ void selectRootMenuItem(uint16_t index) {
         similarMenuGenreIndex = 0;
       }
       setMenuMode(SimilarList, 0);
-      spotifyAction = GetPlaylistDescription;
+      spotifyQueueAction(GetPlaylistDescription);
     }
   } else if (index == rootMenuNowPlayingIndex) {
     nextCurrentlyPlayingMillis = lastInputMillis;
     setMenuMode(NowPlaying, lastMenuMode == NowPlaying ? lastMenuIndex : (uint16_t)PlayPauseButton);
-    if (spotifyAction != GetToken && spotifyAction != PlayPlaylist) spotifyAction = CurrentlyPlaying;
   } else if (index == rootMenuUsersIndex) {
     if (!spotifyUsers.empty()) {
       uint16_t newMenuIndex = lastMenuMode == UserList ? lastMenuIndex : 0;
@@ -624,7 +628,7 @@ void selectRootMenuItem(uint16_t index) {
           break;
         }
       }
-      if (spotifyUsers[newMenuIndex].name[0] == '\0') spotifyAction = CurrentProfile;
+      if (spotifyUsers[newMenuIndex].name[0] == '\0') spotifyQueueAction(CurrentProfile);
       setMenuMode(UserList, newMenuIndex);
     }
   } else {
@@ -634,14 +638,14 @@ void selectRootMenuItem(uint16_t index) {
         if (lastMenuMode != SettingsMenu) newMenuIndex = 0;
         break;
       case DeviceList:
-        if (lastMenuMode != DeviceList) newMenuIndex = 0;
-        if (spotifyAction != GetToken && lastMenuMode != DeviceList) {
+        if (lastMenuMode != DeviceList) {
+          newMenuIndex = 0;
           spotifyDevicesLoaded = false;
-          spotifyAction = GetDevices;
+          spotifyQueueAction(GetDevices);
         }
         break;
       case PlaylistList:
-        if (!spotifyPlaylistsLoaded) spotifyAction = GetPlaylists;
+        if (!spotifyPlaylistsLoaded) spotifyQueueAction(GetPlaylists);
         if (lastMenuMode != PlaylistList) newMenuIndex = 0;
         if (spotifyState.playlistId[0] != '\0') {
           auto playlistsCount = spotifyPlaylists.size();
@@ -712,8 +716,8 @@ void knobRotated() {
     newMenuIndex = newMenuIndex < 0 ? 0 : min(newMenuIndex, menuSize - 1);
     setMenuIndex(newMenuIndex);
     if (menuMode == VolumeControl) {
-      spotifyAction = SetVolume;
       spotifySetVolumeTo = menuIndex;
+      spotifyQueueAction(SetVolume);
     }
   } else {
     int newMenuIndex = ((int)menuIndex + positionDelta) % (int)menuSize;
@@ -743,7 +747,7 @@ void knobClicked() {
       break;
     case UserList:
       if (!spotifyUsers.empty() && activeSpotifyUser != &spotifyUsers[pressedMenuIndex]) {
-        spotifyAction = Idle;
+        spotifyActionQueue.clear();
         spotifyTokenLifetime = 0;
         spotifyTokenSeconds = 0;
         spotifyAccessToken[0] = '\0';
@@ -760,7 +764,7 @@ void knobClicked() {
         bool changed = strcmp(activeSpotifyUser->selectedDeviceId, spotifyDevices[pressedMenuIndex].id) != 0;
         if (spotifyState.isPlaying && !spotifyGettingToken &&
             (!activeSpotifyDevice || strcmp(activeSpotifyDevice->id, spotifyDevices[pressedMenuIndex].id) != 0)) {
-          spotifyAction = TransferPlayback;
+          spotifyQueueAction(TransferPlayback);
         }
         setActiveDevice(&spotifyDevices[pressedMenuIndex]);
         if (changed) writeDataJson();
@@ -792,44 +796,43 @@ void knobClicked() {
       spotifySeekToMillis = pressedMenuIndex * 1000;
       spotifyState.progressMillis = spotifyState.estimatedProgressMillis = spotifySeekToMillis;
       spotifyState.lastUpdateMillis = millis();
-      spotifyAction = Seek;
+      spotifyQueueAction(Seek);
       setMenuMode(NowPlaying, SeekButton);
       break;
     case VolumeControl:
       setMenuMode(NowPlaying, VolumeButton);
-      spotifyAction = CurrentlyPlaying;
       nextCurrentlyPlayingMillis = 1;
       break;
     case NowPlaying:
       switch (pressedMenuIndex) {
         case LikeButton:
           if (spotifyState.trackId[0] != '\0') {
-            spotifyAction = ToggleLike;
+            spotifyQueueAction(ToggleLike);
           }
           break;
         case ShuffleButton:
           if (!spotifyState.disallowsTogglingShuffle) {
-            spotifyAction = ToggleShuffle;
+            spotifyQueueAction(ToggleShuffle);
           }
           break;
         case BackButton:
           if (spotifyState.disallowsSkippingPrev || spotifyState.estimatedProgressMillis > 5000) {
             spotifySeekToMillis = 0;
-            spotifyAction = Seek;
+            spotifyQueueAction(Seek);
           } else {
-            spotifyAction = Previous;
+            spotifyQueueAction(Previous);
           }
           break;
         case PlayPauseButton:
-          spotifyAction = Toggle;
+          spotifyQueueAction(Toggle);
           break;
         case NextButton:
           if (!spotifyState.disallowsSkippingNext) {
-            spotifyAction = Next;
+            spotifyQueueAction(Next);
           }
           break;
         case RepeatButton:
-          spotifyAction = ToggleRepeat;
+          spotifyQueueAction(ToggleRepeat);
           break;
         case VolumeButton:
           if (activeSpotifyDevice != nullptr) {
@@ -907,7 +910,7 @@ void knobDoubleClicked() {
         break;
     }
   } else if (!spotifyState.disallowsSkippingNext) {
-    spotifyAction = Next;
+    spotifyQueueAction(Next);
     setStatusMessage("next");
   }
 }
@@ -1212,7 +1215,7 @@ void updateDisplay() {
           drawCenteredText(device->name, textWidth, 3);
         }
       }
-    } else if (!spotifyDevicesLoaded || spotifyAction == GetDevices) {
+    } else if (!spotifyDevicesLoaded || spotifyActionIsQueued(GetDevices)) {
       tft.setCursor(textPadding, lineTwo);
       img.setTextColor(TFT_DARKGREY, TFT_BLACK);
       drawCenteredText("loading...", textWidth, 3);
@@ -1250,7 +1253,7 @@ void updateDisplay() {
       const int width = ICON_SIZE + 2;
       const int extraSpace = 10;
 
-      bool likeClicked = menuIndex == LikeButton && spotifyAction == ToggleLike && now < clickEffectEndMillis;
+      bool likeClicked = menuIndex == LikeButton && spotifyActionIsQueued(ToggleLike) && now < clickEffectEndMillis;
       tft.setCursor(5, iconTop);
       drawIcon(spotifyState.isLiked ? ICON_FAVORITE : ICON_FAVORITE_OUTLINE, menuIndex == LikeButton, likeClicked,
               spotifyState.trackId[0] == '\0' && (spotifyAction != Previous && spotifyAction != Next));
@@ -1258,16 +1261,16 @@ void updateDisplay() {
       tft.setCursor(screenWidth / 2 - ICON_SIZE / 2 - ICON_SIZE * 2 - 3 - extraSpace, iconTop);
       drawIcon(ICON_SHUFFLE, menuIndex == ShuffleButton, false, spotifyState.disallowsTogglingShuffle, spotifyState.isShuffled);
 
-      bool backClicked = menuIndex == BackButton && (spotifyAction == Previous || (spotifyAction == Seek && spotifySeekToMillis == 0)) && now < clickEffectEndMillis;
+      bool backClicked = menuIndex == BackButton && (spotifyActionIsQueued(Previous) || (spotifyActionIsQueued(Seek) && spotifySeekToMillis == 0)) && now < clickEffectEndMillis;
       tft.setCursor(tft.getCursorX() + width + extraSpace + 1, iconTop);
       drawIcon(ICON_SKIP_PREVIOUS, menuIndex == BackButton, backClicked, spotifyState.disallowsSkippingPrev);
 
       const String& playPauseIcon = spotifyState.isPlaying ? ICON_PAUSE : ICON_PLAY_ARROW;
-      bool playPauseClicked = menuIndex == PlayPauseButton && spotifyAction == Toggle && now < clickEffectEndMillis;
+      bool playPauseClicked = menuIndex == PlayPauseButton && spotifyActionIsQueued(Toggle) && now < clickEffectEndMillis;
       tft.setCursor(tft.getCursorX() + width, iconTop);
       drawIcon(playPauseIcon, menuIndex == PlayPauseButton, playPauseClicked);
 
-      bool nextClicked = menuIndex == NextButton && spotifyAction == Next && now < clickEffectEndMillis;
+      bool nextClicked = menuIndex == NextButton && spotifyActionIsQueued(Next) && now < clickEffectEndMillis;
       tft.setCursor(tft.getCursorX() + width, iconTop);
       drawIcon(ICON_SKIP_NEXT, menuIndex == NextButton, nextClicked, spotifyState.disallowsSkippingNext);
 
@@ -1300,9 +1303,8 @@ void updateDisplay() {
       const int seekRadius = 4;
       const bool seekSelected = menuMode == SeekControl || menuIndex == SeekButton;
       img.createSprite(dividerWidth + seekRadius * 2, seekRadius * 2 + 1);
-      img.fillSprite(TFT_BLACK);
       img.drawFastHLine(seekRadius, seekRadius, dividerWidth, seekSelected ? TFT_DARKERGREY : TFT_LIGHTBLACK);
-      img.drawFastHLine(seekRadius, seekRadius + 1, dividerWidth, seekSelected ? TFT_DARKERGREY : TFT_LIGHTBLACK);
+      if (seekSelected) img.drawFastHLine(seekRadius, seekRadius + 1, dividerWidth, TFT_DARKERGREY);
       if (spotifyState.estimatedProgressMillis > 0 && spotifyState.durationMillis > 0) {
         float progress = (float)spotifyState.estimatedProgressMillis / (float)spotifyState.durationMillis;
         img.drawFastHLine(seekRadius, seekRadius, round(dividerWidth * progress), seekSelected ? TFT_WHITE : TFT_LIGHTGREY);
@@ -1327,12 +1329,12 @@ void updateDisplay() {
       const bool showPlaylistName = menuMode == NowPlaying && (spotifyState.durationMillis == 0 ||
                                                                spotifyState.estimatedProgressMillis % 6000 > 3000);
       if (isActivePlaylist && showPlaylistName &&
-          (spotifyState.isPlaying || spotifyPlayPlaylistId != nullptr || spotifyAction == Previous ||
-           spotifyAction == Next)) {
+          (spotifyState.isPlaying || spotifyPlayPlaylistId != nullptr || spotifyActionIsQueued(Previous) ||
+           spotifyActionIsQueued(Next))) {
         img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
         drawCenteredText(genres[playingGenreIndex], textWidth, maxTextLines);
       } else if (spotifyState.contextName[0] != '\0' && showPlaylistName) {
-        if (spotifyAction == PlayPlaylist && now < clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        if (spotifyActionIsQueued(PlayPlaylist) && now < clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
         drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
       } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
         char playing[205];
@@ -1675,7 +1677,7 @@ void startDeepSleep() {
   struct timeval tod;
   gettimeofday(&tod, NULL);
   lastSleepSeconds = tod.tv_sec;
-  spotifyAction = Idle;
+  spotifyActionQueue.clear();
   tft.fillScreen(TFT_BLACK);
   WiFi.disconnect(true);
   digitalWrite(TFT_BL, LOW);
@@ -1699,8 +1701,8 @@ void startRandomizingMenu(bool autoplay) {
     randomizingMenuTicks = 1;
     randomizingMenuAutoplay = autoplay;
     if (randomizingMenuAutoplay) {
-      if (spotifyAction != GetToken) spotifyAction = Idle;
       spotifyResetProgress();
+      spotifyActionQueue.clear();
     }
     setMenuMode(lastPlaylistMenuMode, 0);
   }
@@ -1712,7 +1714,7 @@ void playPlaylist(const char *playlistId, const char *name) {
   spotifyPlayPlaylistId = playlistId;
   strncpy(spotifyState.playlistId, playlistId, SPOTIFY_ID_SIZE);
   strncpy(spotifyState.contextName, name, sizeof(spotifyState.contextName) - 1);
-  if (!spotifyGettingToken && spotifyAction != GetToken) spotifyAction = PlayPlaylist;
+  spotifyQueueAction(PlayPlaylist);
 
   lastMenuMode = menuMode;
   lastMenuIndex = menuIndex;
@@ -1849,6 +1851,16 @@ void onOTAProgress(unsigned int progress, unsigned int total) {
   tft.setCursor(textPadding, lineTwo);
   drawCenteredText(status, textWidth, 1);
   ESP_ERROR_CHECK(esp_task_wdt_reset());
+}
+
+bool spotifyActionIsQueued(SpotifyActions action) {
+  return contains(spotifyActionQueue, action);
+}
+
+bool spotifyQueueAction(SpotifyActions action) {
+  if (spotifyActionIsQueued(action)) return false;
+  spotifyActionQueue.push_back(action);
+  return true;
 }
 
 HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {
@@ -2000,15 +2012,15 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
 
   if (success) {
     if (grant_type == gt_authorization_code) {
-      spotifyAction = CurrentProfile;
+      spotifyQueueAction(CurrentProfile);
     } else if (menuMode == DeviceList) {
-      spotifyAction = GetDevices;
+      spotifyQueueAction(GetDevices);
     } else if (menuMode == PlaylistList) {
-      spotifyAction = GetPlaylists;
+      spotifyQueueAction(GetPlaylists);
     } else if (spotifyPlayPlaylistId != nullptr) {
-      spotifyAction = PlayPlaylist;
-    } else if (spotifyAction == GetToken) {
-      spotifyAction = CurrentlyPlaying;
+      spotifyQueueAction(PlayPlaylist);
+    } else {
+      nextCurrentlyPlayingMillis = 1;
     }
   }
   spotifyGettingToken = false;
@@ -2059,7 +2071,7 @@ void spotifyCurrentlyPlaying() {
       if (!item.isNull()) {
         if (!item["id"].isNull()) {
           strncpy(spotifyState.trackId, item["id"], SPOTIFY_ID_SIZE);
-          if (!spotifyState.checkedLike) spotifyAction = CheckLike;
+          if (!spotifyState.checkedLike) spotifyQueueAction(CheckLike);
         } else {
           spotifyState.trackId[0] = '\0';
         }
@@ -2191,7 +2203,7 @@ void spotifyCurrentProfile() {
     log_e("%d - %s", response.httpCode, response.payload.c_str());
   }
 
-  spotifyAction = spotifyDevicesLoaded ? CurrentlyPlaying : GetDevices;
+  if (!spotifyDevicesLoaded) spotifyQueueAction(GetDevices);
 }
 
 bool spotifyRetryError(HTTP_response_t response) {
@@ -2202,7 +2214,7 @@ bool spotifyRetryError(HTTP_response_t response) {
       activeSpotifyDeviceId[0] = '\0';
       spotifyDevicesLoaded = false;
     } else {
-      spotifyAction = GetDevices;
+      spotifyQueueAction(GetDevices);
       setMenuMode(DeviceList, 0);
       setStatusMessage("select device");
     }
@@ -2222,7 +2234,6 @@ void spotifyNext() {
   } else {
     log_e("%d - %s", response.httpCode, response.payload.c_str());
   }
-  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyPrevious() {
@@ -2234,7 +2245,6 @@ void spotifyPrevious() {
   } else {
     log_e("%d - %s", response.httpCode, response.payload.c_str());
   }
-  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifySeek() {
@@ -2252,7 +2262,6 @@ void spotifySeek() {
     log_e("%d - %s", response.httpCode, response.payload.c_str());
     spotifyResetProgress(true);
   }
-  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyToggle() {
@@ -2278,12 +2287,11 @@ void spotifyToggle() {
   if (response.httpCode == 204) {
     spotifyState.lastUpdateMillis = millis();
     nextCurrentlyPlayingMillis = spotifyState.lastUpdateMillis + SPOTIFY_WAIT_MILLIS;
-    spotifyAction = CurrentlyPlaying;
     invalidateDisplay();
   } else {
     spotifyResetProgress(true);
     nextCurrentlyPlayingMillis = 1;
-    if (!retry) spotifyAction = CurrentlyPlaying;
+    if (retry) spotifyQueueAction(Toggle);
   }
 };
 
@@ -2309,7 +2317,6 @@ void spotifyPlayPlaylist() {
     strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, SPOTIFY_ID_SIZE);
   }
   if (!retry) {
-    spotifyAction = CurrentlyPlaying;
     spotifyPlayPlaylistId = nullptr;
   }
 };
@@ -2381,7 +2388,6 @@ void spotifyGetDevices() {
       }
     }
   }
-  spotifyAction = CurrentlyPlaying;
   invalidateDisplay();
 }
 
@@ -2400,7 +2406,7 @@ void spotifySetVolume() {
 }
 
 void spotifyCheckLike() {
-  if (spotifyAccessToken[0] == '\0') return;
+  if (spotifyAccessToken[0] == '\0' || spotifyState.trackId[0] == '\0') return;
 
   HTTP_response_t response;
   char path[46];
@@ -2423,7 +2429,6 @@ void spotifyCheckLike() {
   } else {
     log_e("%d - %s", response.httpCode, response.payload.c_str());
   }
-  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyToggleLike() {
@@ -2442,7 +2447,6 @@ void spotifyToggleLike() {
     spotifyState.isLiked = !spotifyState.isLiked;
     invalidateDisplay();
   }
-  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyToggleShuffle() {
@@ -2463,7 +2467,6 @@ void spotifyToggleShuffle() {
     spotifyState.isShuffled = !spotifyState.isShuffled;
     invalidateDisplay();
   }
-  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyToggleRepeat() {
@@ -2493,7 +2496,6 @@ void spotifyToggleRepeat() {
     spotifyState.repeatMode = RepeatOff;
     invalidateDisplay();
   }
-  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyTransferPlayback() {
@@ -2507,7 +2509,6 @@ void spotifyTransferPlayback() {
   } else {
     log_e("%d - %s", response.httpCode, response.payload.c_str());
   }
-  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyGetPlaylistDescription() {
@@ -2557,7 +2558,6 @@ void spotifyGetPlaylistDescription() {
   } else {
     log_e("%d - %s", response.httpCode, response.payload.c_str());
   }
-  spotifyAction = CurrentlyPlaying;
 };
 
 void spotifyGetPlaylists() {
@@ -2611,8 +2611,6 @@ void spotifyGetPlaylists() {
       log_e("%d - %s", response.httpCode, response.payload.c_str());
     }
   }
-
-  spotifyAction = CurrentlyPlaying;
 }
 
 void updateFirmware() {
@@ -2626,7 +2624,7 @@ void updateFirmware() {
   }
 
   setStatusMessage("checking...");
-  spotifyAction = Idle;
+  spotifyActionQueue.clear();
   updateDisplay();
 
   spotifyWifiClient.stop();
