@@ -498,18 +498,22 @@ void loop() {
 
   if (displayInvalidated && updateContentLength == 0) updateDisplay();
 
+  auto top = menuMode == NowPlaying ? lineDivider : 0;
   if (shouldShowProgressBar()) {
+    unsigned long margin = menuMode == NowPlaying ? 4 : 0;
+    unsigned long maxWidth = tft.width() - margin * 2;
+    unsigned long width = 59;
+    unsigned long t = millis() / 2;
     showingProgressBar = true;
-    tft.drawFastHLine(-now % tft.width(), 0, 20, TFT_BLACK);
-    tft.drawFastHLine(-(now + 20) % tft.width(), 0, 20, TFT_DARKGREY);
-    tft.drawFastHLine(-(now + 40) % tft.width(), 0, 20, TFT_BLACK);
-    tft.drawFastHLine(-(now + 60) % tft.width(), 0, 20, TFT_DARKGREY);
-    tft.drawFastHLine(-(now + 80) % tft.width(), 0, 20, TFT_BLACK);
-    tft.drawFastHLine(-(now + 100) % tft.width(), 0, 20, TFT_DARKGREY);
-    tft.drawFastHLine(-(now + 120) % tft.width(), 0, 20, TFT_BLACK);
+    for (unsigned long segment = 0; segment < 4; segment++) {
+      unsigned long x = max(margin, maxWidth - (t + width * segment) % maxWidth);
+      if (x + width > maxWidth) width -= (x + width) - maxWidth;
+      tft.drawFastHLine(x, top, width, segment % 2 == 0 ? TFT_DARKERGREY : TFT_DARKGREY);
+    }
   } else if (showingProgressBar) {
-    tft.drawFastHLine(0, 0, tft.width(), TFT_BLACK);
+    tft.drawFastHLine(0, top, tft.width(), TFT_BLACK);
     showingProgressBar = false;
+    updateDisplay();
   }
 
   ArduinoOTA.handle();
@@ -1119,7 +1123,7 @@ void updateDisplay() {
   } else if (now < randomizingMenuEndMillis + 250) {
     if (now >= randomizingMenuNextMillis) {
       randomizingMenuTicks++;
-      randomizingMenuNextMillis = millis() + max((int)(pow(randomizingMenuTicks, 3) + pow(randomizingMenuTicks, 2)), 20);
+      randomizingMenuNextMillis = millis() + max((int)(pow(randomizingMenuTicks, 3) + pow(randomizingMenuTicks, 2)), 10);
       setMenuIndex(random(checkMenuSize(lastPlaylistMenuMode)));
       tft.setCursor(textPadding, lineTwo);
       if (isGenreMenu(lastPlaylistMenuMode)) {
@@ -1238,7 +1242,7 @@ void updateDisplay() {
     tft.setCursor(0, lineOne);
     if (now < statusMessageUntilMillis && statusMessage[0] != '\0') {
       tft.fillRect(0, 1, screenWidth, lineOne, TFT_BLACK);
-      drawMenuHeader(false);
+      drawCenteredText(statusMessage, screenWidth);
     } else if (menuMode == SeekControl) {
       char elapsed[11];
       formatMillis(elapsed, menuIndex * 1000);
@@ -1294,23 +1298,26 @@ void updateDisplay() {
       drawIcon(volumeIcon, menuIndex == VolumeButton, false, activeSpotifyDevice == nullptr);
     }
 
-    const int seekRadius = 4;
-    const bool seekSelected = menuMode == SeekControl || menuIndex == SeekButton;
-    img.createSprite(dividerWidth + seekRadius * 2, seekRadius * 2 + 1);
-    img.fillSprite(TFT_BLACK);
-    img.drawFastHLine(seekRadius, seekRadius, dividerWidth, seekSelected ? TFT_DARKERGREY : TFT_LIGHTBLACK);
-    if (spotifyState.estimatedProgressMillis > 0 && spotifyState.durationMillis > 0) {
-      float progress = (float)spotifyState.estimatedProgressMillis / (float)spotifyState.durationMillis;
-      img.drawFastHLine(seekRadius, seekRadius, round(dividerWidth * progress), seekSelected ? TFT_WHITE : TFT_LIGHTGREY);
-      if (menuMode == SeekControl) {
-        img.fillCircle(seekRadius + round(dividerWidth * ((float)menuIndex / (float)menuSize)), seekRadius, seekRadius, TFT_WHITE);
-      } else if (menuIndex == SeekButton) {
-        img.fillCircle(seekRadius + round(dividerWidth * progress), seekRadius, seekRadius, TFT_WHITE);
-        img.fillCircle(seekRadius + round(dividerWidth * progress), seekRadius, 2, TFT_BLACK);
+    if (!shouldShowProgressBar()) {
+      const int seekRadius = 4;
+      const bool seekSelected = menuMode == SeekControl || menuIndex == SeekButton;
+      img.createSprite(dividerWidth + seekRadius * 2, seekRadius * 2 + 1);
+      img.fillSprite(TFT_BLACK);
+      img.drawFastHLine(seekRadius, seekRadius, dividerWidth, seekSelected ? TFT_DARKERGREY : TFT_LIGHTBLACK);
+      img.drawFastHLine(seekRadius, seekRadius + 1, dividerWidth, seekSelected ? TFT_DARKERGREY : TFT_LIGHTBLACK);
+      if (spotifyState.estimatedProgressMillis > 0 && spotifyState.durationMillis > 0) {
+        float progress = (float)spotifyState.estimatedProgressMillis / (float)spotifyState.durationMillis;
+        img.drawFastHLine(seekRadius, seekRadius, round(dividerWidth * progress), seekSelected ? TFT_WHITE : TFT_LIGHTGREY);
+        if (menuMode == SeekControl) {
+          img.fillCircle(seekRadius + round(dividerWidth * ((float)menuIndex / (float)menuSize)), seekRadius, seekRadius, TFT_WHITE);
+        } else if (menuIndex == SeekButton) {
+          img.fillCircle(seekRadius + round(dividerWidth * progress), seekRadius, seekRadius, TFT_WHITE);
+          img.fillCircle(seekRadius + round(dividerWidth * progress), seekRadius, 2, TFT_BLACK);
+        }
       }
+      img.pushSprite(6 - seekRadius, lineDivider - seekRadius);
+      img.deleteSprite();
     }
-    img.pushSprite(6 - seekRadius, lineDivider - seekRadius);
-    img.deleteSprite();
 
     if (millis() - nowPlayingDisplayMillis >= 50) {
       tft.setCursor(textPadding, lineTwo);
@@ -1531,7 +1538,10 @@ unsigned long getExtraLongPressedMillis() {
 
 bool shouldShowProgressBar() {
   if (menuMode == InitialSetup || wifiSSID.isEmpty()) return false;
-  return spotifyApiRequestStartedMillis > 0 && millis() - spotifyApiRequestStartedMillis > waitToShowProgressMillis;
+  auto now = millis();
+  auto waitingMillis = spotifyApiRequestStartedMillis < 0 ? 0 : now - spotifyApiRequestStartedMillis;
+  return (waitingMillis > waitToShowProgressMillis) ||
+         (menuMode == NowPlaying && spotifyState.durationMillis == 0 && (now < 6000 || waitingMillis > 500));
 }
 
 bool shouldShowRandom() {
@@ -1578,7 +1588,8 @@ uint16_t checkMenuSize(MenuModes mode) {
     case VolumeControl:
       return 101; // 0-100%
     case NowPlaying:
-      return 8; // like, shuffle, previous, play/pause, next, repeat, volume, seek
+      // like, shuffle, previous, play/pause, next, repeat, volume, seek if playing
+      return spotifyState.durationMillis > 0 ? 8 : 7;
     default:
       return 0;
   }
