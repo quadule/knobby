@@ -122,7 +122,7 @@ long spotifyApiRequestStartedMillis = -1;
 String spotifyAuthCode;
 char spotifyCodeVerifier[44] = "";
 char spotifyCodeChallenge[44] = "";
-uint32_t nextCurrentlyPlayingMillis = 1;
+uint32_t nextCurrentlyPlayingMillis = 0;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = Idle;
 const char *spotifyPlayPlaylistId = nullptr;

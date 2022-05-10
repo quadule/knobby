@@ -131,8 +131,9 @@ void setup() {
     knobHeldForRandom = digitalRead(ROTARY_ENCODER_BUTTON_PIN) == LOW;
     if (knobHeldForRandom) {
       startRandomizingMenu(true);
-    } else if (secondsAsleep == 0) {
-      startRandomizingMenu(false);
+    } else {
+      if (secondsAsleep == 0) startRandomizingMenu(false);
+      nextCurrentlyPlayingMillis = 1;
     }
   }
 
@@ -1702,6 +1703,7 @@ void startRandomizingMenu(bool autoplay) {
     randomizingMenuAutoplay = autoplay;
     if (randomizingMenuAutoplay) {
       spotifyResetProgress();
+      nextCurrentlyPlayingMillis = 0;
       spotifyActionQueue.clear();
     }
     setMenuMode(lastPlaylistMenuMode, 0);
