@@ -6,9 +6,9 @@
 #include "mbedtls/md.h"
 
 #define SPOTIFY_ID_SIZE 22
-#define SPOTIFY_WAIT_MILLIS 900
+#define SPOTIFY_WAIT_MILLIS 1000
 
-const uint16_t spotifyPollInterval = 18000;
+const uint16_t spotifyPollInterval = 10000;
 const char *spotifyCACertificate =
     "-----BEGIN CERTIFICATE-----\n" // DigiCert Global Root CA
     "MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBh\n"
