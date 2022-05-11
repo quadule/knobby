@@ -1342,6 +1342,9 @@ void updateDisplay() {
         snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
         if (playingGenreIndex >= 0) img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
         drawCenteredText(playing, textWidth, maxTextLines);
+      } else if (spotifyState.isPrivateSession) {
+        img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
+        drawCenteredText("- private session -", textWidth, maxTextLines);
       } else if (spotifyApiRequestStartedMillis < 0 && !spotifyState.isPlaying) {
         img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
         drawCenteredText("- nothing playing -", textWidth, maxTextLines);
@@ -2039,7 +2042,6 @@ void spotifyCurrentlyPlaying() {
 
     if (!error) {
       spotifyState.lastUpdateMillis = millis();
-      spotifyState.isPlaying = json["is_playing"];
       spotifyState.isShuffled = json["shuffle_state"];
       spotifyState.progressMillis = spotifyState.estimatedProgressMillis = json["progress_ms"];
 
@@ -2116,8 +2118,10 @@ void spotifyCurrentlyPlaying() {
         strncpy(activeSpotifyDevice->id, playingDeviceId, sizeof(activeSpotifyDevice->id) - 1);
         strncpy(activeSpotifyDevice->name, jsonDevice["name"], sizeof(activeSpotifyDevice->name) - 1);
         activeSpotifyDevice->volumePercent = jsonDevice["volume_percent"];
+        spotifyState.isPrivateSession = jsonDevice["is_private_session"];
       }
 
+      if (!spotifyState.isPrivateSession) spotifyState.isPlaying = json["is_playing"];
       spotifyState.disallowsSkippingNext = false;
       spotifyState.disallowsSkippingPrev = false;
       spotifyState.disallowsTogglingShuffle = false;
@@ -2149,7 +2153,7 @@ void spotifyCurrentlyPlaying() {
           nextCurrentlyPlayingMillis = millis() + remainingMillis + 100;
         }
       }
-      if (spotifyState.isPlaying && nextCurrentlyPlayingMillis == 0) {
+      if (spotifyState.isPlaying && nextCurrentlyPlayingMillis == 0 && !spotifyState.isPrivateSession) {
         nextCurrentlyPlayingMillis = millis() + (spotifyState.durationMillis == 0 ? 2000 : spotifyPollInterval);
       }
       if (lastInputMillis <= 1 && millis() < 10000 && spotifyState.name[0] != '\0' && menuMode != NowPlaying) {
@@ -2333,9 +2337,9 @@ void spotifyResetProgress(bool keepContext) {
   spotifyState.estimatedProgressMillis = 0;
   spotifyState.lastUpdateMillis = millis();
   spotifyState.isLiked = false;
-  spotifyState.isPlaying = false;
   spotifyState.checkedLike = false;
   nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
+  if (!spotifyState.isPrivateSession) spotifyState.isPlaying = false;
   if (!keepContext) {
     nowPlayingDisplayMillis = 0;
     playingCountryIndex = -1;

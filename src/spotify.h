@@ -79,6 +79,7 @@ typedef struct {
   bool disallowsTogglingShuffle = true;
   bool disallowsTogglingRepeatContext = true;
   bool disallowsTogglingRepeatTrack = true;
+  bool isPrivateSession = false;
   uint32_t progressMillis = 0;
   uint32_t durationMillis = 0;
   uint32_t estimatedProgressMillis = 0;
