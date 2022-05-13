@@ -2309,7 +2309,7 @@ void spotifyPlayPlaylist() {
   snprintf(requestContent, sizeof(requestContent), "{\"context_uri\":\"spotify:playlist:%s\"}", spotifyPlayPlaylistId);
   HTTP_response_t response;
   if (activeSpotifyDeviceId[0] != '\0') {
-    char path[67];
+    char path[90];
     snprintf(path, sizeof(path), "me/player/play?device_id=%s", activeSpotifyDeviceId);
     response = spotifyApiRequest("PUT", path, requestContent);
   } else {
@@ -2506,7 +2506,7 @@ void spotifyToggleRepeat() {
 
 void spotifyTransferPlayback() {
   if (activeSpotifyDevice == nullptr) return;
-  char requestContent[61];
+  char requestContent[84];
   snprintf(requestContent, sizeof(requestContent), "{\"device_ids\":[\"%s\"]}", activeSpotifyDeviceId);
   HTTP_response_t response;
   response = spotifyApiRequest("PUT", "me/player", requestContent);

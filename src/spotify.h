@@ -43,11 +43,11 @@ typedef struct {
   char name[64] = "";
   char refreshToken[150] = "";
   bool selected = false;
-  char selectedDeviceId[41] = "";
+  char selectedDeviceId[64] = "";
 } SpotifyUser_t;
 
 typedef struct {
-  char id[41] = "";
+  char id[64] = "";
   char name[64] = "";
   uint8_t volumePercent;
 } SpotifyDevice_t;
@@ -114,7 +114,7 @@ RTC_DATA_ATTR char spotifyAccessToken[300] = "";
 RTC_DATA_ATTR char spotifyRefreshToken[150] = "";
 RTC_DATA_ATTR time_t spotifyTokenLifetime = 0;
 RTC_DATA_ATTR time_t spotifyTokenSeconds = 0;
-RTC_DATA_ATTR char activeSpotifyDeviceId[41] = "";
+RTC_DATA_ATTR char activeSpotifyDeviceId[64] = "";
 RTC_DATA_ATTR SpotifyState_t spotifyState = {};
 
 WiFiClientSecure spotifyWifiClient;
