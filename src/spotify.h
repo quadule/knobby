@@ -126,6 +126,7 @@ char spotifyCodeChallenge[44] = "";
 uint32_t nextCurrentlyPlayingMillis = 0;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = Idle;
+SpotifyActions spotifyRetryAction = Idle;
 const char *spotifyPlayPlaylistId = nullptr;
 int spotifyPlayAtMillis = -1;
 int spotifySeekToMillis = -1;

@@ -771,12 +771,19 @@ void knobClicked() {
     case DeviceList:
       if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
         bool changed = strcmp(activeSpotifyUser->selectedDeviceId, spotifyDevices[pressedMenuIndex].id) != 0;
-        if (spotifyState.isPlaying && !spotifyGettingToken &&
+        if (spotifyRetryAction != Idle) {
+          spotifyQueueAction(CurrentlyPlaying);
+          spotifyQueueAction(spotifyRetryAction);
+          spotifyRetryAction = Idle;
+          setMenuMode(NowPlaying, PlayPauseButton);
+        } else if (spotifyState.isPlaying && !spotifyGettingToken && spotifyState.trackId[0] != '\0' &&
             (!activeSpotifyDevice || strcmp(activeSpotifyDevice->id, spotifyDevices[pressedMenuIndex].id) != 0)) {
           spotifyQueueAction(TransferPlayback);
         }
-        setActiveDevice(&spotifyDevices[pressedMenuIndex]);
-        if (changed) writeDataJson();
+        if (changed) {
+          setActiveDevice(&spotifyDevices[pressedMenuIndex]);
+          writeDataJson();
+        }
       }
       break;
     case GenreList:
@@ -2227,11 +2234,11 @@ bool spotifyRetryError(HTTP_response_t response) {
       setActiveDevice(nullptr);
       activeSpotifyDeviceId[0] = '\0';
       spotifyDevicesLoaded = false;
-    } else {
-      spotifyQueueAction(GetDevices);
-      setMenuMode(DeviceList, 0);
-      setStatusMessage("select device");
     }
+    spotifyRetryAction = spotifyAction;
+    spotifyQueueAction(GetDevices);
+    setMenuMode(DeviceList, 0);
+    setStatusMessage("select device");
     return true;
   } else if (response.httpCode >= 400) {
     log_e("HTTP %d - %s", response.httpCode, response.payload.c_str());
@@ -2305,7 +2312,6 @@ void spotifyToggle() {
   } else {
     spotifyResetProgress(true);
     nextCurrentlyPlayingMillis = 1;
-    if (retry) spotifyQueueAction(Toggle);
   }
 };
 
@@ -2330,9 +2336,7 @@ void spotifyPlayPlaylist() {
     spotifyState.isPlaying = true;
     strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, SPOTIFY_ID_SIZE);
   }
-  if (!retry) {
-    spotifyPlayPlaylistId = nullptr;
-  }
+  if (!retry) spotifyPlayPlaylistId = nullptr;
 };
 
 void spotifyResetProgress(bool keepContext) {
@@ -2396,7 +2400,8 @@ void spotifyGetDevices() {
       if (activeSpotifyDevice != nullptr && activeSpotifyUser->selectedDeviceId[0] == '\0') {
         setActiveDevice(activeSpotifyDevice);
         writeDataJson();
-      } else if (menuMode == DeviceList) {
+      }
+      if (menuMode == DeviceList) {
         setMenuMode(DeviceList, activeDeviceIndex < 0 ? 0 : activeDeviceIndex);
         invalidateDisplay(true);
       }
