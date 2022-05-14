@@ -618,7 +618,15 @@ void selectRootMenuItem(uint16_t index) {
     }
   } else if (index == rootMenuNowPlayingIndex) {
     nextCurrentlyPlayingMillis = lastInputMillis;
-    setMenuMode(NowPlaying, lastMenuMode == NowPlaying ? lastMenuIndex : (uint16_t)PlayPauseButton);
+    if (lastMenuMode == NowPlaying) {
+      setMenuMode(NowPlaying, lastMenuIndex);
+    } else if (lastMenuMode == SeekControl) {
+      setMenuMode(NowPlaying, SeekButton);
+    } else if (lastMenuMode == VolumeControl) {
+      setMenuMode(NowPlaying, VolumeButton);
+    } else {
+      setMenuMode(NowPlaying, PlayPauseButton);
+    }
   } else if (index == rootMenuUsersIndex) {
     if (!spotifyUsers.empty()) {
       uint16_t newMenuIndex = lastMenuMode == UserList ? lastMenuIndex : 0;
