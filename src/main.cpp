@@ -485,7 +485,7 @@ void loop() {
   if (statusMessage[0] != '\0' && now > statusMessageUntilMillis) {
     statusMessageUntilMillis = 0;
     statusMessage[0] = '\0';
-    drawCenteredText("", screenWidth);
+    drawCenteredText(" ", screenWidth);
     invalidateDisplay();
   } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
     clickEffectEndMillis = 0;
