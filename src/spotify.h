@@ -35,11 +35,6 @@ const char *spotifyCACertificate =
 const char *spotifyClientId = "55aee603baf641f899e5bfeba3fe05d0";
 
 typedef struct {
-  int httpCode;
-  String payload;
-} HTTP_response_t;
-
-typedef struct {
   char name[64] = "";
   char refreshToken[150] = "";
   bool selected = false;

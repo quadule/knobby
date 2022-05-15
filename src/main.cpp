@@ -1883,7 +1883,7 @@ bool spotifyQueueAction(SpotifyActions action) {
   return true;
 }
 
-HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {
+int spotifyApiRequest(const char *method, const char *endpoint, const char *content = "") {
   uint32_t ts = millis();
   spotifyApiRequestStartedMillis = ts;
   String path = String("/v1/") + endpoint;
@@ -1893,7 +1893,6 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
   spotifyHttp.addHeader("Authorization", "Bearer " + String(spotifyAccessToken));
   if (strlen(content) == 0) spotifyHttp.addHeader("Content-Length", "0");
 
-  StreamString payload;
   int code;
   if (String(method) == "GET") {
     code = spotifyHttp.GET();
@@ -1904,19 +1903,14 @@ HTTP_response_t spotifyApiRequest(const char *method, const char *endpoint, cons
   if (code == 401) {
     log_e("401 Unauthorized, clearing spotifyAccessToken");
     spotifyAccessToken[0] = '\0';
-  } else if (code == 204 || spotifyHttp.getSize() == 0) {
-    // log_e("empty response, returning");
-  } else {
-    if (!payload.reserve(spotifyHttp.getSize() + 1)) {
-      log_e("not enough memory to reserve a string! need: %d", (spotifyHttp.getSize() + 1));
-    }
-    spotifyHttp.writeToStream(&payload);
   }
+
+  return code;
+}
+
+void spotifyApiRequestEnded() {
   spotifyHttp.end();
   spotifyApiRequestStartedMillis = -1;
-
-  HTTP_response_t response = {code, payload};
-  return response;
 }
 
 bool spotifyNeedsNewAccessToken() {
@@ -2049,11 +2043,11 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
 void spotifyCurrentlyPlaying() {
   nextCurrentlyPlayingMillis = 0;
   if (spotifyAccessToken[0] == '\0' || !activeSpotifyUser) return;
-  HTTP_response_t response = spotifyApiRequest("GET", "me/player?market=from_token");
+  int statusCode = spotifyApiRequest("GET", "me/player?market=from_token");
 
-  if (response.httpCode == 200) {
-    DynamicJsonDocument json(9000);
-    DeserializationError error = deserializeJson(json, response.payload.c_str());
+  if (statusCode == 200) {
+    DynamicJsonDocument json(24576);
+    DeserializationError error = deserializeJson(json, spotifyHttp.getStream());
 
     if (!error) {
       spotifyState.lastUpdateMillis = millis();
@@ -2177,9 +2171,9 @@ void spotifyCurrentlyPlaying() {
       invalidateDisplay();
     } else {
       log_e("Heap free: %d", ESP.getFreeHeap());
-      log_e("Error %s parsing response: %s", error.c_str(), response.payload.c_str());
+      log_e("Error %s parsing response", error.c_str());
     }
-  } else if (response.httpCode == 204) {
+  } else if (statusCode == 204) {
     bool trackWasLoaded = spotifyState.name[0] != '\0';
     spotifyState.isShuffled = false;
     spotifyState.repeatMode = RepeatOff;
@@ -2192,13 +2186,14 @@ void spotifyCurrentlyPlaying() {
     } else {
       nextCurrentlyPlayingMillis = millis() + spotifyPollInterval;
     }
-  } else if (response.httpCode < 0) {
+  } else if (statusCode < 0) {
     nextCurrentlyPlayingMillis = 1; // retry immediately
   } else {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+    log_e("%d - %s", statusCode, spotifyHttp.getString().c_str());
     setStatusMessage("spotify error");
     nextCurrentlyPlayingMillis = millis() + spotifyPollInterval;
   }
+  spotifyApiRequestEnded();
 }
 
 /**
@@ -2207,10 +2202,10 @@ void spotifyCurrentlyPlaying() {
 void spotifyCurrentProfile() {
   if (spotifyAccessToken[0] == '\0') return;
 
-  HTTP_response_t response = spotifyApiRequest("GET", "me");
-  if (response.httpCode == 200) {
+  int statusCode = spotifyApiRequest("GET", "me");
+  if (statusCode == 200) {
     DynamicJsonDocument json(2000);
-    DeserializationError error = deserializeJson(json, response.payload.c_str());
+    DeserializationError error = deserializeJson(json, spotifyHttp.getStream());
 
     if (!error) {
       const char *displayName = json["display_name"];
@@ -2218,17 +2213,18 @@ void spotifyCurrentProfile() {
       writeDataJson();
       if (menuMode == UserList) setMenuMode(UserList, spotifyUsers.size() - 1);
     } else {
-      log_e("Unable to parse response payload:\n  %s", response.payload.c_str());
+      log_e("Unable to parse response payload:\n  %s", spotifyHttp.getString().c_str());
     }
   } else {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+    log_e("%d - %s", statusCode, spotifyHttp.getString().c_str());
   }
 
   if (!spotifyDevicesLoaded) spotifyQueueAction(GetDevices);
+  spotifyApiRequestEnded();
 }
 
-bool spotifyRetryError(HTTP_response_t response) {
-  if (response.httpCode == 404) {
+bool spotifyRetryError(int statusCode) {
+  if (statusCode == 404) {
     log_w("Spotify device not found");
     if (activeSpotifyDeviceId[0] != '\0') {
       setActiveDevice(nullptr);
@@ -2240,32 +2236,34 @@ bool spotifyRetryError(HTTP_response_t response) {
     setMenuMode(DeviceList, 0);
     setStatusMessage("select device");
     return true;
-  } else if (response.httpCode >= 400) {
-    log_e("HTTP %d - %s", response.httpCode, response.payload.c_str());
+  } else if (statusCode >= 400) {
+    log_e("HTTP %d - %s", statusCode, spotifyHttp.getString().c_str());
   }
   return false;
 }
 
 void spotifyNext() {
-  HTTP_response_t response = spotifyApiRequest("POST", "me/player/next");
+  int statusCode = spotifyApiRequest("POST", "me/player/next");
   spotifyResetProgress(true);
-  if (response.httpCode == 204) {
+  if (statusCode == 204) {
     spotifyState.isPlaying = true;
     spotifyState.disallowsSkippingPrev = false;
   } else {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+    log_e("%d - %s", statusCode, spotifyHttp.getString().c_str());
   }
+  spotifyApiRequestEnded();
 };
 
 void spotifyPrevious() {
-  HTTP_response_t response = spotifyApiRequest("POST", "me/player/previous");
+  int statusCode = spotifyApiRequest("POST", "me/player/previous");
   spotifyResetProgress(true);
-  if (response.httpCode == 204) {
+  if (statusCode == 204) {
     spotifyState.isPlaying = true;
     spotifyState.disallowsSkippingNext = false;
   } else {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+    log_e("%d - %s", statusCode, spotifyHttp.getString().c_str());
   }
+  spotifyApiRequestEnded();
 };
 
 void spotifySeek() {
@@ -2273,16 +2271,17 @@ void spotifySeek() {
   spotifyState.progressMillis = spotifyState.estimatedProgressMillis = spotifySeekToMillis;
   char path[40];
   snprintf(path, sizeof(path), "me/player/seek?position_ms=%d", spotifySeekToMillis);
-  HTTP_response_t response = spotifyApiRequest("PUT", path);
-  if (response.httpCode == 204) {
+  int statusCode = spotifyApiRequest("PUT", path);
+  if (statusCode == 204) {
     spotifyState.lastUpdateMillis = millis();
     spotifyState.progressMillis = spotifyState.estimatedProgressMillis = spotifySeekToMillis;
     nextCurrentlyPlayingMillis = spotifyState.lastUpdateMillis + SPOTIFY_WAIT_MILLIS;
     invalidateDisplay();
   } else {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+    log_e("%d - %s", statusCode, spotifyHttp.getString().c_str());
     spotifyResetProgress(true);
   }
+  spotifyApiRequestEnded();
 };
 
 void spotifyToggle() {
@@ -2294,18 +2293,18 @@ void spotifyToggle() {
   spotifyState.lastUpdateMillis = millis();
   spotifyState.progressMillis = spotifyState.estimatedProgressMillis;
 
-  HTTP_response_t response;
+  int statusCode;
   if (activeSpotifyDeviceId[0] != '\0') {
     char path[68];
     snprintf(path, sizeof(path), wasPlaying ? "me/player/pause?device_id=%s" : "me/player/play?device_id=%s",
              activeSpotifyDeviceId);
-    response = spotifyApiRequest("PUT", path);
+    statusCode = spotifyApiRequest("PUT", path);
   } else {
-    response = spotifyApiRequest("PUT", wasPlaying ? "me/player/pause" : "me/player/play");
+    statusCode = spotifyApiRequest("PUT", wasPlaying ? "me/player/pause" : "me/player/play");
   }
-  bool retry = spotifyRetryError(response);
+  spotifyRetryError(statusCode);
 
-  if (response.httpCode == 204) {
+  if (statusCode == 204) {
     spotifyState.lastUpdateMillis = millis();
     nextCurrentlyPlayingMillis = spotifyState.lastUpdateMillis + SPOTIFY_WAIT_MILLIS;
     invalidateDisplay();
@@ -2313,6 +2312,7 @@ void spotifyToggle() {
     spotifyResetProgress(true);
     nextCurrentlyPlayingMillis = 1;
   }
+  spotifyApiRequestEnded();
 };
 
 void spotifyPlayPlaylist() {
@@ -2321,22 +2321,23 @@ void spotifyPlayPlaylist() {
 
   char requestContent[59];
   snprintf(requestContent, sizeof(requestContent), "{\"context_uri\":\"spotify:playlist:%s\"}", spotifyPlayPlaylistId);
-  HTTP_response_t response;
+  int statusCode;
   if (activeSpotifyDeviceId[0] != '\0') {
     char path[90];
     snprintf(path, sizeof(path), "me/player/play?device_id=%s", activeSpotifyDeviceId);
-    response = spotifyApiRequest("PUT", path, requestContent);
+    statusCode = spotifyApiRequest("PUT", path, requestContent);
   } else {
-    response = spotifyApiRequest("PUT", "me/player/play", requestContent);
+    statusCode = spotifyApiRequest("PUT", "me/player/play", requestContent);
   }
-  bool retry = spotifyRetryError(response);
+  bool retry = spotifyRetryError(statusCode);
 
   spotifyResetProgress(true);
-  if (response.httpCode == 204) {
+  if (statusCode == 204) {
     spotifyState.isPlaying = true;
     strncpy(spotifyState.playlistId, spotifyPlayPlaylistId, SPOTIFY_ID_SIZE);
   }
   if (!retry) spotifyPlayPlaylistId = nullptr;
+  spotifyApiRequestEnded();
 };
 
 void spotifyResetProgress(bool keepContext) {
@@ -2364,10 +2365,10 @@ void spotifyResetProgress(bool keepContext) {
 
 void spotifyGetDevices() {
   if (spotifyAccessToken[0] == '\0') return;
-  HTTP_response_t response = spotifyApiRequest("GET", "me/player/devices");
-  if (response.httpCode == 200) {
+  int statusCode = spotifyApiRequest("GET", "me/player/devices");
+  if (statusCode == 200) {
     DynamicJsonDocument doc(5000);
-    DeserializationError error = deserializeJson(doc, response.payload.c_str());
+    DeserializationError error = deserializeJson(doc, spotifyHttp.getStream());
 
     if (!error) {
       JsonArray jsonDevices = doc["devices"];
@@ -2407,6 +2408,7 @@ void spotifyGetDevices() {
       }
     }
   }
+  spotifyApiRequestEnded();
   invalidateDisplay();
 }
 
@@ -2418,23 +2420,23 @@ void spotifySetVolume() {
   int setpoint = spotifySetVolumeTo;
   char path[74];
   snprintf(path, sizeof(path), "me/player/volume?volume_percent=%d", setpoint);
-  HTTP_response_t response;
-  response = spotifyApiRequest("PUT", path);
+  spotifyApiRequest("PUT", path);
   if (activeSpotifyDevice != nullptr) activeSpotifyDevice->volumePercent = setpoint;
   if (spotifySetVolumeTo == setpoint) spotifySetVolumeTo = -1;
+  spotifyApiRequestEnded();
 }
 
 void spotifyCheckLike() {
   if (spotifyAccessToken[0] == '\0' || spotifyState.trackId[0] == '\0') return;
 
-  HTTP_response_t response;
+  int statusCode;
   char path[46];
   snprintf(path, sizeof(path), "me/tracks/contains?ids=%s", spotifyState.trackId);
-  response = spotifyApiRequest("GET", path);
+  statusCode = spotifyApiRequest("GET", path);
 
-  if (response.httpCode == 200) {
+  if (statusCode == 200) {
     StaticJsonDocument<16> json;
-    DeserializationError error = deserializeJson(json, response.payload.c_str());
+    DeserializationError error = deserializeJson(json, spotifyHttp.getStream());
     if (!error) {
       bool liked = json[0];
       if (liked != spotifyState.isLiked) {
@@ -2442,12 +2444,13 @@ void spotifyCheckLike() {
         invalidateDisplay();
       }
     } else {
-      log_e("%d - %s", response.httpCode, response.payload.c_str());
+      log_e("%d - %s", statusCode, spotifyHttp.getString());
     }
     spotifyState.checkedLike = true;
   } else {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+    log_e("%d - %s", statusCode, spotifyHttp.getString());
   }
+  spotifyApiRequestEnded();
 };
 
 void spotifyToggleLike() {
@@ -2456,16 +2459,17 @@ void spotifyToggleLike() {
   spotifyState.isLiked = !spotifyState.isLiked;
   invalidateDisplay();
 
-  HTTP_response_t response;
+  int statusCode;
   char path[37];
   snprintf(path, sizeof(path), "me/tracks?ids=%s", spotifyState.trackId);
-  response = spotifyApiRequest(spotifyState.isLiked ? "PUT" : "DELETE", path);
+  statusCode = spotifyApiRequest(spotifyState.isLiked ? "PUT" : "DELETE", path);
 
-  if (response.httpCode > 204) {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+  if (statusCode > 204) {
+    log_e("%d - %s", statusCode, spotifyHttp.getString());
     spotifyState.isLiked = !spotifyState.isLiked;
     invalidateDisplay();
   }
+  spotifyApiRequestEnded();
 };
 
 void spotifyToggleShuffle() {
@@ -2474,23 +2478,24 @@ void spotifyToggleShuffle() {
   spotifyState.isShuffled = !spotifyState.isShuffled;
   invalidateDisplay();
 
-  HTTP_response_t response;
+  int statusCode;
   char path[33];
   snprintf(path, sizeof(path), "me/player/shuffle?state=%s", spotifyState.isShuffled ? "true" : "false");
-  response = spotifyApiRequest("PUT", path);
+  statusCode = spotifyApiRequest("PUT", path);
 
-  if (response.httpCode == 204) {
+  if (statusCode == 204) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+    log_e("%d - %s", statusCode, spotifyHttp.getString());
     spotifyState.isShuffled = !spotifyState.isShuffled;
     invalidateDisplay();
   }
+  spotifyApiRequestEnded();
 };
 
 void spotifyToggleRepeat() {
   if (spotifyAccessToken[0] == '\0') return;
-  HTTP_response_t response;
+  int statusCode;
   const char *pathTemplate = "me/player/repeat?state=%s";
   char path[35];
 
@@ -2506,41 +2511,43 @@ void spotifyToggleRepeat() {
     snprintf(path, sizeof(path), pathTemplate, "off");
   }
   invalidateDisplay();
-  response = spotifyApiRequest("PUT", path);
+  statusCode = spotifyApiRequest("PUT", path);
 
-  if (response.httpCode == 204) {
+  if (statusCode == 204) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+    log_e("%d - %s", statusCode, spotifyHttp.getString());
     spotifyState.repeatMode = RepeatOff;
     invalidateDisplay();
   }
+  spotifyApiRequestEnded();
 };
 
 void spotifyTransferPlayback() {
   if (activeSpotifyDevice == nullptr) return;
   char requestContent[84];
   snprintf(requestContent, sizeof(requestContent), "{\"device_ids\":[\"%s\"]}", activeSpotifyDeviceId);
-  HTTP_response_t response;
-  response = spotifyApiRequest("PUT", "me/player", requestContent);
-  if (response.httpCode == 204) {
+  int statusCode;
+  statusCode = spotifyApiRequest("PUT", "me/player", requestContent);
+  if (statusCode == 204) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+    log_e("%d - %s", statusCode, spotifyHttp.getString());
   }
+  spotifyApiRequestEnded();
 };
 
 void spotifyGetPlaylistDescription() {
   if (spotifyAccessToken[0] == '\0') return;
   const char *activePlaylistId = genrePlaylists[genreIndex];
-  HTTP_response_t response;
+  int statusCode;
   char url[53];
   snprintf(url, sizeof(url), "playlists/%s?fields=description", activePlaylistId);
-  response = spotifyApiRequest("GET", url);
+  statusCode = spotifyApiRequest("GET", url);
 
-  if (response.httpCode == 200) {
+  if (statusCode == 200) {
     DynamicJsonDocument json(3000);
-    DeserializationError error = deserializeJson(json, response.payload.c_str());
+    DeserializationError error = deserializeJson(json, spotifyHttp.getStream());
     if (!error) {
       String description = json["description"];
 
@@ -2575,13 +2582,14 @@ void spotifyGetPlaylistDescription() {
       setMenuMode(SimilarList, 0);
     }
   } else {
-    log_e("%d - %s", response.httpCode, response.payload.c_str());
+    log_e("%d - %s", statusCode, spotifyHttp.getString());
   }
+  spotifyApiRequestEnded();
 };
 
 void spotifyGetPlaylists() {
   if (spotifyAccessToken[0] == '\0') return;
-  HTTP_response_t response;
+  int statusCode;
   int16_t nextOffset = 0;
   uint16_t limit = 50;
   uint16_t offset = 0;
@@ -2591,10 +2599,10 @@ void spotifyGetPlaylists() {
 
   while (nextOffset >= 0) {
     snprintf(url, sizeof(url), "me/playlists/?fields=items(id,name)&limit=%d&offset=%d", limit, nextOffset);
-    response = spotifyApiRequest("GET", url);
-    if (response.httpCode == 200) {
+    statusCode = spotifyApiRequest("GET", url);
+    if (statusCode == 200) {
       DynamicJsonDocument json(6000);
-      DeserializationError error = deserializeJson(json, response.payload.c_str());
+      DeserializationError error = deserializeJson(json, spotifyHttp.getStream());
       if (!error) {
         limit = json["limit"];
         offset = json["offset"];
@@ -2627,9 +2635,10 @@ void spotifyGetPlaylists() {
       }
     } else {
       nextOffset = -1;
-      log_e("%d - %s", response.httpCode, response.payload.c_str());
+      log_e("%d - %s", statusCode, spotifyHttp.getString());
     }
   }
+  spotifyApiRequestEnded();
 }
 
 void updateFirmware() {
