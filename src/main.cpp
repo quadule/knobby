@@ -1320,7 +1320,7 @@ void updateDisplay() {
       const bool seekSelected = menuMode == SeekControl || menuIndex == SeekButton;
       img.createSprite(dividerWidth + seekRadius * 2, seekRadius * 2 + 1);
       img.drawFastHLine(seekRadius, seekRadius, dividerWidth, seekSelected ? TFT_DARKERGREY : TFT_LIGHTBLACK);
-      if (seekSelected) img.drawFastHLine(seekRadius, seekRadius + 1, dividerWidth, TFT_DARKERGREY);
+      if (seekSelected) img.drawFastHLine(seekRadius, seekRadius - 1, dividerWidth, TFT_DARKERGREY);
       if (spotifyState.estimatedProgressMillis > 0 && spotifyState.durationMillis > 0) {
         float progress = (float)spotifyState.estimatedProgressMillis / (float)spotifyState.durationMillis;
         img.drawFastHLine(seekRadius, seekRadius, round(dividerWidth * progress), seekSelected ? TFT_WHITE : TFT_LIGHTGREY);
