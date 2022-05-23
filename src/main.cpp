@@ -780,10 +780,8 @@ void knobClicked() {
             (!activeSpotifyDevice || strcmp(activeSpotifyDevice->id, spotifyDevices[pressedMenuIndex].id) != 0)) {
           spotifyQueueAction(TransferPlayback);
         }
-        if (changed) {
-          setActiveDevice(&spotifyDevices[pressedMenuIndex]);
-          writeDataJson();
-        }
+        setActiveDevice(&spotifyDevices[pressedMenuIndex]);
+        if (changed) writeDataJson();
       }
       break;
     case GenreList:
