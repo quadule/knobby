@@ -590,7 +590,7 @@ void backgroundApiLoop(void *params) {
           break;
       }
       spotifyAction = Idle;
-    } else if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis) {
+    } else if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis && spotifyActionQueue.empty()) {
       spotifyQueueAction(CurrentlyPlaying);
     } else {
       delayIfIdle();
