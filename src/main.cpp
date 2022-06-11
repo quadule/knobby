@@ -1901,6 +1901,8 @@ int spotifyApiRequest(const char *method, const char *endpoint, const char *cont
   if (code == 401) {
     log_e("401 Unauthorized, clearing spotifyAccessToken");
     spotifyAccessToken[0] = '\0';
+    spotifyGettingToken = true;
+    spotifyActionQueue.push_front(GetToken);
   }
 
   return code;
@@ -2233,6 +2235,8 @@ bool spotifyRetryError(int statusCode) {
     spotifyQueueAction(GetDevices);
     setMenuMode(DeviceList, 0);
     setStatusMessage("select device");
+    return true;
+  } else if (statusCode == 401) {
     return true;
   } else if (statusCode >= 400) {
     log_e("HTTP %d - %s", statusCode, spotifyHttp.getString().c_str());
