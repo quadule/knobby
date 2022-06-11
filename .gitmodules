@@ -1,3 +1,4 @@
 [submodule "components/arduino"]
 	path = components/arduino
-	url = "https://github.com/espressif/arduino-esp32.git#idf-release/v4.4"
+	url = "https://github.com/espressif/arduino-esp32.git"
+	branch = "idf-release/v4.4"
