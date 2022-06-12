@@ -317,7 +317,11 @@ void setup() {
 
 void startWifiManager() {
   if (wifiManager) return;
-  inactivityMillis = 1000 * 60 * 5;
+  if (knobby.powerStatus() == PowerStatusPowered) {
+    inactivityMillis = 1000 * 60 * 20;
+  } else {
+    inactivityMillis = 1000 * 60 * 8;
+  }
   wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
   wifiManager->setBreakAfterConfig(true);
   wifiManager->setSaveConfigCallback(saveAndSleep);
