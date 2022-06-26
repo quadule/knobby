@@ -39,6 +39,13 @@ Streaming services feed you new releases and top hits through algorithmic recomm
 * [MakerFocus 1100mAh LiPo battery](https://www.makerfocus.com/products/makerfocus-3-7v-1100mah-lithium-rechargeable-battery-1s-3c-lipo-battery-with-protection-board-pack-of-4)
 * [3D printed case and knob](https://www.printables.com/model/156363)
 
+#### Other rotary encoders
+
+If you use a different rotary encoder in your build and find that the knob must be turned two clicks to move one item through the menu, you can configure the encoder’s pulse count.
+
+1. Edit `data/data.json` and replace `null` with `2` for `pulseCount`.
+2. Run `pio run --target uploadfs` to upload the configuration file.
+
 ### Wire it up
 
 <img src="images/wiring-diagram.png?raw=true" width="439px" height="439px" alt="wiring diagram of rotary encoder with t-display board">

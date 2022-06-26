@@ -696,7 +696,7 @@ void knobRotated() {
   int newCount = knob.getCount();
   int knobDelta = newCount - lastKnobCount;
   int reversingMultiplier = flipDisplay ? -1 : 1;
-  int positionDelta = knobDelta / ROTARY_ENCODER_PULSE_COUNT * reversingMultiplier;
+  int positionDelta = knobDelta / pulseCount * reversingMultiplier;
   if (positionDelta == 0) return;
   lastKnobCount = newCount;
 
@@ -1798,8 +1798,11 @@ bool readDataJson() {
   }
 
   configPassword = doc["configPassword"] | "";
-  firmwareURL = doc["firmwareURL"] | "";
+  firmwareURL = doc["firmwareURL"] | KNOBBY_FIRMWARE_URL;
+  if (firmwareURL.isEmpty()) firmwareURL = KNOBBY_FIRMWARE_URL;
   flipDisplay = doc["flipDisplay"];
+  pulseCount = doc["pulseCount"];
+  if (pulseCount <= 0 || pulseCount > 8) pulseCount = ROTARY_ENCODER_PULSE_COUNT;
   wifiSSID = doc["wifiSSID"] | WiFi.SSID();
   wifiPassword = doc["wifiPassword"] | WiFi.psk();
 
@@ -1829,8 +1832,9 @@ bool writeDataJson() {
   DynamicJsonDocument doc(5000);
 
   doc["configPassword"] = configPassword;
-  doc["firmwareURL"] = firmwareURL;
+  if (!firmwareURL.equals(KNOBBY_FIRMWARE_URL)) doc["firmwareURL"] = firmwareURL;
   if (flipDisplay) doc["flipDisplay"] = true;
+  if (pulseCount != ROTARY_ENCODER_PULSE_COUNT) doc["pulseCount"] = pulseCount;
   doc["wifiSSID"] = wifiSSID;
   doc["wifiPassword"] = wifiPassword;
 
@@ -2669,13 +2673,8 @@ void updateFirmware() {
   http.setConnectTimeout(4000);
   http.setTimeout(4000);
   http.setReuse(false);
-  if (firmwareURL.isEmpty()) {
-    log_i("GET %s", KNOBBY_FIRMWARE_URL);
-    http.begin(client, KNOBBY_FIRMWARE_URL);
-  } else {
-    log_i("GET %s", firmwareURL);
-    http.begin(client, firmwareURL);
-  }
+  log_i("GET %s", firmwareURL);
+  http.begin(client, firmwareURL);
   const char * headerKeys[] = { "x-amz-meta-git-version" };
   http.collectHeaders(headerKeys, (sizeof(headerKeys) / sizeof(headerKeys[0])));
   int code = http.GET();

@@ -228,6 +228,7 @@ ESPAsync_WiFiManager *wifiManager;
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
 bool flipDisplay = false;
+int pulseCount = ROTARY_ENCODER_PULSE_COUNT;
 int lastKnobCount = 0;
 bool knobHeldForRandom = false;
 bool knobRotatedWhileLongPressed = false;

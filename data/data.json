@@ -1,6 +1,7 @@
 {
   "configPassword": "",
   "firmwareURL": "",
+  "pulseCount": null,
   "wifiSSID": "",
   "wifiPassword": ""
 }
