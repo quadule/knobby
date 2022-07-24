@@ -2090,6 +2090,8 @@ void spotifyCurrentlyPlaying() {
       JsonObject item = json["item"];
 
       if (!item.isNull()) {
+        emptyCurrentlyPlayingResponses = 0;
+
         if (!item["id"].isNull()) {
           strncpy(spotifyState.trackId, item["id"], SPOTIFY_ID_SIZE);
           if (!spotifyState.checkedLike) spotifyQueueAction(CheckLike);
@@ -2192,7 +2194,7 @@ void spotifyCurrentlyPlaying() {
     if (spotifyPlayAtMillis > 0 && millis() - spotifyPlayAtMillis < SPOTIFY_WAIT_MILLIS * 3) {
       nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
     } else {
-      nextCurrentlyPlayingMillis = millis() + spotifyPollInterval;
+      nextCurrentlyPlayingMillis = millis() + spotifyPollInterval + emptyCurrentlyPlayingResponses++ * 1000;
     }
   } else if (statusCode < 0) {
     nextCurrentlyPlayingMillis = 1; // retry immediately
