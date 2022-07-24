@@ -35,7 +35,7 @@ Streaming services feed you new releases and top hits through algorithmic recomm
 ### Get the parts
 
 * [LilyGO TTGO T-Display ESP32 board with ST7789 240x135 display](https://www.aliexpress.com/item/33048962331.html)
-* [Bourns PEC11R-4215F-S0024 rotary encoder](https://www.mouser.com/ProductDetail/Bourns/PEC11R-4215F-S0024)
+* [Bourns PEC11R-4215F-S0024 rotary encoder](https://www.mouser.com/ProductDetail/Bourns/PEC11R-4215F-S0024?qs=Zq5ylnUbLm5lAqmKF80wzQ%3D%3D)
 * [MakerFocus 1100mAh LiPo battery](https://www.makerfocus.com/products/makerfocus-3-7v-1100mah-lithium-rechargeable-battery-1s-3c-lipo-battery-with-protection-board-pack-of-4)
 * [3D printed case and knob](https://www.printables.com/model/156363)
 
