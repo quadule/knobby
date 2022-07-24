@@ -79,7 +79,7 @@ const char* genreLabels_<%= vector %>[GENRE_COUNT] = { <%= sorted.map { |g| g.la
 <% end -%>
 
 END_TEMPLATE
-erb = ERB.new(template, 0, "-")
+erb = ERB.new(template, trim_mode: "-")
 
 File.open("src/genres.h", "w") do |f|
   f << erb.result(binding)
