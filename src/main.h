@@ -93,7 +93,14 @@ enum MenuModes {
   NowPlaying = 6,
   UserList = 7
 };
-enum GenreSortModes { AlphabeticSort, AlphabeticSuffixSort };
+enum GenreSortModes {
+  AlphabeticSort = 0,
+  AlphabeticSuffixSort = 1,
+  AmbienceSort = 2,
+  ModernitySort = 3,
+  PopularitySort = 4
+};
+const int genreSortModesCount = 5;
 enum NowPlayingItems {
   LikeButton = 0,
   ShuffleButton = 1,
@@ -130,8 +137,8 @@ bool contains(C&& c, T e) {
 
 const char *rootMenuItems[] = {"devices", "settings", "playlists", "countries", "genres", "similar", "now playing", "users"};
 const char *settingsMenuItems[] = {"about", "update", "orientation", "add user", "log out", "reset settings"};
-const int screenWidth = TFT_HEIGHT - 1;
-const int screenHeight = TFT_WIDTH - 1;
+const int screenWidth = TFT_HEIGHT;
+const int screenHeight = TFT_WIDTH;
 const int centerX = screenWidth / 2;
 const unsigned int clickEffectMillis = 30;
 const unsigned int debounceMillis = 20;
@@ -141,17 +148,18 @@ const unsigned int extraLongPressMillis = 1250;
 const unsigned int inactivityFadeOutMillis = 4000;
 const unsigned int randomizingLengthMillis = 900;
 const unsigned int waitToShowProgressMillis = 2000;
-const unsigned int statusMessageMillis = 2000;
+const unsigned int statusMessageMillis = 1750;
 const unsigned int newSessionSeconds = 60 * 60 * 10;
-const int lineOne = 9;
+const int textPadding = 9;
+const int textStartX = textPadding + 1;
+const int textWidth = screenWidth - textPadding * 2;
+const int dividerWidth = screenWidth - 12;
+const int lineOne = textPadding;
 const int lineDivider = lineOne + LINE_HEIGHT + 1;
 const int lineTwo = lineOne + LINE_HEIGHT + 12;
 const int lineThree = lineTwo + LINE_HEIGHT;
 const int lineFour = lineThree + LINE_HEIGHT;
 const int lineSpacing = 3;
-const int textPadding = 9;
-const int textWidth = screenWidth + 1 - textPadding * 2;
-const int dividerWidth = screenWidth - 12;
 #ifdef LILYGO_WATCH_2019_WITH_TOUCH
   const int maxTextLines = 5;
 #else

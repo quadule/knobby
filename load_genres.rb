@@ -34,8 +34,8 @@ def color_565(r, g, b)
 end
 
 sorted_genres = Hash.new { [] }
-%w[popularity].each do |vector|
-  print "Fetching rankings by #{vector}... "
+%w[background modernity popularity].each do |vector|
+  print "Fetching genre rankings by #{vector}... "
   doc = Nokogiri::HTML(URI.open("http://everynoise.com/everynoise1d.cgi?vector=#{vector}&scope=all"))
   sorted_genres[vector] = doc.css("body > table > tr").map(&method(:build_genre))
   puts "done"
@@ -77,7 +77,6 @@ const uint16_t genreIndexes_<%= vector %>[GENRE_COUNT] = { <%= sorted.map { |g| 
 const char* genreLabels_<%= vector %>[GENRE_COUNT] = { <%= sorted.map { |g| g.label.inspect }.join(", ") %> };
 <% end -%>
 <% end -%>
-
 END_TEMPLATE
 erb = ERB.new(template, trim_mode: "-")
 
