@@ -112,7 +112,7 @@ void setup() {
     wifiConnectWarning = true;
     setMenuMode(InitialSetup, 0);
     menuSize = 0;
-    drawWifiSetup();
+    drawSetup();
     improvSerial.loop();
     startWifiManager();
   } else {
@@ -438,7 +438,7 @@ void loop() {
     if (lastConnectedMillis < 0 && now > 5000) setStatusMessage("connecting to wifi");
     if (lastConnectedMillis < 0 && now >= wifiConnectTimeoutMillis) {
       log_w("No wifi after %d seconds, starting config portal.", (int)wifiConnectTimeoutMillis / 1000);
-      drawWifiSetup();
+      drawSetup();
       setMenuMode(InitialSetup, 0);
       wifiConnectWarning = true;
       startWifiManager();
@@ -488,10 +488,10 @@ void loop() {
         min(spotifyState.durationMillis, spotifyState.progressMillis + (now - spotifyState.lastUpdateMillis));
   }
 
-  if (statusMessageUntilMillis > 0 && now + 10 >= statusMessageUntilMillis) {
+  if (statusMessageUntilMillis > 0 && now >= statusMessageUntilMillis) {
     statusMessageUntilMillis = 0;
     statusMessage[0] = '\0';
-    tft.fillRect(0, 1, screenWidth, LINE_HEIGHT - 1, TFT_BLACK);
+    tft.fillRect(0, 1, screenWidth, LINE_HEIGHT, TFT_BLACK);
     invalidateDisplay();
   } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
     clickEffectEndMillis = 0;
@@ -1089,12 +1089,17 @@ void drawIcon(const String& icon, bool selected, bool clicked, bool disabled, bo
   ico.deleteSprite();
 }
 
-void drawMenuHeader(bool selected, const char *text) {
+void drawStatusMessage() {
   tft.setCursor(textStartX + textPadding, lineOne);
-  if (millis() < statusMessageUntilMillis && statusMessage[0] != '\0') {
     img.setTextColor(TFT_WHITE, TFT_BLACK);
-    drawCenteredText(statusMessage, textWidth - textPadding * 2);
+  drawCenteredText(statusMessage, screenWidth);
+}
+
+void drawMenuHeader(bool selected, const char *text) {
+  if (statusMessage[0] != '\0') {
+    drawStatusMessage();
   } else {
+    tft.setCursor(textStartX + textPadding, lineOne);
     img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
     if (text[0] != '\0') {
       drawCenteredText(text, textWidth - textPadding * 2);
@@ -1114,24 +1119,345 @@ void drawMenuHeader(bool selected, const char *text) {
   if (text[0] != '\0' || menuSize > 0) drawDivider(selected);
 }
 
-void drawWifiSetup() {
+void drawSetup() {
   drawMenuHeader(true, "setup knobby");
   img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-  if (menuIndex == 0) {
-    tft.setCursor(textStartX, lineTwo);
-    drawCenteredText("connect usb and visit", textWidth, 1);
-    tft.setCursor(textStartX, lineThree);
-    drawCenteredText("knobby.quadule.com/", textWidth, 1);
-    tft.setCursor(textStartX, lineFour);
-    drawCenteredText("setup", textWidth, 1);
+  if (wifiConnectWarning) {
+    if (menuIndex == 0) {
+      tft.setCursor(textStartX, lineTwo);
+      drawCenteredText("connect usb and visit", textWidth, 1);
+      tft.setCursor(textStartX, lineThree);
+      drawCenteredText("knobby.quadule.com/", textWidth, 1);
+      tft.setCursor(textStartX, lineFour);
+      drawCenteredText("setup", textWidth, 1);
+    } else {
+      tft.setCursor(textStartX, lineTwo);
+      drawCenteredText("or join wifi network", textWidth, 1);
+      tft.setCursor(textStartX, lineThree);
+      drawCenteredText(("name: " + nodeName).c_str(), textWidth, 1);
+      tft.setCursor(textStartX, lineFour);
+      drawCenteredText(("pass: " + configPassword).c_str(), textWidth, 1);
+    }
   } else {
+    drawMenuHeader(true, "setup knobby");
     tft.setCursor(textStartX, lineTwo);
-    drawCenteredText("or join wifi network", textWidth, 1);
-    tft.setCursor(textStartX, lineThree);
-    drawCenteredText(("name: " + nodeName).c_str(), textWidth, 1);
-    tft.setCursor(textStartX, lineFour);
-    drawCenteredText(("pass: " + configPassword).c_str(), textWidth, 1);
+    drawCenteredText(("log in with spotify at http://" + nodeName + ".local").c_str(), textWidth, maxTextLines);
   }
+}
+
+void drawRandomizing() {
+  if (millis() < randomizingMenuNextMillis) return;
+  randomizingMenuTicks++;
+  randomizingMenuNextMillis = millis() + max((int)(pow(randomizingMenuTicks, 3) + pow(randomizingMenuTicks, 2)), 10);
+  setMenuIndex(random(checkMenuSize(lastPlaylistMenuMode)));
+  tft.setCursor(textStartX, lineTwo);
+  if (isGenreMenu(lastPlaylistMenuMode)) {
+    img.setTextColor(genreColors[genreIndex], TFT_BLACK);
+    drawCenteredText(genres[genreIndex], textWidth, 3);
+  } else if (lastPlaylistMenuMode == CountryList) {
+    drawCenteredText(countries[menuIndex], textWidth, 3);
+  } else if (lastPlaylistMenuMode == PlaylistList) {
+    drawCenteredText(spotifyPlaylists[menuIndex].name.c_str(), textWidth, maxTextLines);
+  }
+}
+
+void drawRootMenu() {
+  tft.setCursor(textStartX, lineTwo);
+  img.setTextColor(TFT_WHITE, TFT_BLACK);
+  if (shouldShowRandom()) {
+    double pressedProgress = min(1.0, (double)getExtraLongPressedMillis() / (double)extraLongPressMillis);
+    tft.drawFastHLine(0, 0, (int)(pressedProgress * screenWidth), TFT_WHITE);
+    drawCenteredText("random", textWidth);
+  } else {
+    tft.drawFastHLine(0, 0, screenWidth, TFT_BLACK);
+    if (menuIndex == GenreList) {
+      switch (genreSort) {
+        case AlphabeticSort:
+          drawCenteredText("genres", textWidth);
+          break;
+        case AlphabeticSuffixSort:
+          drawCenteredText("genres by suffix", textWidth);
+          break;
+        case AmbienceSort:
+          drawCenteredText("genres by ambience", textWidth);
+          break;
+        case ModernitySort:
+          drawCenteredText("genres by modernity", textWidth);
+          break;
+        case PopularitySort:
+          drawCenteredText("genres by popularity", textWidth);
+          break;
+      }
+    } else if (menuIndex == rootMenuSimilarIndex) {
+      drawCenteredText(rootMenuItems[SimilarList], textWidth);
+    } else if (menuIndex == rootMenuNowPlayingIndex) {
+      drawCenteredText(rootMenuItems[NowPlaying], textWidth);
+    } else if (menuIndex == rootMenuUsersIndex) {
+      drawCenteredText(rootMenuItems[UserList], textWidth);
+    } else {
+      drawCenteredText(rootMenuItems[menuIndex], textWidth);
+    }
+  }
+  tft.drawRoundRect(7, lineTwo - 15, screenWidth - 14, 49, 5, TFT_WHITE);
+}
+
+void drawSettingsMenu() {
+  drawMenuHeader(false, settingsMenuItems[menuIndex]);
+  img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  tft.setCursor(textStartX, lineTwo);
+  switch (menuIndex) {
+    case SettingsAbout:
+      tft.setCursor(textStartX, lineTwo);
+      char about[100];
+      sprintf(about, "knobby.quadule.com by milo winningham %s", KNOBBY_VERSION);
+      drawCenteredText(about, textWidth, 3);
+      break;
+    case SettingsUpdate:
+      drawCenteredText("double click to begin updating", textWidth, 3);
+      break;
+    case SettingsOrientation:
+      drawCenteredText("double click to rotate the display", textWidth, 3);
+      break;
+    case SettingsAddUser:
+      drawCenteredText(("log in with spotify at http://" + nodeName + ".local/authorize").c_str(), textWidth, 3);
+      break;
+    case SettingsRemoveUser:
+      drawCenteredText("double click to log out of spotify", textWidth, 3);
+      break;
+    case SettingsReset:
+      drawCenteredText("double click to erase all data and enter setup mode", textWidth, 3);;
+      break;
+    default:
+      break;
+  }
+}
+
+void drawUserMenu() {
+  SpotifyUser_t *user = &spotifyUsers[menuIndex];
+  bool selected = user == activeSpotifyUser;
+  drawMenuHeader(selected);
+
+  if (user != nullptr) {
+    tft.setCursor(textStartX, lineTwo);
+    if (user->name[0] == '\0') {
+      drawCenteredText("loading...", textWidth);
+    } else {
+      if (strcmp(user->refreshToken, spotifyRefreshToken) == 0) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+      drawCenteredText(user->name, textWidth, 3);
+    }
+  }
+}
+
+void drawDeviceMenu() {
+  if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
+    SpotifyDevice_t *device = &spotifyDevices[menuIndex];
+    bool selected = device == activeSpotifyDevice;
+    drawMenuHeader(selected);
+
+    if (device != nullptr) {
+      tft.setCursor(textStartX, lineTwo);
+      if (!spotifyDevicesLoaded || device->name[0] == '\0') {
+        drawCenteredText("loading...", textWidth, 3);
+      } else {
+        if (strcmp(device->id, activeSpotifyDeviceId) == 0) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        drawCenteredText(device->name, textWidth, 3);
+      }
+    }
+  } else if (!spotifyDevicesLoaded || spotifyActionIsQueued(GetDevices)) {
+    tft.setCursor(textStartX, lineTwo);
+    img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    drawCenteredText("loading...", textWidth, 3);
+  } else if (spotifyDevicesLoaded && spotifyDevices.empty()) {
+    tft.setCursor(textStartX, lineTwo);
+    img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    drawCenteredText("no devices found", textWidth, 3);
+  }
+}
+
+void drawVolumeControl() {
+  const uint8_t x = 10;
+  const uint8_t y = 30;
+  const uint8_t width = 220;
+  img.createSprite(width, 82);
+  img.fillSprite(TFT_BLACK);
+  img.drawRoundRect(0, 0, width, 32, 5, TFT_WHITE);
+  img.fillRoundRect(4, 4, round(2.12 * menuIndex), 24, 3, TFT_DARKGREY);
+  char label[7];
+  sprintf(label, "%d%%", menuIndex);
+  img.setTextColor(TFT_WHITE, TFT_BLACK);
+  img.drawString(label, width / 2 - img.textWidth(label) / 2, 48);
+  tft.drawRect(0, 0, x - 1, y - 1, TFT_BLACK);
+  img.pushSprite(x, y);
+  img.deleteSprite();
+}
+
+void drawNowPlayingOrSeek() {
+  const auto now = millis();
+  tft.setCursor(0, lineOne);
+  if (statusMessage[0] != '\0') {
+    drawStatusMessage();
+  } else if (menuMode == SeekControl) {
+    char elapsed[11];
+    formatMillis(elapsed, menuIndex * 1000);
+    drawMenuHeader(false, elapsed);
+  } else if (menuMode == NowPlaying) {
+    const int iconTop = 4;
+    const int width = ICON_SIZE + 2;
+    const int extraSpace = 10;
+
+    bool likeClicked = menuIndex == LikeButton && spotifyActionIsQueued(ToggleLike) && now < clickEffectEndMillis;
+    tft.setCursor(5, iconTop);
+    drawIcon(spotifyState.isLiked ? ICON_FAVORITE : ICON_FAVORITE_OUTLINE, menuIndex == LikeButton, likeClicked,
+            spotifyState.trackId[0] == '\0' && (spotifyAction != Previous && spotifyAction != Next));
+
+    tft.setCursor(screenWidth / 2 - ICON_SIZE / 2 - ICON_SIZE * 2 - 3 - extraSpace, iconTop);
+    drawIcon(ICON_SHUFFLE, menuIndex == ShuffleButton, false, spotifyState.disallowsTogglingShuffle, spotifyState.isShuffled);
+
+    bool backClicked = menuIndex == BackButton && (spotifyActionIsQueued(Previous) || (spotifyActionIsQueued(Seek) && spotifySeekToMillis == 0)) && now < clickEffectEndMillis;
+    tft.setCursor(tft.getCursorX() + width + extraSpace + 1, iconTop);
+    drawIcon(ICON_SKIP_PREVIOUS, menuIndex == BackButton, backClicked, spotifyState.disallowsSkippingPrev);
+
+    const String& playPauseIcon = spotifyState.isPlaying ? ICON_PAUSE : ICON_PLAY_ARROW;
+    bool playPauseClicked = menuIndex == PlayPauseButton && spotifyActionIsQueued(Toggle) && now < clickEffectEndMillis;
+    tft.setCursor(tft.getCursorX() + width, iconTop);
+    drawIcon(playPauseIcon, menuIndex == PlayPauseButton, playPauseClicked);
+
+    bool nextClicked = menuIndex == NextButton && spotifyActionIsQueued(Next) && now < clickEffectEndMillis;
+    tft.setCursor(tft.getCursorX() + width, iconTop);
+    drawIcon(ICON_SKIP_NEXT, menuIndex == NextButton, nextClicked, spotifyState.disallowsSkippingNext);
+
+    tft.setCursor(tft.getCursorX() + width + extraSpace, iconTop);
+    if (spotifyState.repeatMode == RepeatOff) {
+      drawIcon(ICON_REPEAT, menuIndex == RepeatButton, false, spotifyState.disallowsTogglingRepeatContext && spotifyState.disallowsTogglingRepeatTrack);
+    } else if (spotifyState.repeatMode == RepeatContext) {
+      drawIcon(ICON_REPEAT, menuIndex == RepeatButton, false, false, true);
+    } else if (spotifyState.repeatMode == RepeatTrack) {
+      drawIcon(ICON_REPEAT_ONE, menuIndex == RepeatButton, false, false, true);
+    }
+
+    tft.setCursor(screenWidth - 5 - width, iconTop);
+    String volumeIcon;
+    if (activeSpotifyDevice != nullptr) {
+      if (activeSpotifyDevice->volumePercent > 50) {
+        volumeIcon = ICON_VOLUME_UP;
+      } else if (activeSpotifyDevice->volumePercent >= 10) {
+        volumeIcon = ICON_VOLUME_DOWN;
+      } else {
+        volumeIcon = ICON_VOLUME_MUTE;
+      }
+    } else {
+      volumeIcon = ICON_VOLUME_MUTE;
+    }
+    drawIcon(volumeIcon, menuIndex == VolumeButton, false, activeSpotifyDevice == nullptr);
+  }
+
+  if (!shouldShowProgressBar()) {
+    const int seekRadius = 4;
+    const bool seekSelected = menuMode == SeekControl || menuIndex == SeekButton;
+    img.createSprite(dividerWidth + seekRadius * 2, seekRadius * 2 + 1);
+    img.drawFastHLine(seekRadius, seekRadius, dividerWidth, seekSelected ? TFT_DARKERGREY : TFT_LIGHTBLACK);
+    if (seekSelected) img.drawFastHLine(seekRadius, seekRadius - 1, dividerWidth, TFT_DARKERGREY);
+    if (spotifyState.estimatedProgressMillis > 0 && spotifyState.durationMillis > 0) {
+      float progress = (float)spotifyState.estimatedProgressMillis / (float)spotifyState.durationMillis;
+      img.drawFastHLine(seekRadius, seekRadius, round(dividerWidth * progress), seekSelected ? TFT_WHITE : TFT_LIGHTGREY);
+      if (menuMode == SeekControl) {
+        img.fillCircle(seekRadius + round(dividerWidth * ((float)menuIndex / (float)menuSize)), seekRadius, seekRadius, TFT_WHITE);
+      } else if (menuIndex == SeekButton) {
+        img.fillCircle(seekRadius + round(dividerWidth * progress), seekRadius, seekRadius, TFT_WHITE);
+        img.fillCircle(seekRadius + round(dividerWidth * progress), seekRadius, 2, TFT_BLACK);
+      }
+    }
+    img.pushSprite(6 - seekRadius, lineDivider - seekRadius);
+    img.deleteSprite();
+  }
+
+  if (millis() - nowPlayingDisplayMillis >= 50) {
+    tft.setCursor(textStartX, lineTwo);
+    img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+    const bool isActivePlaylist =
+        playingGenreIndex >= 0 &&
+        (strcmp(genrePlaylists[playingGenreIndex], spotifyState.playlistId) == 0 ||
+          (spotifyPlayPlaylistId != nullptr && strcmp(genrePlaylists[playingGenreIndex], spotifyPlayPlaylistId) == 0));
+    const bool showPlaylistName = menuMode == NowPlaying && (spotifyState.durationMillis == 0 ||
+                                                              spotifyState.estimatedProgressMillis % 6000 > 3000);
+    if (isActivePlaylist && showPlaylistName &&
+        (spotifyState.isPlaying || spotifyPlayPlaylistId != nullptr || spotifyActionIsQueued(Previous) ||
+          spotifyActionIsQueued(Next))) {
+      img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
+      drawCenteredText(genres[playingGenreIndex], textWidth, maxTextLines);
+    } else if (spotifyState.contextName[0] != '\0' && showPlaylistName) {
+      if (spotifyActionIsQueued(PlayPlaylist) && now < clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+      drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
+    } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
+      char playing[205];
+      snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
+      if (playingGenreIndex >= 0) img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
+      drawCenteredText(playing, textWidth, maxTextLines);
+    } else if (spotifyState.isPrivateSession) {
+      img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
+      drawCenteredText("- private session -", textWidth, maxTextLines);
+    } else if (spotifyApiRequestStartedMillis < 0 && !spotifyState.isPlaying) {
+      img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
+      drawCenteredText("- nothing playing -", textWidth, maxTextLines);
+    }
+
+    nowPlayingDisplayMillis = millis();
+  }
+}
+
+void drawPlaylistsMenu() {
+  const char *text;
+  bool selected = playingGenreIndex == genreIndex;
+
+  if (menuMode == CountryList) {
+    text = countries[menuIndex];
+    selected = playingCountryIndex == menuIndex;
+  } else if (menuMode == PlaylistList) {
+    if (!spotifyPlaylistsLoaded) {
+      text = "loading...";
+    } else if (spotifyPlaylists.empty()) {
+      text = "no playlists yet";
+    } else {
+      text = spotifyPlaylists[menuIndex].name.c_str();
+      selected = strcmp(spotifyState.playlistId, spotifyPlaylists[menuIndex].id) == 0;
+    }
+  } else if (menuMode == SimilarList) {
+    if (similarMenuItems.empty()) {
+      text = "loading...";
+    } else if (similarMenuItems[menuIndex].name[0] != '\0') {
+      text = similarMenuItems[menuIndex].name;
+      selected = strcmp(spotifyState.playlistId, similarMenuItems[menuIndex].playlistId) == 0;
+    } else {
+      text = genres[genreIndex];
+    }
+  } else {
+    text = genres[genreIndex];
+  }
+
+  drawMenuHeader(selected);
+
+  if (menuMode == PlaylistList || menuMode == CountryList) {
+    img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
+  } else if (menuMode == SimilarList && similarMenuItems[menuIndex].name[0] != '\0') {
+    img.setTextColor(genreColors[similarMenuGenreIndex], TFT_BLACK);
+  } else if (menuSize == 0) {
+    img.setTextColor(TFT_DARKGREY, TFT_BLACK);
+  } else {
+    img.setTextColor(genreColors[genreIndex], TFT_BLACK);
+  }
+
+  tft.setCursor(textStartX, lineTwo);
+  drawCenteredText(text, textWidth, 3);
+}
+
+void drawStatusOverlay() {
+  auto batteryY = screenHeight - 44;
+  bool charging = knobby.powerStatus() == PowerStatusPowered;
+  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
+    drawBattery(knobby.batteryPercentage(), batteryY, charging);
+  #else
+    if (menuMode == RootMenu) drawBattery(knobby.batteryPercentage(), batteryY, charging);
+  #endif
 }
 
 void invalidateDisplay(bool eraseDisplay) {
@@ -1150,312 +1476,26 @@ void updateDisplay() {
   unsigned long now = millis();
 
   if (menuMode == InitialSetup) {
-    if (wifiConnectWarning) {
-      drawWifiSetup();
-    } else {
-      drawMenuHeader(true, "setup knobby");
-      tft.setCursor(textStartX, lineTwo);
-      drawCenteredText(("log in with spotify at http://" + nodeName + ".local").c_str(), textWidth, maxTextLines);
-    }
+    drawSetup();
   } else if (now < randomizingMenuEndMillis + 250) {
-    if (now >= randomizingMenuNextMillis) {
-      randomizingMenuTicks++;
-      randomizingMenuNextMillis = millis() + max((int)(pow(randomizingMenuTicks, 3) + pow(randomizingMenuTicks, 2)), 10);
-      setMenuIndex(random(checkMenuSize(lastPlaylistMenuMode)));
-      tft.setCursor(textStartX, lineTwo);
-      if (isGenreMenu(lastPlaylistMenuMode)) {
-        img.setTextColor(genreColors[genreIndex], TFT_BLACK);
-        drawCenteredText(genres[genreIndex], textWidth, 3);
-      } else if (lastPlaylistMenuMode == CountryList) {
-        drawCenteredText(countries[menuIndex], textWidth, 3);
-      } else if (lastPlaylistMenuMode == PlaylistList) {
-        drawCenteredText(spotifyPlaylists[menuIndex].name.c_str(), textWidth, maxTextLines);
-      }
-    }
+    drawRandomizing();
   } else if (menuMode == RootMenu) {
-    tft.setCursor(textStartX, lineTwo);
-    img.setTextColor(TFT_WHITE, TFT_BLACK);
-    if (shouldShowRandom()) {
-      double pressedProgress = min(1.0, (double)getExtraLongPressedMillis() / (double)extraLongPressMillis);
-      tft.drawFastHLine(0, 0, (int)(pressedProgress * screenWidth), TFT_WHITE);
-      drawCenteredText("random", textWidth);
-    } else {
-      tft.drawFastHLine(0, 0, screenWidth, TFT_BLACK);
-      if (menuIndex == GenreList) {
-        switch (genreSort) {
-          case AlphabeticSort:
-            drawCenteredText("genres", textWidth);
-            break;
-          case AlphabeticSuffixSort:
-            drawCenteredText("genres by suffix", textWidth);
-            break;
-          case AmbienceSort:
-            drawCenteredText("genres by ambience", textWidth);
-            break;
-          case ModernitySort:
-            drawCenteredText("genres by modernity", textWidth);
-            break;
-          case PopularitySort:
-            drawCenteredText("genres by popularity", textWidth);
-            break;
-        }
-      } else if (menuIndex == rootMenuSimilarIndex) {
-        drawCenteredText(rootMenuItems[SimilarList], textWidth);
-      } else if (menuIndex == rootMenuNowPlayingIndex) {
-        drawCenteredText(rootMenuItems[NowPlaying], textWidth);
-      } else if (menuIndex == rootMenuUsersIndex) {
-        drawCenteredText(rootMenuItems[UserList], textWidth);
-      } else {
-        drawCenteredText(rootMenuItems[menuIndex], textWidth);
-      }
-    }
-    tft.drawRoundRect(7, lineTwo - 15, screenWidth - 14, 49, 5, TFT_WHITE);
+    drawRootMenu();
   } else if (menuMode == SettingsMenu) {
-    drawMenuHeader(false, settingsMenuItems[menuIndex]);
-    img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    tft.setCursor(textStartX, lineTwo);
-    switch (menuIndex) {
-      case SettingsAbout:
-        tft.setCursor(textStartX, lineTwo);
-        char about[100];
-        sprintf(about, "knobby.quadule.com by milo winningham %s", KNOBBY_VERSION);
-        drawCenteredText(about, textWidth, 3);
-        break;
-      case SettingsUpdate:
-        drawCenteredText("double click to begin updating", textWidth, 3);
-        break;
-      case SettingsOrientation:
-        drawCenteredText("double click to rotate the display", textWidth, 3);
-        break;
-      case SettingsAddUser:
-        drawCenteredText(("log in with spotify at http://" + nodeName + ".local/authorize").c_str(), textWidth, 3);
-        break;
-      case SettingsRemoveUser:
-        drawCenteredText("double click to log out of spotify", textWidth, 3);
-        break;
-      case SettingsReset:
-        drawCenteredText("double click to erase all data and enter setup mode", textWidth, 3);;
-        break;
-      default:
-        break;
-    }
+    drawSettingsMenu();
   } else if (menuMode == UserList) {
-    SpotifyUser_t *user = &spotifyUsers[menuIndex];
-    bool selected = user == activeSpotifyUser;
-    drawMenuHeader(selected);
-
-    if (user != nullptr) {
-      tft.setCursor(textStartX, lineTwo);
-      if (user->name[0] == '\0') {
-        drawCenteredText("loading...", textWidth);
-      } else {
-        if (strcmp(user->refreshToken, spotifyRefreshToken) == 0) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        drawCenteredText(user->name, textWidth, 3);
-      }
-    }
+    drawUserMenu();
   } else if (menuMode == DeviceList) {
-    if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
-      SpotifyDevice_t *device = &spotifyDevices[menuIndex];
-      bool selected = device == activeSpotifyDevice;
-      drawMenuHeader(selected);
-
-      if (device != nullptr) {
-        tft.setCursor(textStartX, lineTwo);
-        if (!spotifyDevicesLoaded || device->name[0] == '\0') {
-          drawCenteredText("loading...", textWidth, 3);
-        } else {
-          if (strcmp(device->id, activeSpotifyDeviceId) == 0) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-          drawCenteredText(device->name, textWidth, 3);
-        }
-      }
-    } else if (!spotifyDevicesLoaded || spotifyActionIsQueued(GetDevices)) {
-      tft.setCursor(textStartX, lineTwo);
-      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-      drawCenteredText("loading...", textWidth, 3);
-    } else if (spotifyDevicesLoaded && spotifyDevices.empty()) {
-      tft.setCursor(textStartX, lineTwo);
-      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-      drawCenteredText("no devices found", textWidth, 3);
-    }
+    drawDeviceMenu();
   } else if (menuMode == VolumeControl) {
-    uint8_t x = 10;
-    uint8_t y = 30;
-    uint8_t width = 220;
-    img.createSprite(width, 82);
-    img.fillSprite(TFT_BLACK);
-    img.drawRoundRect(0, 0, width, 32, 5, TFT_WHITE);
-    img.fillRoundRect(4, 4, round(2.12 * menuIndex), 24, 3, TFT_DARKGREY);
-    char label[7];
-    sprintf(label, "%d%%", menuIndex);
-    img.setTextColor(TFT_WHITE, TFT_BLACK);
-    img.drawString(label, width / 2 - img.textWidth(label) / 2, 48);
-    tft.drawRect(0, 0, x - 1, y - 1, TFT_BLACK);
-    img.pushSprite(x, y);
-    img.deleteSprite();
+    drawVolumeControl();
   } else if (menuMode == NowPlaying || menuMode == SeekControl) {
-    tft.setCursor(0, lineOne);
-    if (statusMessage[0] != '\0') {
-      tft.fillRect(0, 1, screenWidth, lineOne, TFT_BLACK);
-      drawCenteredText(statusMessage, screenWidth);
-    } else if (menuMode == SeekControl) {
-      char elapsed[11];
-      formatMillis(elapsed, menuIndex * 1000);
-      drawMenuHeader(false, elapsed);
-    } else if (menuMode == NowPlaying) {
-      const int iconTop = 4;
-      const int width = ICON_SIZE + 2;
-      const int extraSpace = 10;
-
-      bool likeClicked = menuIndex == LikeButton && spotifyActionIsQueued(ToggleLike) && now < clickEffectEndMillis;
-      tft.setCursor(5, iconTop);
-      drawIcon(spotifyState.isLiked ? ICON_FAVORITE : ICON_FAVORITE_OUTLINE, menuIndex == LikeButton, likeClicked,
-              spotifyState.trackId[0] == '\0' && (spotifyAction != Previous && spotifyAction != Next));
-
-      tft.setCursor(screenWidth / 2 - ICON_SIZE / 2 - ICON_SIZE * 2 - 3 - extraSpace, iconTop);
-      drawIcon(ICON_SHUFFLE, menuIndex == ShuffleButton, false, spotifyState.disallowsTogglingShuffle, spotifyState.isShuffled);
-
-      bool backClicked = menuIndex == BackButton && (spotifyActionIsQueued(Previous) || (spotifyActionIsQueued(Seek) && spotifySeekToMillis == 0)) && now < clickEffectEndMillis;
-      tft.setCursor(tft.getCursorX() + width + extraSpace + 1, iconTop);
-      drawIcon(ICON_SKIP_PREVIOUS, menuIndex == BackButton, backClicked, spotifyState.disallowsSkippingPrev);
-
-      const String& playPauseIcon = spotifyState.isPlaying ? ICON_PAUSE : ICON_PLAY_ARROW;
-      bool playPauseClicked = menuIndex == PlayPauseButton && spotifyActionIsQueued(Toggle) && now < clickEffectEndMillis;
-      tft.setCursor(tft.getCursorX() + width, iconTop);
-      drawIcon(playPauseIcon, menuIndex == PlayPauseButton, playPauseClicked);
-
-      bool nextClicked = menuIndex == NextButton && spotifyActionIsQueued(Next) && now < clickEffectEndMillis;
-      tft.setCursor(tft.getCursorX() + width, iconTop);
-      drawIcon(ICON_SKIP_NEXT, menuIndex == NextButton, nextClicked, spotifyState.disallowsSkippingNext);
-
-      tft.setCursor(tft.getCursorX() + width + extraSpace, iconTop);
-      if (spotifyState.repeatMode == RepeatOff) {
-        drawIcon(ICON_REPEAT, menuIndex == RepeatButton, false, spotifyState.disallowsTogglingRepeatContext && spotifyState.disallowsTogglingRepeatTrack);
-      } else if (spotifyState.repeatMode == RepeatContext) {
-        drawIcon(ICON_REPEAT, menuIndex == RepeatButton, false, false, true);
-      } else if (spotifyState.repeatMode == RepeatTrack) {
-        drawIcon(ICON_REPEAT_ONE, menuIndex == RepeatButton, false, false, true);
-      }
-
-      tft.setCursor(screenWidth - 5 - width, iconTop);
-      String volumeIcon;
-      if (activeSpotifyDevice != nullptr) {
-        if (activeSpotifyDevice->volumePercent > 50) {
-          volumeIcon = ICON_VOLUME_UP;
-        } else if (activeSpotifyDevice->volumePercent >= 10) {
-          volumeIcon = ICON_VOLUME_DOWN;
-        } else {
-          volumeIcon = ICON_VOLUME_MUTE;
-        }
-      } else {
-        volumeIcon = ICON_VOLUME_MUTE;
-      }
-      drawIcon(volumeIcon, menuIndex == VolumeButton, false, activeSpotifyDevice == nullptr);
-    }
-
-    if (!shouldShowProgressBar()) {
-      const int seekRadius = 4;
-      const bool seekSelected = menuMode == SeekControl || menuIndex == SeekButton;
-      img.createSprite(dividerWidth + seekRadius * 2, seekRadius * 2 + 1);
-      img.drawFastHLine(seekRadius, seekRadius, dividerWidth, seekSelected ? TFT_DARKERGREY : TFT_LIGHTBLACK);
-      if (seekSelected) img.drawFastHLine(seekRadius, seekRadius - 1, dividerWidth, TFT_DARKERGREY);
-      if (spotifyState.estimatedProgressMillis > 0 && spotifyState.durationMillis > 0) {
-        float progress = (float)spotifyState.estimatedProgressMillis / (float)spotifyState.durationMillis;
-        img.drawFastHLine(seekRadius, seekRadius, round(dividerWidth * progress), seekSelected ? TFT_WHITE : TFT_LIGHTGREY);
-        if (menuMode == SeekControl) {
-          img.fillCircle(seekRadius + round(dividerWidth * ((float)menuIndex / (float)menuSize)), seekRadius, seekRadius, TFT_WHITE);
-        } else if (menuIndex == SeekButton) {
-          img.fillCircle(seekRadius + round(dividerWidth * progress), seekRadius, seekRadius, TFT_WHITE);
-          img.fillCircle(seekRadius + round(dividerWidth * progress), seekRadius, 2, TFT_BLACK);
-        }
-      }
-      img.pushSprite(6 - seekRadius, lineDivider - seekRadius);
-      img.deleteSprite();
-    }
-
-    if (millis() - nowPlayingDisplayMillis >= 50) {
-      tft.setCursor(textStartX, lineTwo);
-      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-      const bool isActivePlaylist =
-          playingGenreIndex >= 0 &&
-          (strcmp(genrePlaylists[playingGenreIndex], spotifyState.playlistId) == 0 ||
-           (spotifyPlayPlaylistId != nullptr && strcmp(genrePlaylists[playingGenreIndex], spotifyPlayPlaylistId) == 0));
-      const bool showPlaylistName = menuMode == NowPlaying && (spotifyState.durationMillis == 0 ||
-                                                               spotifyState.estimatedProgressMillis % 6000 > 3000);
-      if (isActivePlaylist && showPlaylistName &&
-          (spotifyState.isPlaying || spotifyPlayPlaylistId != nullptr || spotifyActionIsQueued(Previous) ||
-           spotifyActionIsQueued(Next))) {
-        img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
-        drawCenteredText(genres[playingGenreIndex], textWidth, maxTextLines);
-      } else if (spotifyState.contextName[0] != '\0' && showPlaylistName) {
-        if (spotifyActionIsQueued(PlayPlaylist) && now < clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-        drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
-      } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
-        char playing[205];
-        snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
-        if (playingGenreIndex >= 0) img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
-        drawCenteredText(playing, textWidth, maxTextLines);
-      } else if (spotifyState.isPrivateSession) {
-        img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
-        drawCenteredText("- private session -", textWidth, maxTextLines);
-      } else if (spotifyApiRequestStartedMillis < 0 && !spotifyState.isPlaying) {
-        img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
-        drawCenteredText("- nothing playing -", textWidth, maxTextLines);
-      }
-
-      nowPlayingDisplayMillis = millis();
-    }
+    drawNowPlayingOrSeek();
   } else {
-    const char *text;
-    bool selected = playingGenreIndex == genreIndex;
-
-    if (menuMode == CountryList) {
-      text = countries[menuIndex];
-      selected = playingCountryIndex == menuIndex;
-    } else if (menuMode == PlaylistList) {
-      if (!spotifyPlaylistsLoaded) {
-        text = "loading...";
-      } else if (spotifyPlaylists.empty()) {
-        text = "no playlists yet";
-      } else {
-        text = spotifyPlaylists[menuIndex].name.c_str();
-        selected = strcmp(spotifyState.playlistId, spotifyPlaylists[menuIndex].id) == 0;
-      }
-    } else if (menuMode == SimilarList) {
-      if (similarMenuItems.empty()) {
-        text = "loading...";
-      } else if (similarMenuItems[menuIndex].name[0] != '\0') {
-        text = similarMenuItems[menuIndex].name;
-        selected = strcmp(spotifyState.playlistId, similarMenuItems[menuIndex].playlistId) == 0;
-      } else {
-        text = genres[genreIndex];
-      }
-    } else {
-      text = genres[genreIndex];
-    }
-
-    drawMenuHeader(selected);
-
-    if (menuMode == PlaylistList || menuMode == CountryList) {
-      img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
-    } else if (menuMode == SimilarList && similarMenuItems[menuIndex].name[0] != '\0') {
-      img.setTextColor(genreColors[similarMenuGenreIndex], TFT_BLACK);
-    } else if (menuSize == 0) {
-      img.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    } else {
-      img.setTextColor(genreColors[genreIndex], TFT_BLACK);
-    }
-
-    tft.setCursor(textStartX, lineTwo);
-    drawCenteredText(text, textWidth, 3);
+    drawPlaylistsMenu();
   }
 
-  auto batteryY = screenHeight - 44;
-  bool charging = knobby.powerStatus() == PowerStatusPowered;
-  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
-    drawBattery(knobby.batteryPercentage(), batteryY, charging);
-  #else
-    if (menuMode == RootMenu) drawBattery(knobby.batteryPercentage(), batteryY, charging);
-  #endif
+  drawStatusOverlay();
 
   lastDisplayMillis = millis();
 }
