@@ -3,6 +3,7 @@
 #include "ArduinoJson.h"
 #include "ArduinoOTA.h"
 #include "ESP32Encoder.h"
+#include "ESPAsyncDNSServer.h"
 #include "ESPAsyncWebServer.h"
 #include "ESPAsync_WiFiManager.h"
 #include "ESPmDNS.h"
@@ -230,7 +231,7 @@ OneButton button(ROTARY_ENCODER_BUTTON_PIN, true, true);
 
 TaskHandle_t backgroundApiTask;
 AsyncWebServer server(80);
-DNSServer dnsServer;
+AsyncDNSServer dnsServer;
 ESPAsync_WiFiManager *wifiManager;
 
 bool displayInvalidated = true;

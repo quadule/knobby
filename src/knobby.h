@@ -101,7 +101,7 @@ void Knobby::printHeader() {
   Serial.printf("   | |_/ )  _ \\ / _ \\|  _ \\|  _ \\| | | |   |   built %s %s\n", desc->date, desc->time);
   Serial.printf("   |  _ (| | | | |_| | |_) ) |_) ) |_| |   |   git version %s\n", GIT_VERSION);
   Serial.printf("   |_| \\_)_| |_|\\___/|____/|____/ \\__  |   |   esp-idf %s\n", desc->idf_ver);
-  Serial.printf("                                 (____/    |\n");
+  Serial.printf("                                 (____/    |   arduino %d.%d.%d\n", ESP_ARDUINO_VERSION_MAJOR, ESP_ARDUINO_VERSION_MINOR, ESP_ARDUINO_VERSION_PATCH);
   Serial.printf("    by milo winningham                     |\n");
   Serial.printf("    https://knobby.quadule.com             |\n");
   Serial.printf("                                           |\n");

@@ -23,6 +23,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(nodeName.c_str());
   improvSerial.setup(std::string("knobby"), std::string(KNOBBY_VERSION), std::string(PLATFORMIO_ENV), std::string(WiFi.macAddress().c_str()));
+  WiFi.begin();
 
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     ttgo = TTGOClass::getWatch();
@@ -117,7 +118,6 @@ void setup() {
     startWifiManager();
   } else {
     log_i("Connecting to saved wifi SSID: %s", wifiSSID.c_str());
-    WiFi.reconnect();
     improvSerial.loop();
   }
 
@@ -326,7 +326,7 @@ void startWifiManager() {
   wifiManager->setBreakAfterConfig(true);
   wifiManager->setSaveConfigCallback(saveAndSleep);
   wifiManager->startConfigPortalModeless(nodeName.c_str(), configPassword.c_str(), false);
-  dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+  dnsServer.setErrorReplyCode(AsyncDNSReplyCode::NoError);
   dnsServer.start(53, "*", WiFi.softAPIP());
 }
 
