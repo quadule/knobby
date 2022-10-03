@@ -2192,15 +2192,19 @@ void spotifyCurrentlyPlaying() {
 
       if (!item.isNull()) {
         emptyCurrentlyPlayingResponses = 0;
-
+        spotifyState.durationMillis = item["duration_ms"];
         if (!item["id"].isNull()) {
-          strncpy(spotifyState.trackId, item["id"], SPOTIFY_ID_SIZE);
-          if (!spotifyState.checkedLike) spotifyQueueAction(CheckLike);
+          if (item["id"] != spotifyState.trackId) {
+            strncpy(spotifyState.trackId, item["id"], SPOTIFY_ID_SIZE);
+            if (!spotifyState.checkedLike) spotifyQueueAction(CheckLike);
+            if (menuMode == SeekControl) {
+              menuSize = checkMenuSize(SeekControl);
+              setMenuIndex(spotifyState.progressMillis / 1000);
+            }
+          }
         } else {
           spotifyState.trackId[0] = '\0';
         }
-
-        spotifyState.durationMillis = item["duration_ms"];
         strncpy(spotifyState.name, item["name"], sizeof(spotifyState.name) - 1);
 
         JsonObject album = item["album"];
@@ -2473,6 +2477,7 @@ void spotifyResetProgress(bool keepContext) {
     spotifyState.contextName[0] = '\0';
     spotifyState.playlistId[0] = '\0';
   }
+  if (menuMode == SeekControl) setMenuIndex(0);
   invalidateDisplay();
 };
 
