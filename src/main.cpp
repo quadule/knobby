@@ -2280,7 +2280,7 @@ void spotifyCurrentlyPlaying() {
       if (spotifyState.isPlaying && nextCurrentlyPlayingMillis == 0 && !spotifyState.isPrivateSession) {
         nextCurrentlyPlayingMillis = millis() + (spotifyState.durationMillis == 0 ? 2000 : spotifyPollInterval);
       }
-      if (lastInputMillis <= 1 && millis() < 10000 && spotifyState.name[0] != '\0' && menuMode != NowPlaying) {
+      if (lastInputMillis <= 1 && spotifyState.name[0] != '\0' && menuMode != NowPlaying) {
         setMenuMode(NowPlaying, PlayPauseButton);
       }
       invalidateDisplay();
