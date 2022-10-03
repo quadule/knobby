@@ -246,6 +246,7 @@ int knobVelocityPosition = 0;
 bool randomizingMenuAutoplay = false;
 time_t secondsAsleep = 0;
 bool showingProgressBar = false;
+bool showingStatusMessage = false;
 char statusMessage[24] = "";
 int pressedMenuIndex = -1;
 int rootMenuNowPlayingIndex = -1;

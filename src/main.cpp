@@ -491,7 +491,8 @@ void loop() {
   if (statusMessageUntilMillis > 0 && now >= statusMessageUntilMillis) {
     statusMessageUntilMillis = 0;
     statusMessage[0] = '\0';
-    tft.fillRect(0, 1, screenWidth, LINE_HEIGHT, TFT_BLACK);
+    tft.fillRect(0, 1, screenWidth, 31, TFT_BLACK);
+    showingStatusMessage = false;
     invalidateDisplay();
   } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
     clickEffectEndMillis = 0;
@@ -1092,9 +1093,13 @@ void drawIcon(const String& icon, bool selected, bool clicked, bool disabled, bo
 }
 
 void drawStatusMessage() {
+  if(!showingStatusMessage) {
+    showingStatusMessage = true;
+    tft.fillRect(0, 1, screenWidth, 31, TFT_BLACK);
+  }
   tft.setCursor(textStartX + textPadding, lineOne);
-    img.setTextColor(TFT_WHITE, TFT_BLACK);
-  drawCenteredText(statusMessage, screenWidth);
+  img.setTextColor(TFT_WHITE, TFT_BLACK);
+  drawCenteredText(statusMessage, textWidth - textPadding * 2);
 }
 
 void drawMenuHeader(bool selected, const char *text) {
