@@ -318,9 +318,9 @@ void setup() {
 void startWifiManager() {
   if (wifiManager) return;
   if (knobby.powerStatus() == PowerStatusPowered) {
-    inactivityMillis = 1000 * 60 * 20;
+    inactivityMillis = 1000 * 60 * 10;
   } else {
-    inactivityMillis = 1000 * 60 * 8;
+    inactivityMillis = 1000 * 60 * 5;
   }
   wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
   wifiManager->setBreakAfterConfig(true);
@@ -330,14 +330,18 @@ void startWifiManager() {
   dnsServer.start(53, "*", WiFi.softAPIP());
 }
 
+bool isIdle() {
+  return millis() - lastInputMillis > 5000;
+}
+
 void delayIfIdle() {
   auto now = millis();
-  auto inputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
-  if (!displayInvalidated && !wifiSSID.isEmpty() && (inputDelta > 5000 || now - lastDelayMillis > 1000)) {
-    delay(30);
-    lastDelayMillis = millis();
-  } else if (randomizingMenuEndMillis == 0) {
+  if (!displayInvalidated && knobby.powerStatus() == PowerStatusOnBattery &&
+      (isIdle() || now - lastDelayMillis > 2000)) {
     delay(10);
+    lastDelayMillis = now;
+  } else if (randomizingMenuEndMillis == 0) {
+    delay(5);
   }
 }
 
@@ -495,7 +499,7 @@ void loop() {
     tft.fillRect(0, 1, screenWidth, 31, TFT_BLACK);
     showingStatusMessage = false;
     invalidateDisplay();
-  } else if (clickEffectEndMillis > 0 && lastDisplayMillis > clickEffectEndMillis) {
+  } else if (clickEffectEndMillis > 0 && now > clickEffectEndMillis) {
     clickEffectEndMillis = 0;
     invalidateDisplay();
   } else if ((randomizingMenuNextMillis > 0 && now >= randomizingMenuNextMillis) ||
@@ -530,8 +534,11 @@ void loop() {
 
 void backgroundApiLoop(void *params) {
   for (;;) {
-    uint32_t now = millis();
-    if (WiFi.status() == WL_CONNECTED && spotifyActionQueue.size() > 0) {
+    delayIfIdle();
+    auto now = millis();
+    if (WiFi.status() != WL_CONNECTED) continue;
+
+    if (spotifyActionQueue.size() > 0) {
       spotifyAction = spotifyActionQueue.front();
       spotifyActionQueue.pop_front();
 
@@ -597,11 +604,14 @@ void backgroundApiLoop(void *params) {
           spotifyGetPlaylists();
           break;
       }
+      now = millis();
       spotifyAction = Idle;
-    } else if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis && spotifyActionQueue.empty()) {
+    }
+
+    if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis && (menuMode == NowPlaying || isIdle())) {
       spotifyQueueAction(CurrentlyPlaying);
-    } else {
-      delayIfIdle();
+    } else if (spotifyState.trackId) {
+      if (!spotifyState.checkedLike) spotifyQueueAction(CheckLike);
     }
   }
 }
@@ -826,7 +836,7 @@ void knobClicked() {
       break;
     case VolumeControl:
       setMenuMode(NowPlaying, VolumeButton);
-      nextCurrentlyPlayingMillis = 1;
+      nextCurrentlyPlayingMillis = lastInputMillis + SPOTIFY_WAIT_MILLIS;
       break;
     case NowPlaying:
       switch (pressedMenuIndex) {
@@ -872,6 +882,7 @@ void knobClicked() {
         default:
           break;
       }
+      updateDisplay();
       break;
     default:
       break;
@@ -1037,6 +1048,7 @@ void shutdownIfLowBattery() {
   if (knobby.shouldUpdateBattery() || knobby.powerStatus() != PowerStatusOnBattery) return;
   float batteryVoltage = knobby.batteryVoltage();
   if (batteryVoltage >= 3.1 || batteryVoltage < 0.01) return;
+  digitalWrite(ADC_EN, LOW);
   log_i("Battery voltage is %.3f V, shutting down!", knobby.batteryVoltage());
   tft.fillScreen(TFT_BLACK);
   drawBattery(0, 50);
@@ -1314,7 +1326,7 @@ void drawNowPlayingOrSeek() {
     const int width = ICON_SIZE + 2;
     const int extraSpace = 10;
 
-    bool likeClicked = menuIndex == LikeButton && spotifyActionIsQueued(ToggleLike) && now < clickEffectEndMillis;
+    bool likeClicked = menuIndex == LikeButton && spotifyActionIsQueued(ToggleLike) && now <= clickEffectEndMillis;
     tft.setCursor(5, iconTop);
     drawIcon(spotifyState.isLiked ? ICON_FAVORITE : ICON_FAVORITE_OUTLINE, menuIndex == LikeButton, likeClicked,
             spotifyState.trackId[0] == '\0' && (spotifyAction != Previous && spotifyAction != Next));
@@ -1322,16 +1334,16 @@ void drawNowPlayingOrSeek() {
     tft.setCursor(screenWidth / 2 - ICON_SIZE / 2 - ICON_SIZE * 2 - 3 - extraSpace, iconTop);
     drawIcon(ICON_SHUFFLE, menuIndex == ShuffleButton, false, spotifyState.disallowsTogglingShuffle, spotifyState.isShuffled);
 
-    bool backClicked = menuIndex == BackButton && (spotifyActionIsQueued(Previous) || (spotifyActionIsQueued(Seek) && spotifySeekToMillis == 0)) && now < clickEffectEndMillis;
+    bool backClicked = menuIndex == BackButton && (spotifyActionIsQueued(Previous) || (spotifyActionIsQueued(Seek) && spotifySeekToMillis == 0)) && now <= clickEffectEndMillis;
     tft.setCursor(tft.getCursorX() + width + extraSpace + 1, iconTop);
     drawIcon(ICON_SKIP_PREVIOUS, menuIndex == BackButton, backClicked, spotifyState.disallowsSkippingPrev);
 
     const String& playPauseIcon = spotifyState.isPlaying ? ICON_PAUSE : ICON_PLAY_ARROW;
-    bool playPauseClicked = menuIndex == PlayPauseButton && spotifyActionIsQueued(Toggle) && now < clickEffectEndMillis;
+    bool playPauseClicked = menuIndex == PlayPauseButton && spotifyActionIsQueued(Toggle) && now <= clickEffectEndMillis;
     tft.setCursor(tft.getCursorX() + width, iconTop);
     drawIcon(playPauseIcon, menuIndex == PlayPauseButton, playPauseClicked);
 
-    bool nextClicked = menuIndex == NextButton && spotifyActionIsQueued(Next) && now < clickEffectEndMillis;
+    bool nextClicked = menuIndex == NextButton && spotifyActionIsQueued(Next) && now <= clickEffectEndMillis;
     tft.setCursor(tft.getCursorX() + width, iconTop);
     drawIcon(ICON_SKIP_NEXT, menuIndex == NextButton, nextClicked, spotifyState.disallowsSkippingNext);
 
@@ -1395,7 +1407,7 @@ void drawNowPlayingOrSeek() {
       img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
       drawCenteredText(genres[playingGenreIndex], textWidth, maxTextLines);
     } else if (spotifyState.contextName[0] != '\0' && showPlaylistName) {
-      if (spotifyActionIsQueued(PlayPlaylist) && now < clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+      if (spotifyActionIsQueued(PlayPlaylist) && now <= clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
       drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
     } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
       char playing[205];
@@ -1811,6 +1823,7 @@ void startDeepSleep() {
   spotifyActionQueue.clear();
   tft.fillScreen(TFT_BLACK);
   WiFi.disconnect(true);
+  digitalWrite(ADC_EN, LOW);
   digitalWrite(TFT_BL, LOW);
   tft.writecommand(TFT_DISPOFF);
   tft.writecommand(TFT_SLPIN);
@@ -1996,6 +2009,7 @@ bool spotifyActionIsQueued(SpotifyActions action) {
 bool spotifyQueueAction(SpotifyActions action) {
   if (spotifyActionIsQueued(action)) return false;
   spotifyActionQueue.push_back(action);
+  invalidateDisplay();
   return true;
 }
 
@@ -2205,7 +2219,6 @@ void spotifyCurrentlyPlaying() {
         if (!item["id"].isNull()) {
           if (item["id"] != spotifyState.trackId) {
             strncpy(spotifyState.trackId, item["id"], SPOTIFY_ID_SIZE);
-            if (!spotifyState.checkedLike) spotifyQueueAction(CheckLike);
             if (menuMode == SeekControl) {
               menuSize = checkMenuSize(SeekControl);
               setMenuIndex(spotifyState.progressMillis / 1000);
@@ -2311,7 +2324,7 @@ void spotifyCurrentlyPlaying() {
       nextCurrentlyPlayingMillis = millis() + spotifyPollInterval + emptyCurrentlyPlayingResponses++ * 1000;
     }
   } else if (statusCode < 0) {
-    nextCurrentlyPlayingMillis = 1; // retry immediately
+    nextCurrentlyPlayingMillis = millis() + emptyCurrentlyPlayingResponses++ * 100; // retry faster
   } else {
     log_e("%d - %s", statusCode, spotifyHttp.getString().c_str());
     setStatusMessage("spotify error");
