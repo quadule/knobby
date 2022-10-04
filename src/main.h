@@ -238,6 +238,7 @@ bool displayInvalidatedPartial = false;
 bool flipDisplay = false;
 int pulseCount = ROTARY_ENCODER_PULSE_COUNT;
 int lastKnobCount = 0;
+int lastKnobDirection = 0;
 bool knobHeldForRandom = false;
 bool knobRotatedWhileLongPressed = false;
 std::array<float, 12> knobVelocity;

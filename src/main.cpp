@@ -710,7 +710,9 @@ void knobRotated() {
   menuSize = checkMenuSize(menuMode);
   if (menuSize == 0) return;
 
-  if (lastInputDelta > 333) {
+  int knobDirection = knobDelta > 0 ? 1 : -1;
+  if (lastInputDelta > 333 || knobDirection != lastKnobDirection) {
+    lastKnobDirection = knobDirection;
     knobVelocity.fill(0.0f);
   } else if (menuMode != VolumeControl && menuSize >= 50 && lastInputDelta > 0) {
     float velocity = abs((float)positionDelta / (float)min(lastInputDelta, (unsigned long)50));
@@ -778,9 +780,9 @@ void knobClicked() {
       if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
         bool changed = strcmp(activeSpotifyUser->selectedDeviceId, spotifyDevices[pressedMenuIndex].id) != 0;
         if (spotifyRetryAction != Idle) {
-          spotifyQueueAction(CurrentlyPlaying);
           spotifyQueueAction(spotifyRetryAction);
           spotifyRetryAction = Idle;
+          nextCurrentlyPlayingMillis = 1;
           setMenuMode(NowPlaying, PlayPauseButton);
         } else if (spotifyState.isPlaying && !spotifyGettingToken && spotifyState.trackId[0] != '\0' &&
             (!activeSpotifyDevice || strcmp(activeSpotifyDevice->id, spotifyDevices[pressedMenuIndex].id) != 0)) {
