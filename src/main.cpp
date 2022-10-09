@@ -23,7 +23,7 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.setHostname(nodeName.c_str());
   improvSerial.setup(std::string("knobby"), std::string(KNOBBY_VERSION), std::string(PLATFORMIO_ENV), std::string(WiFi.macAddress().c_str()));
-  WiFi.begin();
+  if (!WiFi.SSID().isEmpty()) WiFi.begin();
 
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     ttgo = TTGOClass::getWatch();
@@ -433,17 +433,18 @@ void loop() {
     esp_wifi_set_config(WIFI_IF_STA, &current_conf);
 
     if (wifiSSID.isEmpty()) saveWifiConfig(WiFi.SSID(), WiFi.psk());
-  } else if (!connected && !wifiSSID.isEmpty() && now - lastReconnectAttemptMillis > 3000) {
+  } else if (!connected && !wifiSSID.isEmpty() && now - lastReconnectAttemptMillis > wifiConnectTimeoutMillis) {
     lastReconnectAttemptMillis = now;
-    if (lastConnectedMillis < 0 && now > 5000) setStatusMessage("connecting to wifi");
-    if (lastConnectedMillis < 0 && now >= wifiConnectTimeoutMillis) {
-      log_w("No wifi after %d seconds, starting config portal.", (int)wifiConnectTimeoutMillis / 1000);
-      drawSetup();
-      setMenuMode(InitialSetup, 0);
-      wifiConnectWarning = true;
-      startWifiManager();
+    if (lastConnectedMillis < 0) {
+      if (now > 5000) setStatusMessage("connecting to wifi");
+      if (!wifiConnectWarning && now >= wifiConnectTimeoutMillis) {
+        log_w("No wifi after %d seconds, starting config portal.", (int)wifiConnectTimeoutMillis / 1000);
+        drawSetup();
+        setMenuMode(InitialSetup, 0);
+        wifiConnectWarning = true;
+        startWifiManager();
+      }
     }
-    WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
   }
 
   if (connected && !spotifyGettingToken && spotifyNeedsNewAccessToken()) {
@@ -453,7 +454,7 @@ void loop() {
 
   now = millis();
 
-  if (menuMode == InitialSetup && !spotifyUsers.empty()) {
+  if (menuMode == InitialSetup && !spotifyUsers.empty() && !wifiConnectWarning) {
     setMenuMode(GenreList, 0);
     startRandomizingMenu(false);
   } else if (!knobHeldForRandom && shouldShowRandom() && getExtraLongPressedMillis() >= extraLongPressMillis) {
