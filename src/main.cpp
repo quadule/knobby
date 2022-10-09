@@ -2419,10 +2419,9 @@ void spotifyToggle() {
   spotifyState.progressMillis = spotifyState.estimatedProgressMillis;
 
   int statusCode;
-  if (activeSpotifyDeviceId[0] != '\0') {
-    char path[68];
-    snprintf(path, sizeof(path), wasPlaying ? "me/player/pause?device_id=%s" : "me/player/play?device_id=%s",
-             activeSpotifyDeviceId);
+  if (activeSpotifyDeviceId[0] != '\0' && !wasPlaying) {
+    char path[90];
+    snprintf(path, sizeof(path), "me/player/play?device_id=%s", activeSpotifyDeviceId);
     statusCode = spotifyApiRequest("PUT", path);
   } else {
     statusCode = spotifyApiRequest("PUT", wasPlaying ? "me/player/pause" : "me/player/play");
