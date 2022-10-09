@@ -95,18 +95,15 @@ void Knobby::loop() {
 
 void Knobby::printHeader() {
   const esp_app_desc_t *desc = esp_ota_get_app_description();
-  Serial.printf("\n\n    _                 _     _              |\n");
-  Serial.printf("   | |               | |   | |             |\n");
-  Serial.printf("   | |  _ ____   ___ | |__ | |__  _   _    |   mac %s\n", WiFi.macAddress().c_str());
-  Serial.printf("   | |_/ )  _ \\ / _ \\|  _ \\|  _ \\| | | |   |   built %s %s\n", desc->date, desc->time);
-  Serial.printf("   |  _ (| | | | |_| | |_) ) |_) ) |_| |   |   git version %s\n", GIT_VERSION);
-  Serial.printf("   |_| \\_)_| |_|\\___/|____/|____/ \\__  |   |   esp-idf %s\n", desc->idf_ver);
-  Serial.printf("                                 (____/    |   arduino %d.%d.%d\n", ESP_ARDUINO_VERSION_MAJOR, ESP_ARDUINO_VERSION_MINOR, ESP_ARDUINO_VERSION_PATCH);
-  Serial.printf("    by milo winningham                     |\n");
-  Serial.printf("    https://knobby.quadule.com             |\n");
-  Serial.printf("                                           |\n");
-  Serial.printf("___________________________________________|____________________________________\n\n");
-  Serial.flush();
+  log_printf("\n    _                 _     _              |\n");
+  log_printf("   | |               | |   | |             |\n");
+  log_printf("   | |  _ ____   ___ | |__ | |__  _   _    |   mac %s", WiFi.macAddress().c_str());
+  log_printf("   | |_/ )  _ \\ / _ \\|  _ \\|  _ \\| | | |   |   built %s %s", desc->date, desc->time);
+  log_printf("   |  _ (| | | | |_| | |_) ) |_) ) |_| |   |   git version %s", GIT_VERSION);
+  log_printf("   |_| \\_)_| |_|\\___/|____/|____/ \\__  |   |   esp-idf %s", desc->idf_ver);
+  log_printf("    by milo winningham           (____/    |   arduino %d.%d.%d", ESP_ARDUINO_VERSION_MAJOR, ESP_ARDUINO_VERSION_MINOR, ESP_ARDUINO_VERSION_PATCH);
+  log_printf("    https://knobby.quadule.com             |\n");
+  log_printf("___________________________________________|____________________________________\n");
 }
 
 uint8_t Knobby::batteryPercentage() {
