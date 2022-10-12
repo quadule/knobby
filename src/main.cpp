@@ -775,7 +775,8 @@ void knobClicked() {
         spotifyResetProgress();
         setActiveUser(&spotifyUsers[pressedMenuIndex]);
         writeDataJson();
-        invalidateDisplay();
+        strcpy(spotifyState.contextName, "loading...");
+        setMenuMode(NowPlaying, PlayPauseButton);
       }
       break;
     case DeviceList:
@@ -784,14 +785,14 @@ void knobClicked() {
         if (spotifyRetryAction != Idle) {
           spotifyQueueAction(spotifyRetryAction);
           spotifyRetryAction = Idle;
-          nextCurrentlyPlayingMillis = 1;
-          setMenuMode(NowPlaying, PlayPauseButton);
+          nextCurrentlyPlayingMillis = lastInputMillis + SPOTIFY_WAIT_MILLIS;
         } else if (spotifyState.isPlaying && !spotifyGettingToken && spotifyState.trackId[0] != '\0' &&
             (!activeSpotifyDevice || strcmp(activeSpotifyDevice->id, spotifyDevices[pressedMenuIndex].id) != 0)) {
           spotifyQueueAction(TransferPlayback);
         }
         setActiveDevice(&spotifyDevices[pressedMenuIndex]);
         if (changed) writeDataJson();
+        setMenuMode(NowPlaying, PlayPauseButton);
       }
       break;
     case GenreList:
@@ -2334,7 +2335,11 @@ void spotifyCurrentProfile() {
       const char *displayName = json["display_name"];
       strncpy(activeSpotifyUser->name, displayName, sizeof(activeSpotifyUser->name) - 1);
       writeDataJson();
-      if (menuMode == UserList) setMenuMode(UserList, spotifyUsers.size() - 1);
+      if (menuMode == UserList || (menuMode == SettingsMenu && menuIndex == SettingsAddUser)) {
+        setMenuMode(UserList, spotifyUsers.size() - 1);
+      } else {
+        invalidateDisplay();
+      }
     } else {
       log_e("Unable to parse response payload:\n  %s", spotifyHttp.getString().c_str());
     }
