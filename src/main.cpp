@@ -1000,8 +1000,9 @@ void knobLongPressStopped() {
 
 void drawBattery(unsigned int percent, unsigned int y, bool charging) {
   const unsigned int batterySize = 31;
-  batterySprite.setTextDatum(MC_DATUM);
   batterySprite.createSprite(batterySize, batterySize);
+  batterySprite.fillSprite(TFT_BLACK);
+  batterySprite.setTextDatum(MC_DATUM);
   batterySprite.setTextColor(TFT_DARKERGREY, TFT_BLACK);
   batterySprite.setCursor(1, 3);
   if (charging) {
@@ -1357,6 +1358,7 @@ void drawNowPlayingOrSeek() {
     const int seekRadius = 4;
     const bool seekSelected = menuMode == SeekControl || menuIndex == SeekButton;
     img.createSprite(dividerWidth + seekRadius * 2, seekRadius * 2 + 1);
+    img.fillSprite(TFT_BLACK);
     img.drawFastHLine(seekRadius, seekRadius, dividerWidth, seekSelected ? TFT_DARKERGREY : TFT_LIGHTBLACK);
     if (seekSelected) img.drawFastHLine(seekRadius, seekRadius - 1, dividerWidth, TFT_DARKERGREY);
     if (spotifyState.estimatedProgressMillis > 0 && spotifyState.durationMillis > 0) {
@@ -1512,7 +1514,8 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines) {
   bool breakpointOnSpace = false;
   uint16_t lastDrawnPos = 0;
 
-  img.createSprite(maxWidth, img.gFont.yAdvance);
+  img.createSprite(maxWidth, lineHeight);
+  img.fillSprite(TFT_BLACK);
 
   while (pos < len) {
     uint16_t lastPos = pos;
