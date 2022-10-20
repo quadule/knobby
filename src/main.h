@@ -85,14 +85,14 @@ enum MenuModes {
   SeekControl = -3,
   VolumeControl = -2,
   RootMenu = -1,
-  DeviceList = 0,
-  SettingsMenu = 1,
-  PlaylistList = 2,
-  CountryList = 3,
-  GenreList = 4,
-  SimilarList = 5,
-  NowPlaying = 6,
-  UserList = 7
+  SettingsMenu = 0,
+  PlaylistList = 1,
+  CountryList = 2,
+  GenreList = 3,
+  SimilarList = 4,
+  NowPlaying = 5,
+  UserList = 6,
+  DeviceList = 7
 };
 enum GenreSortModes {
   AlphabeticSort = 0,
@@ -136,7 +136,7 @@ bool contains(C&& c, T e) {
   return std::find(std::begin(c), std::end(c), e) != std::end(c);
 };
 
-const char *rootMenuItems[] = {"devices", "settings", "playlists", "countries", "genres", "similar", "now playing", "users"};
+const char *rootMenuItems[] = {"settings", "playlists", "countries", "genres", "similar", "now playing", "users", "devices"};
 const char *settingsMenuItems[] = {"about", "update", "orientation", "add user", "log out", "reset settings"};
 const int screenWidth = TFT_HEIGHT;
 const int screenHeight = TFT_WIDTH;
@@ -213,7 +213,9 @@ RTC_DATA_ATTR time_t lastSleepSeconds = 0;
 RTC_DATA_ATTR MenuModes menuMode = NowPlaying;
 RTC_DATA_ATTR uint16_t menuIndex = PlayPauseButton;
 RTC_DATA_ATTR uint16_t menuSize = 0;
+RTC_DATA_ATTR uint16_t countryIndex = 0;
 RTC_DATA_ATTR uint16_t genreIndex = 0;
+RTC_DATA_ATTR uint16_t playlistIndex = 0;
 RTC_DATA_ATTR GenreSortModes genreSort = AlphabeticSort;
 RTC_DATA_ATTR MenuModes lastMenuMode = NowPlaying;
 RTC_DATA_ATTR uint16_t lastMenuIndex = 0;
@@ -249,10 +251,12 @@ time_t secondsAsleep = 0;
 bool showingProgressBar = false;
 bool showingStatusMessage = false;
 char statusMessage[24] = "";
+char menuText[64];
 int pressedMenuIndex = -1;
 int rootMenuNowPlayingIndex = -1;
 int rootMenuSimilarIndex = -1;
 int rootMenuUsersIndex = -1;
+int rootMenuDevicesIndex = -1;
 int similarMenuGenreIndex = -1;
 std::vector<SimilarItem_t> similarMenuItems;
 long lastConnectedMillis = -1;
@@ -298,7 +302,8 @@ void drawIcon(const String& icon, bool selected = false, bool clicked = false, b
 void drawMenuHeader(bool selected, const char *text = "");
 void drawSetup();
 void invalidateDisplay(bool eraseDisplay = false);
-void playPlaylist(const char *playlistId, const char *name = "");
+void playMenuPlaylist(MenuModes mode, uint16_t index);
+void playUri(const char *uri, const char *name);
 void saveAndSleep();
 void setActiveDevice(SpotifyDevice_t *device);
 void setActiveUser(SpotifyUser_t *user);
@@ -317,7 +322,10 @@ int formatMillis(char *output, unsigned long millis);
 int getGenreIndexByName(const char *genreName);
 int getGenreIndexByPlaylistId(const char *playlistId);
 uint16_t getMenuIndexForGenreIndex(uint16_t index);
-uint16_t getGenreIndexForMenuIndex(uint16_t index, MenuModes mode);
+int getMenuIndexForPlaylist(const char *contextUri);
+int getGenreIndexForMenuIndex(uint16_t index, MenuModes mode);
+void getPlaylistName(char *name, MenuModes mode, uint16_t index);
+void getPlaylistUri(char *uri, MenuModes mode, uint16_t index);
 bool isGenreMenu(MenuModes mode);
 bool isPlaylistMenu(MenuModes mode);
 unsigned long getLongPressedMillis();

@@ -64,6 +64,7 @@ typedef struct {
   char albumName[64] = "";
   char trackId[SPOTIFY_ID_SIZE + 1] = "";
   char contextName[64] = "";
+  char contextUri[100] = "";
   bool isLiked = false;
   bool isPlaying = false;
   bool isShuffled = false;
@@ -79,7 +80,6 @@ typedef struct {
   uint32_t durationMillis = 0;
   uint32_t estimatedProgressMillis = 0;
   uint32_t lastUpdateMillis = 0;
-  char playlistId[SPOTIFY_ID_SIZE + 1] = "";
 } SpotifyState_t;
 
 enum SpotifyActions {
@@ -111,6 +111,7 @@ RTC_DATA_ATTR time_t spotifyTokenLifetime = 0;
 RTC_DATA_ATTR time_t spotifyTokenSeconds = 0;
 RTC_DATA_ATTR char activeSpotifyDeviceId[64] = "";
 RTC_DATA_ATTR SpotifyState_t spotifyState = {};
+RTC_DATA_ATTR bool spotifyStateLoaded = false;
 
 WiFiClientSecure spotifyWifiClient;
 HTTPClient spotifyHttp;
@@ -123,7 +124,7 @@ uint32_t nextCurrentlyPlayingMillis = 0;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = Idle;
 SpotifyActions spotifyRetryAction = Idle;
-const char *spotifyPlayPlaylistId = nullptr;
+char spotifyPlayUri[96];
 int spotifyPlayAtMillis = -1;
 int spotifySeekToMillis = -1;
 int spotifySetVolumeTo = -1;
@@ -137,6 +138,7 @@ bool spotifyDevicesLoaded = false;
 SpotifyDevice_t *activeSpotifyDevice = nullptr;
 
 std::vector<SpotifyPlaylist_t> spotifyPlaylists;
+unsigned int spotifyPlaylistsCount = 0;
 bool spotifyPlaylistsLoaded = false;
 
 // Utility functions
