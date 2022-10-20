@@ -1170,33 +1170,21 @@ void drawRootMenu() {
   if (shouldShowRandom()) {
     double pressedProgress = min(1.0, (double)getExtraLongPressedMillis() / (double)extraLongPressMillis);
     tft.drawFastHLine(0, 0, (int)(pressedProgress * screenWidth), TFT_WHITE);
-    drawCenteredText("random", textWidth);
+    const char *randomText = "random";
+    if (lastPlaylistMenuMode == GenreList) randomText = "random genre";
+    else if (lastPlaylistMenuMode == CountryList) randomText = "random country";
+    else if (lastPlaylistMenuMode == PlaylistList || lastPlaylistMenuMode == SimilarList) randomText = "random playlist";
+    drawCenteredText(randomText, textWidth);
   } else {
     tft.drawFastHLine(0, 0, screenWidth, TFT_BLACK);
-    if (menuIndex == GenreList) {
-      switch (genreSort) {
-        case AlphabeticSort:
-          drawCenteredText("genres", textWidth);
-          break;
-        case AlphabeticSuffixSort:
-          drawCenteredText("genres by suffix", textWidth);
-          break;
-        case AmbienceSort:
-          drawCenteredText("genres by ambience", textWidth);
-          break;
-        case ModernitySort:
-          drawCenteredText("genres by modernity", textWidth);
-          break;
-        case PopularitySort:
-          drawCenteredText("genres by popularity", textWidth);
-          break;
-      }
-    } else if (menuIndex == rootMenuSimilarIndex) {
+    if (menuIndex == rootMenuSimilarIndex) {
       drawCenteredText(rootMenuItems[SimilarList], textWidth);
     } else if (menuIndex == rootMenuNowPlayingIndex) {
       drawCenteredText(rootMenuItems[NowPlaying], textWidth);
     } else if (menuIndex == rootMenuUsersIndex) {
       drawCenteredText(rootMenuItems[UserList], textWidth);
+    } else if (menuIndex == rootMenuDevicesIndex) {
+      drawCenteredText(rootMenuItems[DeviceList], textWidth);
     } else {
       drawCenteredText(rootMenuItems[menuIndex], textWidth);
     }
@@ -1656,7 +1644,7 @@ bool shouldShowUsersMenu() {
 }
 
 bool shouldShowDevicesMenu() {
-  return spotifyAccessToken[0] != '\0';
+  return spotifyRefreshToken[0] != '\0';
 }
 
 uint16_t checkMenuSize(MenuModes mode) {
