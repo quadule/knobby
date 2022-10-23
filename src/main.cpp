@@ -2278,16 +2278,11 @@ void spotifyCurrentlyPlaying() {
       if (!item.isNull()) {
         emptyCurrentlyPlayingResponses = 0;
         spotifyState.durationMillis = item["duration_ms"];
-        if (!item["id"].isNull()) {
-          if (item["id"] != spotifyState.trackId) {
-            strncpy(spotifyState.trackId, item["id"], SPOTIFY_ID_SIZE);
-            if (menuMode == SeekControl) {
-              menuSize = checkMenuSize(SeekControl);
-              setMenuIndex(spotifyState.progressMillis / 1000);
-            }
-          }
-        } else {
-          spotifyState.trackId[0] = '\0';
+        const char *id = item["linked_from"]["id"] | item["id"];
+        strncpy(spotifyState.trackId, id, SPOTIFY_ID_SIZE);
+        if (menuMode == SeekControl) {
+          menuSize = checkMenuSize(SeekControl);
+          setMenuIndex(spotifyState.progressMillis / 1000);
         }
         strncpy(spotifyState.name, item["name"], sizeof(spotifyState.name) - 1);
 
