@@ -2653,11 +2653,11 @@ void spotifyCheckLike() {
         invalidateDisplay();
       }
     } else {
-      log_e("%d - %s", statusCode, spotifyHttp.getString());
+      log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
     }
     spotifyState.checkedLike = true;
   } else {
-    log_e("%d - %s", statusCode, spotifyHttp.getString());
+    log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
   }
   spotifyApiRequestEnded();
 };
@@ -2674,7 +2674,7 @@ void spotifyToggleLike() {
   statusCode = spotifyApiRequest(spotifyState.isLiked ? "PUT" : "DELETE", path);
 
   if (statusCode > 204) {
-    log_e("%d - %s", statusCode, spotifyHttp.getString());
+    log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
     spotifyState.isLiked = !spotifyState.isLiked;
     invalidateDisplay();
   }
@@ -2695,7 +2695,7 @@ void spotifyToggleShuffle() {
   if (statusCode == 204) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
-    log_e("%d - %s", statusCode, spotifyHttp.getString());
+    log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
     spotifyState.isShuffled = !spotifyState.isShuffled;
     invalidateDisplay();
   }
@@ -2725,7 +2725,7 @@ void spotifyToggleRepeat() {
   if (statusCode == 204) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
-    log_e("%d - %s", statusCode, spotifyHttp.getString());
+    log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
     spotifyState.repeatMode = RepeatOff;
     invalidateDisplay();
   }
@@ -2741,7 +2741,7 @@ void spotifyTransferPlayback() {
   if (statusCode == 204) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
-    log_e("%d - %s", statusCode, spotifyHttp.getString());
+    log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
   }
   spotifyApiRequestEnded();
 };
@@ -2791,7 +2791,7 @@ void spotifyGetPlaylistDescription() {
       setMenuMode(SimilarList, 0);
     }
   } else {
-    log_e("%d - %s", statusCode, spotifyHttp.getString());
+    log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
   }
   spotifyApiRequestEnded();
 };
@@ -2846,7 +2846,7 @@ void spotifyGetPlaylists() {
       }
     } else {
       nextOffset = -1;
-      log_e("%d - %s", statusCode, spotifyHttp.getString());
+      log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
     }
   }
   spotifyApiRequestEnded();
