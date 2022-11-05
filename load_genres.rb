@@ -58,13 +58,13 @@ template = <<-END_TEMPLATE
 #define GENRE_COUNT <%= genres.size %>
 #define COUNTRY_COUNT <%= countries.size %>
 
-const char* genres[GENRE_COUNT] = { <%= names.map(&:inspect).join(", ") %> };
+const char *genres[GENRE_COUNT] = { <%= names.map(&:inspect).join(", ") %> };
 
-const char* genrePlaylists[GENRE_COUNT] = { <%= alphabetical.map { |g| g.id.inspect }.join(", ") %> };
+const char *genrePlaylists[GENRE_COUNT] = { <%= alphabetical.map { |g| g.id.inspect }.join(", ") %> };
 
-const char* countries[COUNTRY_COUNT] = { <%= countries.keys.map(&:inspect).join(", ") %> };
+const char *countries[COUNTRY_COUNT] = { <%= countries.keys.map(&:inspect).join(", ") %> };
 
-const char* countryPlaylists[COUNTRY_COUNT] = { <%= countries.values.map(&:inspect).join(", ") %> };
+const char *countryPlaylists[COUNTRY_COUNT] = { <%= countries.values.map(&:inspect).join(", ") %> };
 
 const uint16_t genreColors[GENRE_COUNT] = { <%= alphabetical.map { |g| g.color.to_s }.join(", ") %> };
 
@@ -74,7 +74,7 @@ const uint16_t genreIndexes_suffix[GENRE_COUNT] = { <%= suffix.map { |g| names.i
 const uint16_t genreIndexes_<%= vector %>[GENRE_COUNT] = { <%= sorted.map { |g| names.index(g.name) }.join(", ") %> };
 
 <% if sorted.first.label -%>
-const char* genreLabels_<%= vector %>[GENRE_COUNT] = { <%= sorted.map { |g| g.label.inspect }.join(", ") %> };
+const char *genreLabels_<%= vector %>[GENRE_COUNT] = { <%= sorted.map { |g| g.label.inspect }.join(", ") %> };
 <% end -%>
 <% end -%>
 END_TEMPLATE
