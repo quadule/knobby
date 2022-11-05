@@ -57,9 +57,9 @@ If you use a different rotary encoder in your build and find that the knob must 
 <img src="images/soldering.gif?raw=true" width="439" height="240" alt="soldering rotary encoder’s wires to the circuit board">
 
 ### Install the firmware
-#### ➡️ [knobby.quadule.com/setup](https://knobby.quadule.com/setup)
+#### ➡️ [setup.knobby.net](https://setup.knobby.net)
 
-The [Knobby setup tool](https://knobby.quadule.com/setup) can flash the latest firmware and configure wifi credentials over USB (requires Google Chrome or Microsoft Edge for Web Serial API support).
+The [Knobby setup tool](https://setup.knobby.net) can flash the latest firmware and configure wifi credentials over USB (requires Google Chrome or Microsoft Edge for Web Serial API support).
 
 Alternatively, you can download [the latest release](https://github.com/quadule/knobby/releases/latest) and flash it yourself. You will need to have Python and [esptool.py](https://github.com/espressif/esptool) installed. With the USB cable connected, run the flash script in the directory of the extracted firmware zip:
 

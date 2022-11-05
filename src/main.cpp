@@ -1129,7 +1129,7 @@ void drawSetup() {
       tft.setCursor(textStartX, lineTwo);
       drawCenteredText("connect usb and visit", textWidth, 1);
       tft.setCursor(textStartX, lineThree);
-      drawCenteredText("knobby.quadule.com/", textWidth, 1);
+      drawCenteredText("setup.knobby.net", textWidth, 1);
       tft.setCursor(textStartX, lineFour);
       drawCenteredText("setup", textWidth, 1);
     } else {
@@ -1198,10 +1198,11 @@ void drawSettingsMenu() {
   tft.setCursor(textStartX, lineTwo);
   switch (menuIndex) {
     case SettingsAbout:
-      tft.setCursor(textStartX, lineTwo);
+      drawCenteredText("knobby.net", textWidth, 1);
+      tft.setCursor(textStartX, lineThree);
       char about[100];
-      sprintf(about, "knobby.quadule.com by milo winningham %s", KNOBBY_VERSION);
-      drawCenteredText(about, textWidth, 3);
+      sprintf(about, "by milo winningham %s", KNOBBY_VERSION);
+      drawCenteredText(about, textWidth, 2);
       break;
     case SettingsUpdate:
       drawCenteredText("double click to begin updating", textWidth, 3);

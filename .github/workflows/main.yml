@@ -66,7 +66,6 @@ jobs:
       if: github.ref_type == 'branch'
       run:
         aws s3 cp
-          --acl public-read
           --metadata "{\"git-version\":\"$(git describe --match="" --dirty --always)\"}"
           --recursive
           upload
@@ -77,11 +76,19 @@ jobs:
         mv upload/knobby-firmware.zip upload/knobby-firmware-${{ github.ref_name }}.zip;
         mv upload/twatch-firmware.zip upload/twatch-firmware-${{ github.ref_name }}.zip;
         aws s3 cp
-          --acl public-read
           --metadata "{\"git-version\":\"$(git describe --match="" --dirty --always)\"}"
           --recursive
           upload
-          s3://knobby/firmware/
+          s3://knobby/firmware/;
+        cd setup;
+        unzip -d firmware/knobby upload/knobby-firmware-${{ github.ref_name }}.zip;
+        unzip -d firmware/twatch upload/twatch-firmware-${{ github.ref_name }}.zip;
+        aws s3 cp
+          --metadata "{\"git-version\":\"$(git describe --match="" --dirty --always)\"}"
+          --recursive
+          --exclude "*" --include "*.bin" --include "*.html"
+          .
+          s3://setup.knobby.net/;
     - name: Draft release
       uses: softprops/action-gh-release@v1
       if: github.ref_type == 'tag'
