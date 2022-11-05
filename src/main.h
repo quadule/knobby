@@ -261,7 +261,7 @@ unsigned long inactivityMillis = 90000;
 unsigned long lastBatteryUpdateMillis = 0;
 unsigned long lastDelayMillis = 0;
 unsigned long lastDisplayMillis = 0;
-unsigned long lastInputMillis = 1;
+unsigned long lastInputMillis = 0;
 unsigned long lastReconnectAttemptMillis = 0;
 unsigned long longPressStartedMillis = 0;
 unsigned long nowPlayingDisplayMillis = 0;
@@ -269,6 +269,7 @@ unsigned long randomizingMenuEndMillis = 0;
 unsigned long randomizingMenuNextMillis = 0;
 unsigned long randomizingMenuTicks = 0;
 unsigned long statusMessageUntilMillis = 0;
+unsigned long menuClickedMillis = 0;
 unsigned long menuTimeoutMillis = 15000;
 unsigned long wifiConnectTimeoutMillis = 45000;
 bool wifiConnectWarning = false;
@@ -316,8 +317,6 @@ void updateFirmware();
 
 // Getters
 int formatMillis(char *output, unsigned long millis);
-int getGenreIndexByName(const char *genreName);
-int getGenreIndexByPlaylistId(const char *playlistId);
 uint16_t getMenuIndexForGenreIndex(uint16_t index);
 int getMenuIndexForPlaylist(const char *contextUri);
 int getGenreIndexForMenuIndex(uint16_t index, MenuModes mode);
