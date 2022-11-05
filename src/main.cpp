@@ -785,14 +785,16 @@ void knobClicked() {
     case SimilarList:
     case CountryList:
     case PlaylistList:
-      playMenuPlaylist(menuMode, pressedMenuIndex);
+      if (activeSpotifyUser) playMenuPlaylist(menuMode, pressedMenuIndex);
       break;
     case SeekControl:
-      spotifySeekToMillis = pressedMenuIndex * 1000;
-      spotifyState.progressMillis = spotifyState.estimatedProgressMillis = spotifySeekToMillis;
-      spotifyState.lastUpdateMillis = millis();
-      spotifyQueueAction(Seek);
-      setMenuMode(NowPlaying, SeekButton);
+      if (activeSpotifyUser) {
+        spotifySeekToMillis = pressedMenuIndex * 1000;
+        spotifyState.progressMillis = spotifyState.estimatedProgressMillis = spotifySeekToMillis;
+        spotifyState.lastUpdateMillis = millis();
+        spotifyQueueAction(Seek);
+        setMenuMode(NowPlaying, SeekButton);
+      }
       break;
     case VolumeControl:
       setMenuMode(NowPlaying, VolumeButton);
@@ -1626,7 +1628,7 @@ bool shouldShowRandom() {
 }
 
 bool shouldShowSimilarMenu() {
-  return isGenreMenu(lastMenuMode) || playingGenreIndex >= 0;
+  return (isGenreMenu(lastMenuMode) || playingGenreIndex >= 0) && spotifyRefreshToken[0] != '\0';
 }
 
 bool shouldShowUsersMenu() {
