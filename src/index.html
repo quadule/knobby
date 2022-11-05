@@ -27,5 +27,8 @@
     </p>
   </form>
 </div>
+<script>
+  document.forms.update.password.value = new URLSearchParams(location.search).get("pass")
+</script>
 </body>
 </html>

@@ -15,8 +15,8 @@ static const uint8_t IMPROV_SERIAL_VERSION = 1;
 
 class ImprovSerial {
  public:
-  void setup(std::string firmware, std::string version, std::string variant, std::string name);
-  bool loop(bool timeout = false);
+  void setup(std::string name);
+  bool loop();
   improv::State getState();
   std::string getSSID();
   std::string getPassword();
@@ -41,9 +41,9 @@ class ImprovSerial {
   improv::State _state{improv::STATE_AUTHORIZED};
   improv::ImprovCommand _command{improv::Command::UNKNOWN, "", ""};
 
-  std::string _firmwareName;
-  std::string _firmwareVersion;
-  std::string _hardwareVariant;
+  std::string _firmwareName = std::string("knobby");
+  std::string _firmwareVersion = std::string(KNOBBY_VERSION);
+  std::string _hardwareVariant = std::string(PLATFORMIO_ENV);
   std::string _deviceName;
 };
 

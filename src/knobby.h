@@ -2,8 +2,10 @@
 #define KNOBBY_H
 
 #include "Arduino.h"
+#include "base64.h"
 #include "esp_adc_cal.h"
 #include "esp_ota_ops.h"
+#include "Preferences.h"
 #include "Wire.h"
 
 #ifdef LILYGO_WATCH_2019_WITH_TOUCH
@@ -30,7 +32,14 @@ class Knobby {
     void setup();
     void loop();
 
+    const String& name();
+    void setName(const char *name);
+
+    const String& password();
+    void setPassword(const char *password);
+
     void printHeader();
+    void resetSettings();
 
     uint8_t batteryPercentage();
     float batteryVoltage();
@@ -40,6 +49,10 @@ class Knobby {
     void updateBattery();
 
   private:
+    String _name;
+    String _password;
+    Preferences _preferences;
+
     float _readSettledBatteryVoltage();
     uint8_t _batteryPercentage = 0;
     float _batteryVoltage = 0.0;
@@ -59,7 +72,7 @@ class Knobby {
     std::vector<float> _batteryReadings;
     const unsigned int _batteryReadingsMax = 10;
     BatteryReadingRate _batteryReadingRate = BatteryReadingOff;
-    float _batteryVoltageThreshold = 4.33;
+    float _batteryVoltageThreshold = 4.3;
     unsigned int _batteryUpdatedMillis = 0;
     PowerStatus _powerStatus = PowerStatusUnknown;
     int _vref = 1100;
@@ -70,6 +83,8 @@ Knobby::Knobby() {
 }
 
 void Knobby::setup() {
+  _preferences.begin("knobby");
+
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     ttgo = TTGOClass::getWatch();
   #else
@@ -93,17 +108,74 @@ void Knobby::loop() {
   if (shouldUpdateBattery()) updateBattery();
 }
 
+const String& Knobby::name() {
+  if (_name.isEmpty() && _preferences.getType("name") == PT_STR) {
+    _name = _preferences.getString("name");
+  }
+  if (_name.isEmpty()) {
+    _name = "knobby-";
+    String suffix = WiFi.macAddress().substring(12, 17);
+    suffix.replace(":", "");
+    suffix.toLowerCase();
+    _name.concat(suffix);
+    setName(_name.c_str());
+  }
+  return _name;
+}
+
+void Knobby::setName(const char *name) {
+  _name = name;
+  _preferences.putString("name", _name);
+}
+
+const String& Knobby::password() {
+  if (_password.isEmpty() && _preferences.getType("password") == PT_STR) {
+    _password = _preferences.getString("password");
+  }
+  if (_password.isEmpty()) {
+    unsigned char randomBytes[10];
+    for (auto i=0; i<10; i++) randomBytes[i] = random(256);
+    _password = base64::encode((const uint8_t *)&randomBytes, 10).substring(0, 10);
+    _password.toLowerCase();
+    _password.replace('1', '!');
+    _password.replace('l', '-');
+    _password.replace('+', '*');
+    _password.replace('/', '^');
+    setPassword(_password.c_str());
+  }
+  return _password;
+}
+
+void Knobby::setPassword(const char *password) {
+  _password = password;
+  _preferences.putString("password", _password);
+}
+
 void Knobby::printHeader() {
   const esp_app_desc_t *desc = esp_ota_get_app_description();
   log_printf("\n    _                 _     _              |\n");
   log_printf("   | |               | |   | |             |\n");
-  log_printf("   | |  _ ____   ___ | |__ | |__  _   _    |   mac %s", WiFi.macAddress().c_str());
-  log_printf("   | |_/ )  _ \\ / _ \\|  _ \\|  _ \\| | | |   |   built %s %s", desc->date, desc->time);
-  log_printf("   |  _ (| | | | |_| | |_) ) |_) ) |_| |   |   git version %s", GIT_VERSION);
-  log_printf("   |_| \\_)_| |_|\\___/|____/|____/ \\__  |   |   esp-idf %s", desc->idf_ver);
-  log_printf("    by milo winningham           (____/    |   arduino %d.%d.%d", ESP_ARDUINO_VERSION_MAJOR, ESP_ARDUINO_VERSION_MINOR, ESP_ARDUINO_VERSION_PATCH);
-  log_printf("    https://knobby.quadule.com             |\n");
+  log_printf("   | |  _ ____   ___ | |__ | |__  _   _    |   mac %s\n", WiFi.macAddress().c_str());
+  log_printf("   | |_/ )  _ \\ / _ \\|  _ \\|  _ \\| | | |   |   built %s %s\n", desc->date, desc->time);
+  log_printf("   |  _ (| | | | |_| | |_) ) |_) ) |_| |   |   git version %s\n", GIT_VERSION);
+  log_printf("   |_| \\_)_| |_|\\___/|____/|____/ \\__  |   |   esp-idf %s\n", desc->idf_ver);
+  log_printf("    by milo winningham           (____/    |   arduino %d.%d.%d\n", ESP_ARDUINO_VERSION_MAJOR, ESP_ARDUINO_VERSION_MINOR, ESP_ARDUINO_VERSION_PATCH);
+  log_printf("    https://knobby.net                     |\n");
   log_printf("___________________________________________|____________________________________\n");
+  log_printf("\n");
+  if (WiFi.SSID().isEmpty()) {
+    log_printf("    setup this device via usb or wifi:\n");
+    log_printf("      * (re)connect and visit https://setup.knobby.net to configure\n");
+    log_printf("      * or join the wifi network %s with password %s\n", name(), password());
+  } else {
+    log_printf("    connecting to wifi network: %s\n", WiFi.SSID());
+    log_printf("    for configuration and more: http://%s.local?pass=%s\n", WiFi.getHostname(), password());
+  }
+  log_printf("\n");
+}
+
+void Knobby::resetSettings() {
+  _preferences.clear();
 }
 
 uint8_t Knobby::batteryPercentage() {

@@ -166,7 +166,6 @@ const int lineSpacing = 3;
 #else
   const int maxTextLines = 3;
 #endif
-const String nodeName = "knobby";
 
 // icomoon23.vlw
 const String ICON_VOLUME_UP = "\uE900";
@@ -202,11 +201,6 @@ const String ICON_BATTERY_MID = "\uE911";
 const String ICON_BATTERY_LOW = "\uE912";
 const String ICON_BATTERY_FULL = "\uE913";
 
-String configPassword;
-String firmwareURL;
-String wifiSSID;
-String wifiPassword;
-
 RTC_DATA_ATTR unsigned int bootCount = 0;
 RTC_DATA_ATTR time_t bootSeconds = 0;
 RTC_DATA_ATTR time_t lastSleepSeconds = 0;
@@ -238,6 +232,7 @@ ESPAsync_WiFiManager *wifiManager;
 
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
+String firmwareURL;
 bool flipDisplay = false;
 int pulseCount = ROTARY_ENCODER_PULSE_COUNT;
 int lastKnobCount = 0;
@@ -277,6 +272,8 @@ unsigned long statusMessageUntilMillis = 0;
 unsigned long menuTimeoutMillis = 15000;
 unsigned long wifiConnectTimeoutMillis = 45000;
 bool wifiConnectWarning = false;
+String wifiSSID;
+String wifiPassword;
 size_t updateContentLength = 0;
 
 // Events
@@ -326,6 +323,7 @@ int getMenuIndexForPlaylist(const char *contextUri);
 int getGenreIndexForMenuIndex(uint16_t index, MenuModes mode);
 void getPlaylistName(char *name, MenuModes mode, uint16_t index);
 void getPlaylistUri(char *uri, MenuModes mode, uint16_t index);
+const char* selectHostname();
 bool isGenreMenu(MenuModes mode);
 bool isPlaylistMenu(MenuModes mode);
 unsigned long getLongPressedMillis();

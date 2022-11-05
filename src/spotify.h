@@ -33,6 +33,7 @@ const char *spotifyCACertificate =
     "CAUw7C29C79Fv1C5qfPrmAESrciIxpg0X40KPMbp1ZWVbd4=\n"
     "-----END CERTIFICATE-----\n";
 const char *spotifyClientId = "55aee603baf641f899e5bfeba3fe05d0";
+const char *spotifyPlaylistContextPrefix = "spotify:playlist:";
 
 typedef struct {
   char name[64] = "";
@@ -48,7 +49,7 @@ typedef struct {
 } SpotifyDevice_t;
 
 typedef struct {
-  char id[41] = "";
+  char id[SPOTIFY_ID_SIZE + 1] = "";
   String name;
 } SpotifyPlaylist_t;
 

@@ -1,9 +1,6 @@
 #include "ImprovSerial.h"
 
-void ImprovSerial::setup(std::string firmware, std::string version, std::string variant, std::string name) {
-  _firmwareName = firmware;
-  _firmwareVersion = version;
-  _hardwareVariant = variant;
+void ImprovSerial::setup(std::string name) {
   _deviceName = name;
   if (WiFi.getMode() == WIFI_STA && WiFi.isConnected()) {
     _state = improv::STATE_PROVISIONED;
@@ -29,7 +26,7 @@ void ImprovSerial::writeData(std::vector<uint8_t> &data) {
   Serial.write(data.data(), data.size());
 }
 
-bool ImprovSerial::loop(bool timeout) {
+bool ImprovSerial::loop() {
   const uint32_t now = millis();
   if (now - _lastReadByte > 50) {
     _rxBuffer.clear();
@@ -43,23 +40,29 @@ bool ImprovSerial::loop(bool timeout) {
       _rxBuffer.clear();
     }
   }
-  if (_state == improv::STATE_PROVISIONING) {
-    if (WiFi.getMode() == WIFI_AP || (WiFi.getMode() == WIFI_STA && WiFi.isConnected())) {
-      setState(improv::STATE_PROVISIONED);
-
-      std::vector<uint8_t> url = buildResponse(improv::WIFI_SETTINGS);
-      sendResponse(url);
-      return true;
-    } else if (timeout)
+  if (_state != improv::STATE_PROVISIONED) {
+    if (WiFi.getMode() == WIFI_STA && WiFi.isConnected()) {
+      if (_state == improv::STATE_PROVISIONING) {
+        setState(improv::STATE_PROVISIONED);
+        std::vector<uint8_t> url = buildResponse(improv::WIFI_SETTINGS);
+        sendResponse(url);
+        return true;
+      } else {
+        _state = improv::STATE_PROVISIONED;
+      }
+    } else if (now - _lastReadByte > 1000) {
       onWiFiConnectTimeout();
+    }
   }
-  return false;
+  return _lastReadByte > 0 && _rxBuffer.size() > sizeof("IMPROV");
 }
 
 std::vector<uint8_t> ImprovSerial::buildResponse(improv::Command command) {
   std::vector<std::string> urls;
-  std::string webserver_url = std::string("http://") + std::string(WiFi.getHostname()) + std::string(".local");
-  urls.push_back(webserver_url);
+  std::string url = std::string("http://") +
+                    std::string(_state == improv::STATE_PROVISIONED ? WiFi.getHostname() : "knobby") +
+                    std::string(".local");
+  urls.push_back(url);
   std::vector<uint8_t> data = improv::build_rpc_response(command, urls, false);
   return data;
 }

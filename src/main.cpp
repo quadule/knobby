@@ -8,10 +8,8 @@ void setup() {
 
   Serial.begin(115200);
 
-  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_A_PIN);
-  rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_B_PIN);
+  knobby.setup();
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN);
-
   esp_pm_config_esp32_t pm_config_ls_enable = {
     .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
     .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
@@ -19,11 +17,6 @@ void setup() {
   };
   ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
   ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
-
-  WiFi.mode(WIFI_STA);
-  WiFi.setHostname(nodeName.c_str());
-  improvSerial.setup(std::string("knobby"), std::string(KNOBBY_VERSION), std::string(PLATFORMIO_ENV), std::string(WiFi.macAddress().c_str()));
-  if (!WiFi.SSID().isEmpty()) WiFi.begin();
 
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     ttgo = TTGOClass::getWatch();
@@ -51,6 +44,24 @@ void setup() {
 
   SPIFFS.begin(true);
   readDataJson();
+  WiFi.setHostname(selectHostname());
+  if (wifiSSID.isEmpty()) {
+    WiFi.begin();
+  } else {
+    WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
+  }
+  improvSerial.setup(std::string(knobby.name().c_str()));
+
+  ESP32Encoder::useInternalWeakPullResistors = UP;
+  knob.attachFullQuad(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN);
+  button.setDebounceTicks(debounceMillis);
+  button.setClickTicks(doubleClickMaxMillis);
+  button.setPressTicks(longPressMillis);
+  button.attachClick(knobClicked);
+  button.attachDoubleClick(knobDoubleClicked);
+  button.attachLongPressStart(knobLongPressStarted);
+  button.attachLongPressStop(knobLongPressStopped);
+  button.attachPressStart(knobPressStarted);
 
   tft.setRotation(flipDisplay ? 1 : 3);
   tft.loadFont(GillSans24_vlw_start);
@@ -62,7 +73,6 @@ void setup() {
     log_d("Boot #%d", bootCount);
     countryIndex = random(COUNTRY_COUNT);
     genreIndex = random(GENRE_COUNT);
-    setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
   } else {
     struct timeval tod;
     gettimeofday(&tod, NULL);
@@ -83,47 +93,13 @@ void setup() {
   }
   bootCount++;
 
-  knobby.printHeader();
-  knobby.setup();
-
-  ESP32Encoder::useInternalWeakPullResistors = UP;
-  knob.attachFullQuad(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN);
-  button.setDebounceTicks(debounceMillis);
-  button.setClickTicks(doubleClickMaxMillis);
-  button.setPressTicks(longPressMillis);
-  button.attachClick(knobClicked);
-  button.attachDoubleClick(knobDoubleClicked);
-  button.attachLongPressStart(knobLongPressStarted);
-  button.attachLongPressStop(knobLongPressStopped);
-  button.attachPressStart(knobPressStarted);
-
-  if (configPassword.isEmpty()) {
-    unsigned char randomBytes[10];
-    for (auto i=0; i<10; i++) randomBytes[i] = random(256);
-    configPassword = base64::encode((const uint8_t *)&randomBytes, 10).substring(0, 10);
-    configPassword.toLowerCase();
-    configPassword.replace('1', '!');
-    configPassword.replace('l', '-');
-    configPassword.replace('+', '?');
-    configPassword.replace('/', '&');
-    writeDataJson();
-  }
-  log_i("Config password: %s", configPassword.c_str());
-
-  if (wifiSSID.isEmpty()) {
-    wifiConnectWarning = true;
+  if (spotifyUsers.empty()) {
     setMenuMode(InitialSetup, 0);
     menuSize = 0;
-    drawSetup();
-    improvSerial.loop();
+    wifiConnectWarning = true;
+    tft.fillScreen(TFT_BLACK);
+    drawMenuHeader(true, "setup knobby");
     startWifiManager();
-  } else {
-    log_i("Connecting to saved wifi SSID: %s", wifiSSID.c_str());
-    improvSerial.loop();
-  }
-
-  if (wifiSSID.isEmpty() || spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
-    setMenuMode(InitialSetup, 0);
   } else {
     if (secondsAsleep > newSessionSeconds) {
       genreSort = AlphabeticSort;
@@ -133,16 +109,14 @@ void setup() {
     if (knobHeldForRandom) {
       startRandomizingMenu(true);
     } else {
-      if (secondsAsleep == 0) startRandomizingMenu(false);
       nextCurrentlyPlayingMillis = 1;
     }
   }
 
-  updateDisplay();
-
   Update.onProgress(onOTAProgress);
-  ArduinoOTA.setHostname(nodeName.c_str());
-  ArduinoOTA.setPassword(configPassword.c_str());
+  ArduinoOTA.setHostname(selectHostname());
+  ArduinoOTA.setMdnsEnabled(false);
+  ArduinoOTA.setPassword(knobby.password().c_str());
   ArduinoOTA.setTimeout(10000);
   ArduinoOTA.onStart([]() {
       int cmd = ArduinoOTA.getCommand();
@@ -164,14 +138,13 @@ void setup() {
       setStatusMessage("update failed");
     });
   ArduinoOTA.begin();
-  MDNS.addService("http", "tcp", 80);
 
   // Initialize HTTP server handlers
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
     inactivityMillis = 1000 * 60 * 3;
     log_i("server.on /");
     if (spotifyUsers.empty() || (menuMode == SettingsMenu && menuIndex == SettingsAddUser)) {
-      request->redirect("http://" + nodeName + ".local/authorize");
+      request->redirect("http://knobby.local/authorize");
     } else {
       request->send(200, "text/html", index_html_start);
     }
@@ -207,8 +180,7 @@ void setup() {
         "user-modify-playback-state+playlist-read-private+"
         "user-library-read+user-library-modify+user-follow-read+user-follow-modify"
         "&code_challenge_method=S256&code_challenge=" + String(spotifyCodeChallenge) +
-        "&show_dialog=true&redirect_uri=http%3A%2F%2F" +
-        nodeName + ".local%2Fcallback&client_id=" + String(spotifyClientId);
+        "&show_dialog=true&redirect_uri=http%3A%2F%2Fknobby.local%2Fcallback&client_id=" + String(spotifyClientId);
     request->redirect(authUrl);
   });
 
@@ -237,8 +209,8 @@ void setup() {
             [](AsyncWebServerRequest *request) { request->send(200, "text/plain", String(ESP.getFreeHeap())); });
 
   server.on("/sleep", HTTP_GET, [](AsyncWebServerRequest *request) {
-    AsyncWebParameter *passwordParam = request->getParam("password");
-    if (!passwordParam || passwordParam->value() != configPassword) {
+    AsyncWebParameter *passwordParam = request->getParam("pass");
+    if (!passwordParam || passwordParam->value() != knobby.password()) {
       request->send(403, "text/plain", "Incorrect password");
     } else {
       request->send(200, "text/plain", "OK, sleeping");
@@ -249,16 +221,16 @@ void setup() {
 
   server.on("/update", HTTP_POST,
     [](AsyncWebServerRequest *request) {
-      AsyncWebParameter *passwordParam = request->getParam("password", true);
-      if (!passwordParam || passwordParam->value() != configPassword) {
+      AsyncWebParameter *passwordParam = request->getParam("pass", true);
+      if (!passwordParam || passwordParam->value() != knobby.password()) {
         request->send(403, "text/plain", "Incorrect password");
       } else {
         request->send(400, "text/plain", "Missing update file");
       }
     },
     [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
-      AsyncWebParameter *passwordParam = request->getParam("password", true);
-      if (!passwordParam || passwordParam->value() != configPassword) {
+      AsyncWebParameter *passwordParam = request->getParam("pass", true);
+      if (!passwordParam || passwordParam->value() != knobby.password()) {
         request->send(403, "text/plain", "Incorrect password");
         return;
       }
@@ -278,7 +250,7 @@ void setup() {
 
       if (final) {
         AsyncWebServerResponse *response = request->beginResponse(302, "text/plain", "Rebooting, please wait...");
-        response->addHeader("Refresh", "20");
+        response->addHeader("Refresh", "10");
         response->addHeader("Location", "/");
         request->send(response);
         if (!Update.end(true)){
@@ -314,6 +286,19 @@ void setup() {
   }
 
   xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
+
+  if (knobby.powerStatus() != PowerStatusPowered) knobby.updateBattery();
+  if (knobby.powerStatus() == PowerStatusPowered) knobby.printHeader();
+}
+
+const char* selectHostname() {
+  const char *hostname = nullptr;
+  if (WiFi.SSID().isEmpty() || spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
+    hostname = "knobby"; // spotify oauth needs static redirect uri
+  } else {
+    hostname = knobby.name().c_str();
+  }
+  return hostname;
 }
 
 void startWifiManager() {
@@ -323,10 +308,10 @@ void startWifiManager() {
   } else {
     inactivityMillis = 1000 * 60 * 5;
   }
-  wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, nodeName.c_str());
+  wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, knobby.name().c_str());
   wifiManager->setBreakAfterConfig(true);
   wifiManager->setSaveConfigCallback(saveAndSleep);
-  wifiManager->startConfigPortalModeless(nodeName.c_str(), configPassword.c_str(), false);
+  wifiManager->startConfigPortalModeless(knobby.name().c_str(), knobby.password().c_str(), false);
   dnsServer.setErrorReplyCode(AsyncDNSReplyCode::NoError);
   dnsServer.start(53, "*", WiFi.softAPIP());
 }
@@ -346,20 +331,9 @@ void delayIfIdle() {
   }
 }
 
-void saveWifiConfig(const String ssid, const String password) {
-  wifiSSID = ssid;
-  wifiPassword = password;
-  WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
-  writeDataJson();
-}
-
 void loop() {
-  if (improvSerial.loop()) saveWifiConfig(String(improvSerial.getSSID().c_str()), String(improvSerial.getPassword().c_str()));
-  if (wifiManager) wifiManager->loop();
-
   uint32_t now = millis();
   unsigned long previousInputDelta = (now == lastInputMillis) ? 1 : now - lastInputMillis;
-
   if (knob.getCount() != lastKnobCount) knobRotated();
   button.tick();
   knobby.loop();
@@ -372,7 +346,7 @@ void loop() {
   if ((wifiConnectWarning || spotifyRefreshToken[0] == '\0') && menuMode != InitialSetup && inputDelta > menuTimeoutMillis) {
     setMenuMode(InitialSetup, 0);
   } else if (inputDelta < previousInputDelta && previousInputDelta > inactivityMillis) {
-    if (menuMode == NowPlaying) {
+    if (menuMode == NowPlaying && now - spotifyState.lastUpdateMillis > 5000) {
       nextCurrentlyPlayingMillis = 1;
     }
     #ifdef LILYGO_WATCH_2019_WITH_TOUCH
@@ -421,11 +395,14 @@ void loop() {
     if (lastConnectedMillis >= 0) {
       setStatusMessage("reconnected");
     } else {
+      WiFi.setHostname(selectHostname());
+      MDNS.begin(selectHostname());
+      MDNS.addService("http", "tcp", 80);
       setStatusMessage("", 0);
     }
     lastConnectedMillis = now;
     wifiConnectWarning = false;
-    if (spotifyRefreshToken[0] == '\0') {
+    if (spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
       setMenuMode(InitialSetup, 0);
       invalidateDisplay(true);
     }
@@ -435,9 +412,7 @@ void loop() {
     esp_wifi_get_config(WIFI_IF_STA, &current_conf);
     current_conf.sta.listen_interval = 5;
     esp_wifi_set_config(WIFI_IF_STA, &current_conf);
-
-    if (wifiSSID.isEmpty()) saveWifiConfig(WiFi.SSID(), WiFi.psk());
-  } else if (!connected && !wifiSSID.isEmpty() && now - lastReconnectAttemptMillis > wifiConnectTimeoutMillis) {
+  } else if (!connected && !WiFi.SSID().isEmpty() && now - lastReconnectAttemptMillis > wifiConnectTimeoutMillis) {
     lastReconnectAttemptMillis = now;
     if (lastConnectedMillis < 0) {
       if (now > 5000) setStatusMessage("connecting to wifi");
@@ -451,17 +426,12 @@ void loop() {
     }
   }
 
-  if (connected && !spotifyGettingToken && spotifyNeedsNewAccessToken()) {
-    spotifyGettingToken = true;
-    spotifyActionQueue.push_front(GetToken);
-  }
-
   now = millis();
 
   if (menuMode == InitialSetup && !spotifyUsers.empty() && !wifiConnectWarning) {
     setMenuMode(GenreList, 0);
     startRandomizingMenu(false);
-  } else if (!knobHeldForRandom && shouldShowRandom() && getExtraLongPressedMillis() >= extraLongPressMillis) {
+  } else if (!knobHeldForRandom && shouldShowRandom() && getExtraLongPressedMillis() > extraLongPressMillis) {
     knobHeldForRandom = true;
     longPressStartedMillis = 0;
     startRandomizingMenu(true);
@@ -524,6 +494,8 @@ void loop() {
   }
 
   ArduinoOTA.handle();
+  improvSerial.loop();
+  if (wifiManager) wifiManager->loop();
   delayIfIdle();
 }
 
@@ -532,6 +504,11 @@ void backgroundApiLoop(void *params) {
     delayIfIdle();
     auto now = millis();
     if (WiFi.status() != WL_CONNECTED) continue;
+
+    if (!spotifyGettingToken && spotifyNeedsNewAccessToken()) {
+      spotifyGettingToken = true;
+      spotifyActionQueue.push_front(GetToken);
+    }
 
     if (spotifyActionQueue.size() > 0) {
       spotifyAction = spotifyActionQueue.front();
@@ -603,7 +580,8 @@ void backgroundApiLoop(void *params) {
       spotifyAction = Idle;
     }
 
-    if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis && (menuMode == NowPlaying || isIdle())) {
+    if (nextCurrentlyPlayingMillis > 0 && now >= nextCurrentlyPlayingMillis) {
+      nextCurrentlyPlayingMillis = 0;
       spotifyQueueAction(CurrentlyPlaying);
     } else if (spotifyState.trackId[0] != '\0') {
       if (!spotifyState.checkedLike) spotifyQueueAction(CheckLike);
@@ -780,6 +758,7 @@ void knobClicked() {
       } else if (activeSpotifyUser == &spotifyUsers[pressedMenuIndex]) {
         setMenuMode(NowPlaying, PlayPauseButton);
       }
+      nextCurrentlyPlayingMillis = 1;
       break;
     case DeviceList:
       if (spotifyDevicesLoaded && !spotifyDevices.empty()) {
@@ -906,6 +885,14 @@ void knobDoubleClicked() {
         tft.setRotation(flipDisplay ? 1 : 3);
         invalidateDisplay(true);
         break;
+      case SettingsAddUser:
+        if (strcmp(WiFi.getHostname(), "knobby") != 0) {
+          MDNS.end();
+          WiFi.setHostname("knobby"); // spotify oauth needs static redirect uri
+          MDNS.begin("knobby");
+          invalidateDisplay();
+        }
+        break;
       case SettingsRemoveUser:
         if (activeSpotifyUser) {
           setStatusMessage("logged out");
@@ -930,9 +917,9 @@ void knobDoubleClicked() {
         drawCenteredText("resetting...", textWidth, 1);
         spotifyAccessToken[0] = '\0';
         spotifyRefreshToken[0] = '\0';
-        configPassword.clear();
         spotifyUsers.clear();
-        saveWifiConfig("", "");
+        knobby.resetSettings();
+        writeDataJson();
         WiFi.disconnect(true, true);
         delay(statusMessageMillis);
         tft.fillScreen(TFT_BLACK);
@@ -1131,19 +1118,19 @@ void drawSetup() {
       tft.setCursor(textStartX, lineThree);
       drawCenteredText("setup.knobby.net", textWidth, 1);
       tft.setCursor(textStartX, lineFour);
-      drawCenteredText("setup", textWidth, 1);
+      drawCenteredText("", textWidth, 1);
     } else {
       tft.setCursor(textStartX, lineTwo);
       drawCenteredText("or join wifi network", textWidth, 1);
       tft.setCursor(textStartX, lineThree);
-      drawCenteredText(("name: " + nodeName).c_str(), textWidth, 1);
+      drawCenteredText(("name: " + knobby.name()).c_str(), textWidth, 1);
       tft.setCursor(textStartX, lineFour);
-      drawCenteredText(("pass: " + configPassword).c_str(), textWidth, 1);
+      drawCenteredText(("pass: " + knobby.password()).c_str(), textWidth, 1);
     }
   } else {
     drawMenuHeader(true, "setup knobby");
     tft.setCursor(textStartX, lineTwo);
-    drawCenteredText(("log in with spotify at http://" + nodeName + ".local").c_str(), textWidth, maxTextLines);
+    drawCenteredText("log in with spotify at http://knobby.local", textWidth, maxTextLines);
   }
 }
 
@@ -1193,7 +1180,7 @@ void drawRootMenu() {
 }
 
 void drawSettingsMenu() {
-  drawMenuHeader(false, settingsMenuItems[menuIndex]);
+  bool selected = false;
   img.setTextColor(TFT_DARKGREY, TFT_BLACK);
   tft.setCursor(textStartX, lineTwo);
   switch (menuIndex) {
@@ -1211,7 +1198,13 @@ void drawSettingsMenu() {
       drawCenteredText("double click to rotate the display", textWidth, 3);
       break;
     case SettingsAddUser:
-      drawCenteredText(("log in with spotify at http://" + nodeName + ".local/authorize").c_str(), textWidth, 3);
+      if (strcmp(WiFi.getHostname(), "knobby") != 0) {
+        drawCenteredText("double click to add a spotify account", textWidth, 3);
+      } else {
+        selected = true;
+        img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        drawCenteredText("log in with spotify at http://knobby.local", textWidth, 3);
+      }
       break;
     case SettingsRemoveUser:
       drawCenteredText("double click to log out of spotify", textWidth, 3);
@@ -1222,6 +1215,7 @@ void drawSettingsMenu() {
     default:
       break;
   }
+  drawMenuHeader(selected, settingsMenuItems[menuIndex]);
 }
 
 void drawUserMenu() {
@@ -1389,7 +1383,7 @@ void drawNowPlayingOrSeek() {
       const char *text = nullptr;
       if (spotifyState.isPrivateSession) {
         text = "- private session -";
-      } else if (!spotifyStateLoaded && (spotifyActionIsQueued(CurrentlyPlaying) || spotifyActionIsQueued(GetToken))) {
+      } else if (!spotifyStateLoaded && (spotifyGettingToken || spotifyActionIsQueued(CurrentlyPlaying)) && !spotifyUsers.empty()) {
         text = "loading...";
       } else if (spotifyApiRequestStartedMillis < 0 && !spotifyState.isPlaying) {
         text = "- nothing playing -";
@@ -1623,7 +1617,7 @@ unsigned long getExtraLongPressedMillis() {
 }
 
 bool shouldShowProgressBar() {
-  if (menuMode == InitialSetup || wifiSSID.isEmpty()) return false;
+  if (menuMode == InitialSetup || WiFi.SSID().isEmpty()) return false;
   auto now = millis();
   auto waitingMillis = spotifyApiRequestStartedMillis < 0 ? 0 : now - spotifyApiRequestStartedMillis;
   return (waitingMillis > waitToShowProgressMillis) ||
@@ -1854,7 +1848,7 @@ void setStatusMessage(const char *message, unsigned long durationMs) {
 }
 
 void saveAndSleep() {
-  saveWifiConfig(wifiManager->WiFi_SSID(), wifiManager->WiFi_Pass());
+  WiFi.begin(wifiManager->WiFi_SSID().c_str(), wifiManager->WiFi_Pass().c_str());
   WiFi.disconnect(true);
   esp_sleep_enable_timer_wakeup(100);
   tft.fillScreen(TFT_BLACK);
@@ -1866,16 +1860,15 @@ void startDeepSleep() {
   if (isTransientMenu(menuMode)) setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
   if (isTransientMenu(lastMenuMode)) lastMenuMode = GenreList;
   if (isTransientMenu(lastPlaylistMenuMode)) lastPlaylistMenuMode = GenreList;
-  struct timeval tod;
-  gettimeofday(&tod, NULL);
-  lastSleepSeconds = tod.tv_sec;
-  spotifyActionQueue.clear();
   tft.fillScreen(TFT_BLACK);
   WiFi.disconnect(true);
   digitalWrite(ADC_EN, LOW);
   digitalWrite(TFT_BL, LOW);
   tft.writecommand(TFT_DISPOFF);
   tft.writecommand(TFT_SLPIN);
+  struct timeval tod;
+  gettimeofday(&tod, NULL);
+  lastSleepSeconds = tod.tv_sec;
   rtc_gpio_isolate(GPIO_NUM_0); // button 1
   rtc_gpio_isolate(GPIO_NUM_35); // button 2
   rtc_gpio_isolate(GPIO_NUM_39);
@@ -1883,7 +1876,9 @@ void startDeepSleep() {
   rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_B_PIN);
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
+  #if CORE_DEBUG_LEVEL < ARDUHAL_LOG_LEVEL_DEBUG
   esp_deep_sleep_disable_rom_logging();
+  #endif
   esp_deep_sleep_start();
 }
 
@@ -1983,14 +1978,14 @@ bool readDataJson() {
 #endif
   }
 
-  configPassword = doc["configPassword"] | "";
+  if (doc.containsKey("configPassword")) knobby.setPassword(doc["configPassword"]);
   firmwareURL = doc["firmwareURL"] | KNOBBY_FIRMWARE_URL;
   if (firmwareURL.isEmpty()) firmwareURL = KNOBBY_FIRMWARE_URL;
   flipDisplay = doc["flipDisplay"];
   pulseCount = doc["pulseCount"];
   if (pulseCount <= 0 || pulseCount > 8) pulseCount = ROTARY_ENCODER_PULSE_COUNT;
-  wifiSSID = doc["wifiSSID"] | WiFi.SSID();
-  wifiPassword = doc["wifiPassword"] | WiFi.psk();
+  wifiSSID = doc["wifiSSID"] | wifiManager->WiFi_SSID();
+  wifiPassword = doc["wifiPassword"] | wifiManager->WiFi_Pass();
 
   JsonArray usersArray = doc["users"];
   spotifyUsers.clear();
@@ -2017,12 +2012,9 @@ bool writeDataJson() {
   File f = SPIFFS.open("/data.json", "w+");
   DynamicJsonDocument doc(5000);
 
-  doc["configPassword"] = configPassword;
   if (!firmwareURL.equals(KNOBBY_FIRMWARE_URL)) doc["firmwareURL"] = firmwareURL;
   if (flipDisplay) doc["flipDisplay"] = true;
   if (pulseCount != ROTARY_ENCODER_PULSE_COUNT) doc["pulseCount"] = pulseCount;
-  doc["wifiSSID"] = wifiSSID;
-  doc["wifiPassword"] = wifiPassword;
 
   JsonArray usersArray = doc.createNestedArray("users");
 
@@ -2131,8 +2123,8 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
 
   if (grant_type == gt_authorization_code) {
     snprintf(requestContent, sizeof(requestContent),
-             "client_id=%s&grant_type=authorization_code&redirect_uri=http%%3A%%2F%%2F%s.local%%2Fcallback&code=%s&code_verifier=%s",
-             spotifyClientId, nodeName.c_str(), code, spotifyCodeVerifier);
+             "client_id=%s&grant_type=authorization_code&redirect_uri=http%%3A%%2F%%2Fknobby.local%%2Fcallback&code=%s&code_verifier=%s",
+             spotifyClientId, code, spotifyCodeVerifier);
   } else {
     snprintf(requestContent, sizeof(requestContent),
              "client_id=%s&grant_type=refresh_token&refresh_token=%s",
