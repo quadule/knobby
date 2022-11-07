@@ -85,7 +85,7 @@ jobs:
         aws s3 cp
           --metadata "{\"git-version\":\"$(git describe --match="" --dirty --always)\"}"
           --recursive
-          --exclude "*" --include "*.bin" --include "*.html"
+          --exclude "*" --include "*.bin" --include "*.json" --include "*.html"
           setup
           s3://setup.knobby.net/;
     - name: Draft release
