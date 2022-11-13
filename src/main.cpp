@@ -442,11 +442,7 @@ void loop() {
     randomizingMenuNextMillis = 0;
     if (randomizingMenuAutoplay) {
       spotifyActionQueue.clear();
-      if (isGenreMenu(lastPlaylistMenuMode)) {
-        playMenuPlaylist(GenreList, genreIndex);
-      } else {
         playMenuPlaylist(lastPlaylistMenuMode, menuIndex);
-      }
       nowPlayingDisplayMillis = 0;
     } else {
       invalidateDisplay();
@@ -1147,7 +1143,7 @@ void drawRandomizing() {
   tft.setCursor(textStartX, lineTwo);
   if (isGenreMenu(lastPlaylistMenuMode)) {
     img.setTextColor(genreColors[genreIndex], TFT_BLACK);
-    getPlaylistName(spotifyState.contextName, lastPlaylistMenuMode, genreIndex);
+    getPlaylistName(spotifyState.contextName, lastPlaylistMenuMode, menuIndex);
   } else if (lastPlaylistMenuMode == CountryList) {
     getPlaylistName(spotifyState.contextName, lastPlaylistMenuMode, menuIndex);
   } else if (lastPlaylistMenuMode == PlaylistList) {
@@ -1372,12 +1368,11 @@ void drawNowPlayingOrSeek() {
     } else {
       img.setTextColor(TFT_DARKGREY, TFT_BLACK);
     }
-    const bool showPlaylistName = menuMode == NowPlaying && (spotifyState.durationMillis == 0 ||
+    const bool showContextName = menuMode == NowPlaying && (spotifyState.durationMillis == 0 ||
                                                               spotifyState.estimatedProgressMillis % 6000 > 3000);
-    if (showPlaylistName && spotifyState.contextName[0] != '\0' &&
+    if (showContextName && spotifyState.contextName[0] != '\0' &&
         (spotifyState.isPlaying || spotifyPlayUri[0] != '\0' || spotifyActionIsQueued(Previous) ||
           spotifyActionIsQueued(Next))) {
-      if (spotifyActionIsQueued(PlayPlaylist) && now <= clickEffectEndMillis) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
       drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
     } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
       char playing[205];
@@ -1780,7 +1775,10 @@ void getContextName(char *name, const char *contextUri) {
     if (countryIndex >= 0) {
       getPlaylistName(name, CountryList, countryIndex);
     } else if (genreIndex >= 0) {
+      auto oldGenreSort = genreSort;
+      genreSort = AlphabeticSort;
       getPlaylistName(name, GenreList, genreIndex);
+      genreSort = oldGenreSort;
     } else if (spotifyPlaylistsLoaded) {
       auto playlistIndex = getMenuIndexForPlaylist(contextUri);
       if (playlistIndex >= 0) getPlaylistName(name, PlaylistList, playlistIndex);
@@ -2268,9 +2266,9 @@ void spotifyCurrentlyPlaying() {
       }
 
       JsonObject context = json["context"];
-      if (!context.isNull()) {
-        getContextName(spotifyState.contextName, spotifyState.contextUri);
+      if (!context.isNull() && !context["uri"].isNull()) {
         strncpy(spotifyState.contextUri, context["uri"], sizeof(spotifyState.contextUri));
+        getContextName(spotifyState.contextName, spotifyState.contextUri);
         if (strcmp(context["type"], "playlist") == 0) {
           const char *id = strrchr(context["uri"], ':') + 1;
           playingGenreIndex = indexOfId(genrePlaylists, GENRE_COUNT, id);
