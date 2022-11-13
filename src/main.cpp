@@ -293,7 +293,7 @@ void setup() {
 
 const char* selectHostname() {
   const char *hostname = nullptr;
-  if (WiFi.SSID().isEmpty() || spotifyUsers.empty() || spotifyRefreshToken[0] == '\0') {
+  if (wifiSSID.isEmpty() && WiFi.SSID().isEmpty() && spotifyUsers.empty()) {
     hostname = "knobby"; // spotify oauth needs static redirect uri
   } else {
     hostname = knobby.name().c_str();
@@ -442,7 +442,7 @@ void loop() {
     randomizingMenuNextMillis = 0;
     if (randomizingMenuAutoplay) {
       spotifyActionQueue.clear();
-        playMenuPlaylist(lastPlaylistMenuMode, menuIndex);
+      playMenuPlaylist(lastPlaylistMenuMode, menuIndex);
       nowPlayingDisplayMillis = 0;
     } else {
       invalidateDisplay();
@@ -1369,10 +1369,10 @@ void drawNowPlayingOrSeek() {
       img.setTextColor(TFT_DARKGREY, TFT_BLACK);
     }
     const bool showContextName = menuMode == NowPlaying && (spotifyState.durationMillis == 0 ||
-                                                              spotifyState.estimatedProgressMillis % 6000 > 3000);
+                                                            spotifyState.estimatedProgressMillis % 6000 > 3000);
     if (showContextName && spotifyState.contextName[0] != '\0' &&
         (spotifyState.isPlaying || spotifyPlayUri[0] != '\0' || spotifyActionIsQueued(Previous) ||
-          spotifyActionIsQueued(Next))) {
+         spotifyActionIsQueued(Next))) {
       drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
     } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
       char playing[205];
