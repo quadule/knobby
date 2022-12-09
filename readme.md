@@ -1,22 +1,22 @@
-# Knobby: a little remote with a lot of possibilities
+# Knobby: a little remote for Spotify and more
 
-Spin the knob to browse 5,000+ genres of music along with your own playlists. Knobby is a distinctive remote control for Spotify and more.
+[![Latest release](https://img.shields.io/github/v/release/quadule/knobby?logo=github)](https://github.com/quadule/knobby/releases/latest)
+[![Build status](https://github.com/quadule/knobby/actions/workflows/main.yml/badge.svg)](https://github.com/quadule/knobby/actions/workflows/main.yml)
+![Downloads](https://img.shields.io/github/downloads/quadule/knobby/total?color=orange&logo=github)
 
-### Explore a universe of music with just a knob
+<img src="images/demo.gif?raw=true" width="427" height="240" alt="demo of genre selection">
 
-Knobby is a remote made for discovering new music and rediscovering your own collection. It’s the perfect companion to a smart speaker, allowing you to browse playlists, see what’s playing, and control playback without interrupting anything. Preloaded with thousands of genre and country playlists from [everynoise.com](https://everynoise.com), it encourages you to explore unfamiliar music and puts all of Spotify on shuffle.
+## Discover new music and rediscover your own collection with Knobby. It’s a one-click cure for musical boredom.
+
+<a href="https://www.tindie.com/stores/milowinningham/?ref=offsite_badges&utm_source=sellers_milowinningham&utm_medium=badges&utm_campaign=badge_medium"><img src="https://d2ss6ovg47m0r5.cloudfront.net/badges/tindie-mediums.png" alt="I sell on Tindie" width="150" height="78"></a>
+
+The perfect companion to any smart speaker, Knobby lets you browse playlists, see what’s playing, and control playback.. Preloaded with thousands of genre and country playlists from [everynoise.com](https://everynoise.com), it encourages you to explore unfamiliar music and puts all of Spotify on shuffle.
 
 ### Untether music from your phone
 
-Bring music discovery into your living room with a device that’s meant to be shared and free from distracting apps or notifications. Show off your meticulously curated collection to anyone in your home, or pass it around at a party and put your guests in control.
-
-### Pop your filter bubble
-
-Streaming services feed you new releases and top hits through algorithmic recommendations and branded playlists, but how do you dig deeper? Knobby is your musicological compendium: a vast index of musical expression that rewards your exploration, not a marketplace of content competing for your attention.
+Don’t fumble with your phone — Knobby is always ready, free from distractions, and designed to be shared. Show off your meticulously curated collection in your home, or pass it around at a party and put your guests in control.
 
 ## Usage
-
-<img src="images/demo.gif?raw=true" width="427" height="240" alt="demo of genre selection">
 
 * Turn the knob to navigate between menu items.
 * Click the knob to select or play something.
@@ -24,7 +24,7 @@ Streaming services feed you new releases and top hits through algorithmic recomm
 * Hold the knob for couple seconds for a random genre, country, or playlist from the last open menu.
   - Keep holding the knob until the progress bar reaches the end to play immediately.
   - Release the knob before the progress bar reaches the end to keep browsing.
-* When browsing genres, double click the knob to switch sort modes.
+* When browsing genres, double click the knob to switch sort modes: _name_ (the default alphabetical order), _suffix_, _ambience_, _modernity_, and _popularity_.
 * When playing something, double click the knob to skip to the next track.
 
 ## Make it yourself
@@ -48,7 +48,7 @@ If you use a different rotary encoder in your build and find that the knob must 
 
 ### Wire it up
 
-<img src="images/wiring-diagram.png?raw=true" width="439px" height="439px" alt="wiring diagram of rotary encoder with t-display board">
+<img src="images/wiring-diagram.png?raw=true" width="439" height="439" alt="wiring diagram of rotary encoder with t-display board">
 
 1. Connect the rotary encoder A and B pins to GPIO pins 12 and 13.
 2. Connect one pole of the switch to GPIO pin 15.
