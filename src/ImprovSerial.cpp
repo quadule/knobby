@@ -59,10 +59,7 @@ bool ImprovSerial::loop() {
 
 std::vector<uint8_t> ImprovSerial::buildResponse(improv::Command command) {
   std::vector<std::string> urls;
-  std::string url = std::string("http://") +
-                    std::string(_state == improv::STATE_PROVISIONED ? WiFi.getHostname() : "knobby") +
-                    std::string(".local");
-  urls.push_back(url);
+  urls.push_back("http://knobby.local");
   std::vector<uint8_t> data = improv::build_rpc_response(command, urls, false);
   return data;
 }

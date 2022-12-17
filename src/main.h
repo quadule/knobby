@@ -136,6 +136,7 @@ bool contains(C&& c, T e) {
   return std::find(std::begin(c), std::end(c), e) != std::end(c);
 };
 
+const char *hostname = "knobby";
 const char *rootMenuItems[] = {"settings", "playlists", "countries", "genres", "similar", "now playing", "users", "devices"};
 const char *settingsMenuItems[] = {"about", "update", "orientation", "add user", "log out", "reset settings"};
 const int screenWidth = TFT_HEIGHT;
@@ -322,7 +323,6 @@ int getMenuIndexForPlaylist(const char *contextUri);
 int getGenreIndexForMenuIndex(uint16_t index, MenuModes mode);
 void getPlaylistName(char *name, MenuModes mode, uint16_t index);
 void getPlaylistUri(char *uri, MenuModes mode, uint16_t index);
-const char* selectHostname();
 bool isGenreMenu(MenuModes mode);
 bool isPlaylistMenu(MenuModes mode);
 unsigned long getLongPressedMillis();

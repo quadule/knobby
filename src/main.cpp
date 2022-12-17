@@ -44,13 +44,13 @@ void setup() {
 
   SPIFFS.begin(true);
   readDataJson();
-  WiFi.setHostname(selectHostname());
+  WiFi.setHostname(hostname);
   if (wifiSSID.isEmpty()) {
     WiFi.begin();
   } else {
     WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
   }
-  improvSerial.setup(std::string(knobby.name().c_str()));
+  improvSerial.setup(hostname);
 
   ESP32Encoder::useInternalWeakPullResistors = UP;
   knob.attachFullQuad(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN);
@@ -114,7 +114,7 @@ void setup() {
   }
 
   Update.onProgress(onOTAProgress);
-  ArduinoOTA.setHostname(selectHostname());
+  ArduinoOTA.setHostname(hostname);
   ArduinoOTA.setMdnsEnabled(false);
   ArduinoOTA.setPassword(knobby.password().c_str());
   ArduinoOTA.setTimeout(10000);
@@ -291,16 +291,6 @@ void setup() {
   if (knobby.powerStatus() == PowerStatusPowered) knobby.printHeader();
 }
 
-const char* selectHostname() {
-  const char *hostname = nullptr;
-  if (wifiSSID.isEmpty() && WiFi.SSID().isEmpty() && spotifyUsers.empty()) {
-    hostname = "knobby"; // spotify oauth needs static redirect uri
-  } else {
-    hostname = knobby.name().c_str();
-  }
-  return hostname;
-}
-
 void startWifiManager() {
   if (wifiManager) return;
   if (knobby.powerStatus() == PowerStatusPowered) {
@@ -308,7 +298,7 @@ void startWifiManager() {
   } else {
     inactivityMillis = 1000 * 60 * 5;
   }
-  wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, knobby.name().c_str());
+  wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, hostname);
   wifiManager->setBreakAfterConfig(true);
   wifiManager->setSaveConfigCallback(saveAndSleep);
   wifiManager->startConfigPortalModeless(knobby.name().c_str(), knobby.password().c_str(), false);
@@ -395,8 +385,8 @@ void loop() {
     if (lastConnectedMillis >= 0) {
       setStatusMessage("reconnected");
     } else {
-      WiFi.setHostname(selectHostname());
-      MDNS.begin(selectHostname());
+      WiFi.setHostname(hostname);
+      MDNS.begin(hostname);
       MDNS.addService("http", "tcp", 80);
       setStatusMessage("", 0);
     }

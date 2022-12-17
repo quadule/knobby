@@ -169,7 +169,7 @@ void Knobby::printHeader() {
     log_printf("      * or join the wifi network %s with password %s\n", name(), password());
   } else {
     log_printf("    connecting to wifi network: %s\n", WiFi.SSID());
-    log_printf("    for configuration and more: http://%s.local?pass=%s\n", WiFi.getHostname(), password());
+    log_printf("    for configuration and more: http://knobby.local?pass=%s\n", password());
   }
   log_printf("\n");
 }
