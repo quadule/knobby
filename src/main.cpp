@@ -1175,7 +1175,6 @@ void drawRootMenu() {
 }
 
 void drawSettingsMenu() {
-  bool selected = false;
   img.setTextColor(TFT_DARKGREY, TFT_BLACK);
   tft.setCursor(textStartX, lineTwo);
   switch (menuIndex) {
@@ -1196,8 +1195,6 @@ void drawSettingsMenu() {
       if (strcmp(WiFi.getHostname(), "knobby") != 0) {
         drawCenteredText("double click to add a spotify account", textWidth, 3);
       } else {
-        selected = true;
-        img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
         drawCenteredText("log in with spotify at http://knobby.local", textWidth, 3);
       }
       break;
@@ -1210,7 +1207,7 @@ void drawSettingsMenu() {
     default:
       break;
   }
-  drawMenuHeader(selected, settingsMenuItems[menuIndex]);
+  drawMenuHeader(false, settingsMenuItems[menuIndex]);
 }
 
 void drawUserMenu() {
