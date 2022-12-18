@@ -87,10 +87,10 @@ enum MenuModes {
   VolumeControl = -2,
   RootMenu = -1,
   SettingsMenu = 0,
-  PlaylistList = 1,
-  CountryList = 2,
-  GenreList = 3,
-  SimilarList = 4,
+  CountryList = 1,
+  GenreList = 2,
+  SimilarList = 3,
+  PlaylistList = 4,
   NowPlaying = 5,
   UserList = 6,
   DeviceList = 7
@@ -138,7 +138,7 @@ bool contains(C&& c, T e) {
 };
 
 const char *hostname = "knobby";
-const char *rootMenuItems[] = {"settings", "playlists", "countries", "genres", "similar", "now playing", "users", "devices"};
+const char *rootMenuItems[] = {"settings", "countries", "genres", "similar", "playlists", "now playing", "users", "devices"};
 const char *settingsMenuItems[] = {"about", "update", "orientation", "add user", "log out", "reset settings"};
 const int screenWidth = TFT_HEIGHT;
 const int screenHeight = TFT_WIDTH;
@@ -252,6 +252,7 @@ char menuText[64];
 int pressedMenuIndex = -1;
 int rootMenuNowPlayingIndex = -1;
 int rootMenuSimilarIndex = -1;
+int rootMenuPlaylistsIndex = -1;
 int rootMenuUsersIndex = -1;
 int rootMenuDevicesIndex = -1;
 int similarMenuGenreIndex = -1;
@@ -330,4 +331,5 @@ unsigned long getExtraLongPressedMillis();
 bool shouldShowProgressBar();
 bool shouldShowRandom();
 bool shouldShowSimilarMenu();
+bool shouldShowPlaylistsMenu();
 bool shouldShowUsersMenu();

@@ -597,6 +597,15 @@ void selectRootMenuItem(uint16_t index) {
       setMenuMode(SimilarList, 0);
       spotifyQueueAction(GetPlaylistDescription);
     }
+  } else if (index == rootMenuPlaylistsIndex) {
+    auto playlistIndex = 0;
+    if (spotifyPlaylistsLoaded) {
+      auto playingIndex = getMenuIndexForPlaylist(spotifyState.contextUri);
+      if (playingIndex >= 0) playlistIndex = playingIndex;
+    } else {
+      spotifyQueueAction(GetPlaylists);
+    }
+    setMenuMode(PlaylistList, playlistIndex);
   } else if (index == rootMenuNowPlayingIndex) {
     nextCurrentlyPlayingMillis = lastInputMillis;
     if (lastMenuMode == NowPlaying) {
@@ -634,15 +643,6 @@ void selectRootMenuItem(uint16_t index) {
     switch (index) {
       case SettingsMenu:
         if (lastMenuMode != SettingsMenu) newMenuIndex = 0;
-        break;
-      case PlaylistList:
-        if (spotifyPlaylistsLoaded) {
-          auto playingIndex = getMenuIndexForPlaylist(spotifyState.contextUri);
-          newMenuIndex = playingIndex < 0 ? playlistIndex : playingIndex;
-        } else {
-          spotifyQueueAction(GetPlaylists);
-          newMenuIndex = 0;
-        }
         break;
       case CountryList:
         if (playingCountryIndex >= 0) {
@@ -945,6 +945,8 @@ void knobLongPressStarted() {
         setMenuMode(RootMenu, rootMenuSimilarIndex);
         break;
       case PlaylistList:
+        setMenuMode(RootMenu, rootMenuPlaylistsIndex);
+        break;
       case CountryList:
       case GenreList:
         setMenuMode(RootMenu, (uint16_t)lastPlaylistMenuMode);
@@ -955,6 +957,8 @@ void knobLongPressStarted() {
     }
   } else if (menuMode == SimilarList) {
     setMenuMode(RootMenu, rootMenuSimilarIndex);
+  } else if (menuMode == PlaylistList) {
+    setMenuMode(RootMenu, rootMenuPlaylistsIndex);
   } else if (spotifyState.isPlaying || menuMode == SeekControl || menuMode == VolumeControl) {
     setMenuMode(RootMenu, rootMenuNowPlayingIndex);
   } else if (menuMode == UserList) {
@@ -1161,6 +1165,8 @@ void drawRootMenu() {
     tft.drawFastHLine(0, 0, screenWidth, TFT_BLACK);
     if (menuIndex == rootMenuSimilarIndex) {
       drawCenteredText(rootMenuItems[SimilarList], textWidth);
+    } else if (menuIndex == rootMenuPlaylistsIndex) {
+      drawCenteredText(rootMenuItems[PlaylistList], textWidth);
     } else if (menuIndex == rootMenuNowPlayingIndex) {
       drawCenteredText(rootMenuItems[NowPlaying], textWidth);
     } else if (menuIndex == rootMenuUsersIndex) {
@@ -1618,6 +1624,10 @@ bool shouldShowSimilarMenu() {
   return (isGenreMenu(lastMenuMode) || playingGenreIndex >= 0) && spotifyRefreshToken[0] != '\0';
 }
 
+bool shouldShowPlaylistsMenu() {
+  return spotifyRefreshToken[0] != '\0';
+}
+
 bool shouldShowUsersMenu() {
   return spotifyUsers.size() > 1;
 }
@@ -1634,6 +1644,7 @@ uint16_t checkMenuSize(MenuModes mode) {
       return wifiConnectWarning ? 2 : 0;
     case RootMenu:
       rootMenuSimilarIndex = shouldShowSimilarMenu() ? rootMenuSize++ : -1;
+      rootMenuPlaylistsIndex = shouldShowPlaylistsMenu() ? rootMenuSize++ : -1;
       rootMenuNowPlayingIndex = rootMenuSize++;
       rootMenuUsersIndex = shouldShowUsersMenu() ? rootMenuSize++ : -1;
       rootMenuDevicesIndex = shouldShowDevicesMenu() ? rootMenuSize++ : -1;
@@ -2870,7 +2881,6 @@ void updateFirmware() {
   http.setConnectTimeout(4000);
   http.setTimeout(4000);
   http.setReuse(false);
-  log_i("GET %s", firmwareURL);
   http.begin(client, firmwareURL);
   const char * headerKeys[] = { "x-amz-meta-git-version" };
   http.collectHeaders(headerKeys, (sizeof(headerKeys) / sizeof(headerKeys[0])));
