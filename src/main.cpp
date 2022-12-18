@@ -45,11 +45,7 @@ void setup() {
   SPIFFS.begin(true);
   readDataJson();
   WiFi.setHostname(hostname);
-  if (wifiSSID.isEmpty()) {
-    WiFi.begin();
-  } else {
-    WiFi.begin(wifiSSID.c_str(), wifiPassword.c_str());
-  }
+  WiFi.begin();
   improvSerial.setup(hostname);
 
   ESP32Encoder::useInternalWeakPullResistors = UP;
@@ -93,13 +89,19 @@ void setup() {
   }
   bootCount++;
 
-  if (spotifyUsers.empty()) {
+  wifi_prov_mgr_config_t config;
+  ESP_ERROR_CHECK(wifi_prov_mgr_init(config));
+
+  bool wifiProvisioned = false;
+  ESP_ERROR_CHECK(wifi_prov_mgr_is_provisioned(&wifiProvisioned));
+  wifiConnectWarning = !wifiProvisioned;
+
+  if (wifiConnectWarning || spotifyUsers.empty()) {
     setMenuMode(InitialSetup, 0);
     menuSize = 0;
-    wifiConnectWarning = true;
     tft.fillScreen(TFT_BLACK);
     drawMenuHeader(true, "setup knobby");
-    startWifiManager();
+    if (wifiConnectWarning) startWifiManager();
   } else {
     if (secondsAsleep > newSessionSeconds) {
       genreSort = AlphabeticSort;
@@ -300,7 +302,6 @@ void startWifiManager() {
   }
   wifiManager = new ESPAsync_WiFiManager(&server, &dnsServer, hostname);
   wifiManager->setBreakAfterConfig(true);
-  wifiManager->setSaveConfigCallback(saveAndSleep);
   wifiManager->startConfigPortalModeless(knobby.name().c_str(), knobby.password().c_str(), false);
   dnsServer.setErrorReplyCode(AsyncDNSReplyCode::NoError);
   dnsServer.start(53, "*", WiFi.softAPIP());
@@ -385,6 +386,9 @@ void loop() {
     if (lastConnectedMillis >= 0) {
       setStatusMessage("reconnected");
     } else {
+      wifiManager = nullptr;
+      WiFi.softAPdisconnect();
+      WiFi.mode(WIFI_STA);
       WiFi.setHostname(hostname);
       MDNS.begin(hostname);
       MDNS.addService("http", "tcp", 80);
@@ -909,7 +913,6 @@ void knobDoubleClicked() {
         spotifyAccessToken[0] = '\0';
         spotifyRefreshToken[0] = '\0';
         spotifyUsers.clear();
-        knobby.resetSettings();
         writeDataJson();
         WiFi.disconnect(true, true);
         delay(statusMessageMillis);
@@ -1851,14 +1854,6 @@ void setStatusMessage(const char *message, unsigned long durationMs) {
   invalidateDisplay();
 }
 
-void saveAndSleep() {
-  WiFi.begin(wifiManager->WiFi_SSID().c_str(), wifiManager->WiFi_Pass().c_str());
-  WiFi.disconnect(true);
-  esp_sleep_enable_timer_wakeup(100);
-  tft.fillScreen(TFT_BLACK);
-  esp_deep_sleep_start();
-}
-
 void startDeepSleep() {
   log_i("Entering deep sleep.");
   if (isTransientMenu(menuMode)) setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
@@ -1988,8 +1983,8 @@ bool readDataJson() {
   flipDisplay = doc["flipDisplay"];
   pulseCount = doc["pulseCount"];
   if (pulseCount <= 0 || pulseCount > 8) pulseCount = ROTARY_ENCODER_PULSE_COUNT;
-  wifiSSID = doc["wifiSSID"] | wifiManager->WiFi_SSID();
-  wifiPassword = doc["wifiPassword"] | wifiManager->WiFi_Pass();
+  wifiSSID = doc["wifiSSID"] | WiFi.SSID();
+  wifiPassword = doc["wifiPassword"] | WiFi.psk();
 
   JsonArray usersArray = doc["users"];
   spotifyUsers.clear();

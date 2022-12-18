@@ -139,8 +139,8 @@ const String& Knobby::password() {
     _password.toLowerCase();
     _password.replace('1', '!');
     _password.replace('l', '-');
-    _password.replace('+', '*');
-    _password.replace('/', '^');
+    _password.replace('+', '@');
+    _password.replace('/', '&');
     setPassword(_password.c_str());
   }
   return _password;
@@ -172,10 +172,6 @@ void Knobby::printHeader() {
     log_printf("    for configuration and more: http://knobby.local?pass=%s\n", password());
   }
   log_printf("\n");
-}
-
-void Knobby::resetSettings() {
-  _preferences.clear();
 }
 
 uint8_t Knobby::batteryPercentage() {

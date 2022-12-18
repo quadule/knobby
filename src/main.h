@@ -25,6 +25,7 @@
 #include "sdkconfig.h"
 #include "spotify.h"
 #include "time.h"
+#include "wifi_provisioning/manager.h"
 
 extern const uint8_t GillSans24_vlw_start[] asm("_binary_GillSans24_vlw_start");
 extern const uint8_t icomoon24_vlw_start[] asm("_binary_icomoon24_vlw_start");
@@ -303,7 +304,6 @@ void drawSetup();
 void invalidateDisplay(bool eraseDisplay = false);
 void playMenuPlaylist(MenuModes mode, uint16_t index);
 void playUri(const char *uri, const char *name);
-void saveAndSleep();
 void setActiveDevice(SpotifyDevice_t *device);
 void setActiveUser(SpotifyUser_t *user);
 void setMenuIndex(uint16_t newMenuIndex);
