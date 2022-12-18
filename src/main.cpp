@@ -1,4 +1,22 @@
+#include <ArduinoJson.h>
+#include <ArduinoOTA.h>
+#include <base64.h>
+#include <driver/rtc_io.h>
+#include <esp_adc_cal.h>
+#include <esp_pm.h>
+#include <esp_system.h>
+#include <esp_task_wdt.h>
+#include <esp_wifi.h>
+#include <ESPmDNS.h>
+#include <ImprovSerial.h>
+#include <mbedtls/md.h>
+#include <SPIFFS.h>
+#include <StreamString.h>
+#include <time.h>
+#include <wifi_provisioning/manager.h>
+
 #include "main.h"
+#include "genres.h"
 
 void setup() {
   similarMenuItems.reserve(16);

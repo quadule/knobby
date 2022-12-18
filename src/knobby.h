@@ -1,22 +1,22 @@
 #if !defined(KNOBBY_H)
 #define KNOBBY_H
 
-#include "Arduino.h"
-#include "base64.h"
-#include "esp_adc_cal.h"
-#include "esp_ota_ops.h"
-#include "Preferences.h"
-#include "Wire.h"
+#include <Arduino.h>
+#include <base64.h>
+#include <esp_adc_cal.h>
+#include <esp_ota_ops.h>
+#include <Preferences.h>
+#include <Wire.h>
 
 #ifdef LILYGO_WATCH_2019_WITH_TOUCH
-  #include "board/twatch2019_with_touch.h"
+  #include <board/twatch2019_with_touch.h>
   #define LILYGO_WATCH_HAS_TOUCH
   #define LILYGO_WATCH_HAS_PCF8563
   #define LILYGO_WATCH_HAS_AXP202
   #define LILYGO_WATCH_HAS_BACKLIGHT
   #define LILYGO_WATCH_HAS_BUTTON
   #undef LILYGO_WATCH_HAS_BMA423
-  #include "TTGO.h"
+  #include <TTGO.h>
   TTGOClass *ttgo;
 #endif
 

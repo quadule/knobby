@@ -1,8 +1,8 @@
 #pragma once
 
+#include <improv.h>
 #include <HardwareSerial.h>
 #include <WiFi.h>
-#include <improv.h>
 
 enum ImprovSerialType : uint8_t {
   TYPE_CURRENT_STATE = 0x01,
