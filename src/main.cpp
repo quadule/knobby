@@ -1133,16 +1133,17 @@ void drawRandomizing() {
   randomizingMenuTicks++;
   randomizingMenuNextMillis = millis() + max((int)(pow(randomizingMenuTicks, 3) + pow(randomizingMenuTicks, 2)), 10);
   setMenuIndex(random(checkMenuSize(lastPlaylistMenuMode)));
+  char contextName[64];
   tft.setCursor(textStartX, lineTwo);
   if (isGenreMenu(lastPlaylistMenuMode)) {
     img.setTextColor(genreColors[genreIndex], TFT_BLACK);
-    getPlaylistName(spotifyState.contextName, lastPlaylistMenuMode, menuIndex);
+    getPlaylistName(contextName, lastPlaylistMenuMode, menuIndex);
   } else if (lastPlaylistMenuMode == CountryList) {
-    getPlaylistName(spotifyState.contextName, lastPlaylistMenuMode, menuIndex);
+    getPlaylistName(contextName, lastPlaylistMenuMode, menuIndex);
   } else if (lastPlaylistMenuMode == PlaylistList) {
-    getPlaylistName(spotifyState.contextName, lastPlaylistMenuMode, menuIndex + 1);
+    getPlaylistName(contextName, lastPlaylistMenuMode, menuIndex + 1);
   }
-  drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
+  drawCenteredText(contextName, textWidth, maxTextLines);
 }
 
 void drawRootMenu() {
