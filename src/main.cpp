@@ -1256,17 +1256,18 @@ void drawVolumeControl() {
   const uint8_t x = 10;
   const uint8_t y = 30;
   const uint8_t width = 220;
-  img.createSprite(width, 82);
+  img.createSprite(width, 40);
   img.fillSprite(TFT_BLACK);
   img.drawRoundRect(0, 0, width, 32, 5, TFT_WHITE);
   img.fillRoundRect(4, 4, round(2.12 * menuIndex), 24, 3, TFT_DARKGREY);
-  char label[7];
-  sprintf(label, "%d%%", menuIndex);
-  img.setTextColor(TFT_WHITE, TFT_BLACK);
-  img.drawString(label, width / 2 - img.textWidth(label) / 2, 48);
-  tft.drawRect(0, 0, x - 1, y - 1, TFT_BLACK);
   img.pushSprite(x, y);
   img.deleteSprite();
+
+  char label[7];
+  sprintf(label, "%d%%", menuIndex);
+  tft.setCursor(textStartX, lineTwo + y);
+  img.setTextColor(TFT_WHITE, TFT_BLACK);
+  drawCenteredText(label, textWidth, 1);
 }
 
 void drawNowPlayingOrSeek() {
