@@ -1155,7 +1155,7 @@ void drawRandomizing() {
   randomizingMenuTicks++;
   randomizingMenuNextMillis = millis() + max((int)(pow(randomizingMenuTicks, 3) + pow(randomizingMenuTicks, 2)), 10);
   setMenuIndex(random(checkMenuSize(lastPlaylistMenuMode)));
-  char contextName[64];
+  char contextName[sizeof(SpotifyState_t::contextName)];
   tft.setCursor(textStartX, lineTwo);
   if (isGenreMenu(lastPlaylistMenuMode)) {
     img.setTextColor(genreColors[genreIndex], TFT_BLACK);
@@ -1390,9 +1390,9 @@ void drawNowPlayingOrSeek() {
         (spotifyState.isPlaying || spotifyPlayUri[0] != '\0' || spotifyActionIsQueued(Previous) ||
          spotifyActionIsQueued(Next))) {
       drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
-    } else if (spotifyState.artistName[0] != '\0' && spotifyState.name[0] != '\0') {
+    } else if (spotifyState.artistsName[0] != '\0' && spotifyState.name[0] != '\0') {
       char playing[205];
-      snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistName, spotifyState.name);
+      snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistsName, spotifyState.name);
       drawCenteredText(playing, textWidth, maxTextLines);
     } else {
       img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
@@ -2301,26 +2301,55 @@ void spotifyCurrentlyPlaying() {
       if (!item.isNull()) {
         emptyCurrentlyPlayingResponses = 0;
         spotifyState.durationMillis = item["duration_ms"];
-        const char *id = item["linked_from"]["id"] | item["id"];
-        strncpy(spotifyState.trackId, id, SPOTIFY_ID_SIZE);
+
         if (menuMode == SeekControl) {
           menuSize = checkMenuSize(SeekControl);
-          setMenuIndex(spotifyState.progressMillis / 1000);
+          uint16_t newMenuIndex = spotifyState.progressMillis / 1000;
+          if (newMenuIndex != menuIndex) setMenuIndex(newMenuIndex);
         }
-        strncpy(spotifyState.name, item["name"], sizeof(spotifyState.name) - 1);
+        
+        const char *id = item["linked_from"]["id"] | item["id"];
+        if (strcmp(id, spotifyState.trackId) != 0) {
+          strncpy(spotifyState.trackId, id, SPOTIFY_ID_SIZE);
+          strncpy(spotifyState.name, item["name"], sizeof(spotifyState.name) - 1);
 
-        JsonObject album = item["album"];
-        if (!album.isNull()) {
-          strncpy(spotifyState.albumName, album["name"], sizeof(spotifyState.albumName) - 1);
-        } else {
-          spotifyState.albumName[0] = '\0';
-        }
+          JsonArray artists = item["artists"];
+          spotifyState.artistsName[0] = '\0';
+          auto remaining = sizeof(SpotifyState_t::artistsName) - 1;
+          for (auto i = 0; i < (sizeof(spotifyState.artists) / sizeof(spotifyState.artists[0])); i++) {
+            JsonObject artist = artists[i];
+            if (artist.isNull()) {
+              spotifyState.artists[i].id[0] = '\0';
+              spotifyState.artists[i].name[0] = '\0';
+            } else {
+              const char *artistId = artist["id"];
+              const char *artistName = artist["name"];
+              strncpy(spotifyState.artists[i].id, artistId, SPOTIFY_ID_SIZE);
+              strncpy(spotifyState.artists[i].name, artistName, sizeof(SpotifyArtist_t::name) - 1);
 
-        JsonArray artists = item["artists"];
-        if (artists.size() > 0) {
-          strncpy(spotifyState.artistName, artists[0]["name"], sizeof(spotifyState.artistName) - 1);
-        } else {
-          spotifyState.artistName[0] = '\0';
+              auto length = strlen(artistName);
+              if (i > 0 && remaining > (length + 2)) {
+                strcat(spotifyState.artistsName, ", ");
+                remaining -= 2;
+              }
+              if (remaining >= length) {
+                strncat(spotifyState.artistsName, artistName, length);
+                remaining -= length;
+              } else {
+                strncat(spotifyState.artistsName, "...", 4);
+                remaining = 0;
+              }
+            }
+          }
+        
+          JsonObject album = item["album"];
+          if (!album.isNull()) {
+            strncpy(spotifyState.albumId, album["id"], SPOTIFY_ID_SIZE);
+            strncpy(spotifyState.albumName, album["name"], sizeof(spotifyState.albumName) - 1);
+          } else {
+            spotifyState.albumId[0] = '\0';
+            spotifyState.albumName[0] = '\0';
+          }
         }
       }
 
@@ -2575,7 +2604,9 @@ void spotifyPlayPlaylist() {
 
 void spotifyResetProgress(bool keepContext) {
   spotifyState.name[0] = '\0';
-  spotifyState.artistName[0] = '\0';
+  spotifyState.artists[0].id[0] = '\0';
+  spotifyState.artists[0].name[0] = '\0';
+  spotifyState.albumId[0] = '\0';
   spotifyState.albumName[0] = '\0';
   spotifyState.trackId[0] = '\0';
   spotifyState.durationMillis = 0;

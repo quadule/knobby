@@ -191,11 +191,18 @@ typedef struct {
 } SpotifyPlaylist_t;
 
 typedef struct {
+  char id[SPOTIFY_ID_SIZE + 1] = "";
   char name[100] = "";
-  char artistName[100] = "";
-  char albumName[64] = "";
+} SpotifyArtist_t;
+
+typedef struct {
+  char name[100] = "";
+  SpotifyArtist_t artists[3] = {};
+  char artistsName[100] = "";
+  char albumName[100] = "";
+  char albumId[SPOTIFY_ID_SIZE + 1] = "";
   char trackId[SPOTIFY_ID_SIZE + 1] = "";
-  char contextName[64] = "";
+  char contextName[100] = "";
   char contextUri[100] = "";
   bool isLiked = false;
   bool isPlaying = false;
