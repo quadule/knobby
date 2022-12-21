@@ -2007,7 +2007,6 @@ bool readDataJson() {
 
   if (doc.containsKey("configPassword")) knobby.setPassword(doc["configPassword"]);
   firmwareURL = doc["firmwareURL"] | KNOBBY_FIRMWARE_URL;
-  if (firmwareURL.isEmpty()) firmwareURL = KNOBBY_FIRMWARE_URL;
   flipDisplay = doc["flipDisplay"];
   pulseCount = doc["pulseCount"];
   if (pulseCount <= 0 || pulseCount > 8) pulseCount = ROTARY_ENCODER_PULSE_COUNT;
