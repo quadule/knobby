@@ -194,13 +194,17 @@ void setup() {
     encoded.replace('/', '_');
     strncpy(spotifyCodeChallenge, encoded.c_str(), 43);
 
-    const String authUrl =
+    String authUrl;
+    authUrl.reserve(500);
+    authUrl.concat(
         "https://accounts.spotify.com/authorize/?response_type=code&scope="
         "user-read-private+user-read-currently-playing+user-read-playback-state+"
         "user-modify-playback-state+playlist-read-private+"
         "user-library-read+user-library-modify+user-follow-read+user-follow-modify"
-        "&code_challenge_method=S256&code_challenge=" + String(spotifyCodeChallenge) +
-        "&show_dialog=true&redirect_uri=http%3A%2F%2Fknobby.local%2Fcallback&client_id=" + String(spotifyClientId);
+        "&code_challenge_method=S256&code_challenge=");
+    authUrl.concat(spotifyCodeChallenge);
+    authUrl.concat("&show_dialog=true&redirect_uri=http%3A%2F%2Fknobby.local%2Fcallback&client_id=");
+    authUrl.concat(spotifyClientId);
     request->redirect(authUrl);
   });
 
@@ -1757,7 +1761,7 @@ int getMenuIndexForPlaylist(const char *contextUri) {
 }
 
 void getPlaylistName(char *name, MenuModes mode, uint16_t index) {
-  const auto nameSize = sizeof(SpotifyState_t::contextName);
+  const auto nameSize = sizeof(SpotifyState_t::contextName) - 1;
   switch (mode) {
     case GenreList:
       strncpy(name, genres[getGenreIndexForMenuIndex(index, mode)], nameSize);
@@ -1927,8 +1931,8 @@ void startRandomizingMenu(bool autoplay) {
 void playUri(const char *uri, const char *name) {
   spotifyResetProgress();
   spotifyState.isPlaying = true;
-  strncpy(spotifyPlayUri, uri, sizeof(spotifyPlayUri));
-  strncpy(spotifyState.contextUri, uri, sizeof(spotifyState.contextUri));
+  strncpy(spotifyPlayUri, uri, sizeof(spotifyPlayUri) - 1);
+  strncpy(spotifyState.contextUri, uri, sizeof(spotifyState.contextUri) - 1);
   strncpy(spotifyState.contextName, name, sizeof(spotifyState.contextName) - 1);
   spotifyQueueAction(PlayPlaylist);
 
@@ -2209,7 +2213,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
               spotifyDevicesLoaded = false;
               spotifyDevices.clear();
             } else if (grant_type == gt_refresh_token && activeSpotifyUser != nullptr) {
-              strncpy(activeSpotifyUser->refreshToken, spotifyRefreshToken, sizeof(activeSpotifyUser->refreshToken));
+              strncpy(activeSpotifyUser->refreshToken, spotifyRefreshToken, sizeof(activeSpotifyUser->refreshToken) - 1);
               writeDataJson();
             }
           }
@@ -2279,7 +2283,7 @@ void spotifyCurrentlyPlaying() {
 
       JsonObject context = json["context"];
       if (!context.isNull() && !context["uri"].isNull()) {
-        strncpy(spotifyState.contextUri, context["uri"], sizeof(spotifyState.contextUri));
+        strncpy(spotifyState.contextUri, context["uri"], sizeof(spotifyState.contextUri) - 1);
         getContextName(spotifyState.contextName, spotifyState.contextUri);
         if (strcmp(context["type"], "playlist") == 0) {
           const char *id = strrchr(context["uri"], ':') + 1;
@@ -2593,7 +2597,7 @@ void spotifyPlayPlaylist() {
   spotifyResetProgress(true);
   if (success) {
     spotifyState.isPlaying = true;
-    strncpy(spotifyState.contextUri, spotifyPlayUri, SPOTIFY_ID_SIZE);
+    strncpy(spotifyState.contextUri, spotifyPlayUri, sizeof(spotifyState.contextUri) - 1);
   } else if(!retry) {
     spotifyState.contextUri[0] = '\0';
   }
@@ -2879,7 +2883,7 @@ void spotifyGetPlaylists() {
           const char *name = item["name"];
           SpotifyPlaylist_t playlist;
           strncpy(playlist.id, id, SPOTIFY_ID_SIZE);
-          playlist.name = String(name);
+          playlist.name = name;
           spotifyPlaylists.push_back(playlist);
         }
 
