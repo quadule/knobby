@@ -10,25 +10,31 @@
 <div>
   <h2>update firmware</h2>
   <form id="update" method="post" action="/update" enctype="multipart/form-data">
-    <div>
+    <p>
       <label for="password">
-        password:
-        <input type="password" name="password">
+        device password:
+        <input type="password" name="pass">
       </label>
-    </div>
-    <div>
+    </p>
+    <p>
       <label for="update">
-        .bin file:
+        upload any firmware .bin file:
         <input type="file" name="update" accept=".bin">
       </label>
-    </div>
+      <br><i>- or -</i><br>
+      <label for="update">
+        set custom firmware url and update:
+        <input type="text" name="firmwareURL" size="72" value="{{firmwareURL}}">
+      </label>
+    </p>
     <p>
       <input type="submit" value="Update">
     </p>
   </form>
 </div>
 <script>
-  document.forms.update.password.value = new URLSearchParams(location.search).get("pass")
+  document.forms.update.firmwareURL.value = new URLSearchParams(location.search).get("firmwareURL") || document.forms.update.firmwareURL.value
+  document.forms.update.pass.value = new URLSearchParams(location.search).get("pass")
 </script>
 </body>
 </html>

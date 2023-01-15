@@ -340,6 +340,7 @@ HTTPClient spotifyHttp;
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
 String firmwareURL = KNOBBY_FIRMWARE_URL;
+bool startFirmwareUpdateFromURL = false;
 bool flipDisplay = false;
 int pulseCount = ROTARY_ENCODER_PULSE_COUNT;
 int lastKnobCount = 0;

@@ -167,7 +167,11 @@ void setup() {
     if (spotifyUsers.empty() || (menuMode == SettingsMenu && menuIndex == SettingsAddUser)) {
       request->redirect("http://knobby.local/authorize");
     } else {
-      request->send(200, "text/html", index_html_start);
+      String html;
+      html.reserve(2048);
+      html.concat(index_html_start);
+      html.replace("{{firmwareURL}}", firmwareURL == KNOBBY_FIRMWARE_URL ? "" : firmwareURL);
+      request->send(200, "text/html", html);
     }
   });
 
@@ -250,7 +254,16 @@ void setup() {
       if (!passwordParam || passwordParam->value() != knobby.password()) {
         request->send(403, "text/plain", "Incorrect password");
       } else {
-        request->send(400, "text/plain", "Missing update file");
+        AsyncWebParameter *firmwareParam = request->getParam("firmwareURL", true);
+        if (firmwareParam && !firmwareParam->value().isEmpty()) {
+          if (firmwareURL != firmwareParam->value()) {
+            firmwareURL = firmwareParam->value();
+            checkedForUpdateMillis = 0;
+            writeDataJson();
+          }
+          startFirmwareUpdateFromURL = true;
+          request->send(200, "text/plain", "OK, updating");
+        }
       }
     },
     [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
@@ -303,7 +316,6 @@ void setup() {
   spotifyHttp.setUserAgent("Knobby/1.0");
   spotifyHttp.setConnectTimeout(4000);
   spotifyHttp.setTimeout(4000);
-  spotifyHttp.setReuse(true);
 
   if (spotifyNeedsNewAccessToken()) {
     spotifyGettingToken = true;
@@ -509,6 +521,10 @@ void loop() {
   ArduinoOTA.handle();
   improvSerial.loop();
   if (wifiManager) wifiManager->loop();
+  if (startFirmwareUpdateFromURL) {
+    startFirmwareUpdateFromURL = false;
+    updateFirmware();
+  }
   delayIfIdle();
 }
 
@@ -2152,6 +2168,7 @@ int spotifyApiRequest(const char *method, const char *endpoint, const char *cont
   String path = String("/v1/") + endpoint;
   log_i("%s %s %s", method, path.c_str(), content);
 
+  spotifyHttp.setReuse(true);
   spotifyHttp.begin(spotifyWifiClient, "api.spotify.com", 443, path);
   spotifyHttp.addHeader("Authorization", "Bearer " + String(spotifyAccessToken));
   if (strlen(content) == 0) spotifyHttp.addHeader("Content-Length", "0");
@@ -2986,8 +3003,14 @@ void updateFirmware() {
 
   spotifyWifiClient.stop();
   WiFiClientSecure client;
-  client.setCACert(s3CACertificates);
+  if (firmwareURL.startsWith(KNOBBY_FIRMWARE_BUCKET)) {
+    client.setCACert(s3CACertificates);
+  } else {
+    log_w("Using unknown firmware from URL: %s", firmwareURL.c_str());
+    client.setInsecure();
+  }
   HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.setUserAgent("Knobby/1.0");
   http.setConnectTimeout(4000);
   http.setTimeout(4000);
