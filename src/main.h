@@ -105,7 +105,7 @@ enum MenuModes {
   SettingsMenu = 0,
   CountryList = 1,
   GenreList = 2,
-  SimilarList = 3,
+  ExploreList = 3,
   PlaylistList = 4,
   NowPlaying = 5,
   UserList = 6,
@@ -167,10 +167,13 @@ enum SpotifyRepeatModes {
   RepeatContext = 2
 };
 
+enum ExploreItemTypes { ExploreItemAlbum, ExploreItemArtist, ExploreItemPlaylist };
+
 typedef struct {
-  char playlistId[SPOTIFY_ID_SIZE + 1];
-  char name[18];
-} SimilarItem_t;
+  ExploreItemTypes type;
+  char id[SPOTIFY_ID_SIZE + 1];
+  String name;
+} ExploreItem_t;
 
 typedef struct {
   char name[64] = "";
@@ -202,7 +205,7 @@ typedef struct {
   char albumName[100] = "";
   char albumId[SPOTIFY_ID_SIZE + 1] = "";
   char trackId[SPOTIFY_ID_SIZE + 1] = "";
-  char contextName[100] = "";
+  char contextName[256] = "";
   char contextUri[100] = "";
   bool isLiked = false;
   bool isPlaying = false;
@@ -227,7 +230,7 @@ bool contains(C&& c, T e) {
 };
 
 const char *hostname = "knobby";
-const char *rootMenuItems[] = {"settings", "countries", "genres", "similar", "playlists", "now playing", "users", "devices"};
+const char *rootMenuItems[] = {"settings", "countries", "genres", "explore", "playlists", "now playing", "users", "devices"};
 const char *settingsMenuItems[] = {"about", "update", "orientation", "add user", "log out", "reset settings"};
 const int screenWidth = TFT_HEIGHT;
 const int screenHeight = TFT_WIDTH;
@@ -350,15 +353,17 @@ time_t secondsAsleep = 0;
 bool showingProgressBar = false;
 bool showingStatusMessage = false;
 char statusMessage[24] = "";
-char menuText[100] = "";
+char menuText[256] = "";
 int pressedMenuIndex = -1;
 int rootMenuNowPlayingIndex = -1;
-int rootMenuSimilarIndex = -1;
+int rootMenuExploreIndex = -1;
 int rootMenuPlaylistsIndex = -1;
 int rootMenuUsersIndex = -1;
 int rootMenuDevicesIndex = -1;
-int similarMenuGenreIndex = -1;
-std::vector<SimilarItem_t> similarMenuItems;
+String exploreMenuTrackId;
+std::vector<ExploreItem_t> exploreMenuItems;
+int explorePlaylistsGenreIndex = -1;
+std::vector<ExploreItem_t> explorePlaylists;
 long lastConnectedMillis = -1;
 unsigned long checkedForUpdateMillis = 0;
 unsigned long clickEffectEndMillis = 0;
@@ -407,6 +412,7 @@ SpotifyDevice_t *activeSpotifyDevice = nullptr;
 std::vector<SpotifyPlaylist_t> spotifyPlaylists;
 unsigned int spotifyPlaylistsCount = 0;
 bool spotifyPlaylistsLoaded = false;
+std::vector<SpotifyPlaylist_t> spotifyLinkedPlaylists;
 
 // Events
 void setup();
@@ -450,15 +456,15 @@ int formatMillis(char *output, unsigned long millis);
 uint16_t getMenuIndexForGenreIndex(uint16_t index);
 int getMenuIndexForPlaylist(const char *contextUri);
 int getGenreIndexForMenuIndex(uint16_t index, MenuModes mode);
-void getPlaylistName(char *name, MenuModes mode, uint16_t index);
-void getPlaylistUri(char *uri, MenuModes mode, uint16_t index);
+void getMenuText(char *name, MenuModes mode, uint16_t index);
+void getContextUri(char *uri, MenuModes mode, uint16_t index);
 bool isGenreMenu(MenuModes mode);
 bool isPlaylistMenu(MenuModes mode);
 unsigned long getLongPressedMillis();
 unsigned long getExtraLongPressedMillis();
 bool shouldShowProgressBar();
 bool shouldShowRandom();
-bool shouldShowSimilarMenu();
+bool shouldShowExploreMenu();
 bool shouldShowPlaylistsMenu();
 bool shouldShowUsersMenu();
 
