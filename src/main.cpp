@@ -598,8 +598,8 @@ void backgroundApiLoop(void *params) {
         case TransferPlayback:
           spotifyTransferPlayback();
           break;
-        case GetPlaylistDescription:
-          spotifyGetPlaylistDescription();
+        case GetPlaylistInformation:
+          spotifyGetPlaylistInformation();
           break;
         case GetPlaylists:
           spotifyGetPlaylists();
@@ -666,7 +666,8 @@ void selectRootMenuItem(uint16_t index) {
         exploreMenuItems.insert(exploreMenuItems.end(), explorePlaylists.begin(), explorePlaylists.end());
       } else if (activeGenreIndex >= 0) {
         explorePlaylistsGenreIndex = activeGenreIndex;
-        spotifyQueueAction(GetPlaylistDescription);
+        strncpy(spotifyGetPlaylistId, genrePlaylists[activeGenreIndex], SPOTIFY_ID_SIZE);
+        spotifyQueueAction(GetPlaylistInformation);
       }
     }
     setMenuMode(ExploreList, lastMenuMode == ExploreList ? lastMenuIndex : 0);
@@ -1375,7 +1376,8 @@ void drawNowPlayingOrSeek() {
     tft.setCursor(tft.getCursorX() + width + extraSpace + 1, iconTop);
     drawIcon(ICON_SKIP_PREVIOUS, menuIndex == BackButton, backClicked, spotifyState.disallowsSkippingPrev);
 
-    const String& playPauseIcon = spotifyState.isPlaying ? ICON_PAUSE : ICON_PLAY_ARROW;
+    bool playingOrTrying = spotifyState.isPlaying || (spotifyPlayUri[0] != '\0' && now - spotifyPlayAtMillis < waitToShowProgressMillis);
+    const String& playPauseIcon = playingOrTrying ? ICON_PAUSE : ICON_PLAY_ARROW;
     bool playPauseClicked = menuIndex == PlayPauseButton && spotifyActionIsQueued(Toggle) && now <= clickEffectEndMillis;
     tft.setCursor(tft.getCursorX() + width, iconTop);
     drawIcon(playPauseIcon, menuIndex == PlayPauseButton, playPauseClicked);
@@ -1852,12 +1854,10 @@ void getMenuText(char *name, MenuModes mode, uint16_t index) {
 
 void getContextName(char *name, const char *contextUri) {
   const String uri = String(contextUri);
-  if (uri == spotifyState.contextUri && name[0] != '\0') {
-    // ignore
-  } else if (uri.startsWith("spotify:user:") && uri.endsWith(":collection")) {
+  if (uri.startsWith("spotify:user:") && uri.endsWith(":collection")) {
     strcpy(name, "Liked Songs");
   } else if (uri.startsWith(spotifyPlaylistContextPrefix)) {
-    auto id = uri.substring(uri.lastIndexOf(":") + 1).c_str();
+    auto id = uri.substring(sizeof(spotifyPlaylistContextPrefix) - 1).c_str();
     auto playlistCountryIndex = indexOfId(countryPlaylists, COUNTRY_COUNT, id);
     auto playlistGenreIndex = indexOfId(genrePlaylists, GENRE_COUNT, id);
     if (playlistCountryIndex >= 0) {
@@ -1871,6 +1871,16 @@ void getContextName(char *name, const char *contextUri) {
       auto playlistIndex = getMenuIndexForPlaylist(contextUri);
       if (playlistIndex >= 0) getMenuText(name, PlaylistList, playlistIndex);
     }
+  } else if (uri.startsWith("spotify:artist:")) {
+    for (auto artist : spotifyState.artists) {
+      if (artist.id[0] == '\0') break;
+      if (uri.endsWith(artist.id)) {
+        strncpy(name, artist.name, sizeof(SpotifyState_t::contextName) - 1);
+        break;
+      }
+    }
+  } else if (uri.startsWith("spotify:album:")) {
+    strncpy(name, spotifyState.albumName, sizeof(SpotifyState_t::contextName) - 1);
   }
 }
 
@@ -2347,22 +2357,24 @@ void spotifyCurrentlyPlaying() {
       }
 
       JsonObject context = json["context"];
-      if (!context.isNull() && !context["uri"].isNull()) {
-        strncpy(spotifyState.contextUri, context["uri"], sizeof(spotifyState.contextUri) - 1);
-        getContextName(spotifyState.contextName, spotifyState.contextUri);
-        if (strcmp(context["type"], "playlist") == 0) {
-          const char *id = strrchr(context["uri"], ':') + 1;
+      const String contextUri = context["uri"];
+      if (context.isNull() || contextUri.isEmpty()) {
+        playingCountryIndex = -1;
+        playingGenreIndex = -1;
+        spotifyState.contextName[0] = '\0';
+      } else if (contextUri != spotifyState.contextUri) {
+        strncpy(spotifyState.contextUri, contextUri.c_str(), sizeof(spotifyState.contextUri) - 1);
+        if (context["type"].as<String>() == "playlist") {
+          const char *id = strrchr(spotifyState.contextUri, ':') + 1;
           playingGenreIndex = indexOfId(genrePlaylists, GENRE_COUNT, id);
           playingCountryIndex = indexOfId(countryPlaylists, COUNTRY_COUNT, id);
+          if (playingGenreIndex < 0 && playingCountryIndex < 0 && strcmp(spotifyGetPlaylistId, id) != 0) {
+            strncpy(spotifyGetPlaylistId, id, SPOTIFY_ID_SIZE);
+            spotifyQueueAction(GetPlaylistInformation);
+          }
         } else {
           playingCountryIndex = -1;
-          if (playingGenreIndex != explorePlaylistsGenreIndex) playingGenreIndex = -1;
-        }
-      } else {
-        playingCountryIndex = -1;
-        if (playingGenreIndex != explorePlaylistsGenreIndex) {
           playingGenreIndex = -1;
-          spotifyState.contextName[0] = '\0';
         }
       }
 
@@ -2422,6 +2434,8 @@ void spotifyCurrentlyPlaying() {
           }
         }
       }
+
+      getContextName(spotifyState.contextName, spotifyState.contextUri);
 
       if (json.containsKey("device")) {
         JsonObject jsonDevice = json["device"];
@@ -2872,58 +2886,63 @@ void spotifyTransferPlayback() {
   spotifyApiRequestEnded();
 };
 
-void spotifyGetPlaylistDescription() {
-  if (spotifyAccessToken[0] == '\0' || explorePlaylistsGenreIndex < 0) return;
-  const char *activePlaylistId = genrePlaylists[explorePlaylistsGenreIndex];
-  explorePlaylists.clear();
+void spotifyGetPlaylistInformation() {
+  if (spotifyAccessToken[0] == '\0' || spotifyGetPlaylistId[0] == '\0') return;
   int statusCode;
-  char url[53];
-  snprintf(url, sizeof(url), "playlists/%s?fields=description", activePlaylistId);
+  char url[58];
+  snprintf(url, sizeof(url), "playlists/%s?fields=name,description", spotifyGetPlaylistId);
   statusCode = spotifyApiRequest("GET", url);
 
   if (statusCode == 200) {
     DynamicJsonDocument json(3000);
     DeserializationError error = deserializeJson(json, spotifyHttp.getStream());
     if (!error) {
-      const auto prefixLength = strlen(spotifyPlaylistContextPrefix);
-      String description = json["description"];
-      int urlPosition = description.indexOf(spotifyPlaylistContextPrefix);
-      while (urlPosition > 0) {
-        ExploreItem_t item;
-        item.type = ExploreItemPlaylist;
-        int idStart = urlPosition + prefixLength;
-        int idEnd = idStart + SPOTIFY_ID_SIZE;
-        strlcpy(item.id, description.c_str() + idStart, sizeof(item.id));
+      const String contextUri = spotifyState.contextUri;
+      if (contextUri.startsWith(spotifyPlaylistContextPrefix) && contextUri.endsWith(spotifyGetPlaylistId)) {
+        strncpy(spotifyState.contextName, json["name"], sizeof(spotifyState.contextName) - 1);
+      }
+      if (explorePlaylistsGenreIndex >= 0) {
+        const auto prefixLength = sizeof(spotifyPlaylistContextPrefix) - 1;
+        const String description = json["description"];
+        int urlPosition = description.indexOf(spotifyPlaylistContextPrefix);
+        while (urlPosition > 0) {
+          ExploreItem_t item;
+          item.type = ExploreItemPlaylist;
+          int idStart = urlPosition + prefixLength;
+          int idEnd = idStart + SPOTIFY_ID_SIZE;
+          strlcpy(item.id, description.c_str() + idStart, sizeof(item.id));
 
-        int nameStart = description.indexOf(">", idEnd) + 1;
-        int nameEnd = description.indexOf("<", nameStart);
-        if (nameStart > 0 && nameEnd > 0) {
-          String name = description.substring(nameStart, nameEnd);
-          int matchingGenreIndex = indexOfId(genrePlaylists, GENRE_COUNT, item.id);
-          if (name == "Intro") {
-            item.name.concat("an intro to ");
-            item.name.concat(genres[explorePlaylistsGenreIndex]);
-            explorePlaylists.push_back(item);
-          } else if (name == "Pulse" || name == "Edge") {
-            name.toLowerCase();
-            item.name.concat("the ");
-            item.name.concat(name);
-            item.name.concat(" of ");
-            item.name.concat(genres[explorePlaylistsGenreIndex]);
-            explorePlaylists.push_back(item);
-          } else if (matchingGenreIndex >= 0) {
-            explorePlaylists.push_back(item);
+          int nameStart = description.indexOf(">", idEnd) + 1;
+          int nameEnd = description.indexOf("<", nameStart);
+          if (nameStart > 0 && nameEnd > 0) {
+            String name = description.substring(nameStart, nameEnd);
+            int matchingGenreIndex = indexOfId(genrePlaylists, GENRE_COUNT, item.id);
+            if (name == "Intro") {
+              item.name.concat("an intro to ");
+              item.name.concat(genres[explorePlaylistsGenreIndex]);
+              explorePlaylists.push_back(item);
+            } else if (name == "Pulse" || name == "Edge") {
+              name.toLowerCase();
+              item.name.concat("the ");
+              item.name.concat(name);
+              item.name.concat(" of ");
+              item.name.concat(genres[explorePlaylistsGenreIndex]);
+              explorePlaylists.push_back(item);
+            } else if (matchingGenreIndex >= 0) {
+              explorePlaylists.push_back(item);
+            }
+
+            urlPosition = description.indexOf(spotifyPlaylistContextPrefix, nameEnd);
+          } else {
+            urlPosition = description.indexOf(spotifyPlaylistContextPrefix, urlPosition + prefixLength);
           }
-
-          urlPosition = description.indexOf(spotifyPlaylistContextPrefix, nameEnd);
-        } else {
-          urlPosition = description.indexOf(spotifyPlaylistContextPrefix, urlPosition + prefixLength);
+        }
+        if (menuMode == ExploreList) {
+          exploreMenuItems.insert(exploreMenuItems.end(), explorePlaylists.begin(), explorePlaylists.end());
+          setMenuIndex(menuIndex);
         }
       }
-      if (menuMode == ExploreList) {
-        exploreMenuItems.insert(exploreMenuItems.end(), explorePlaylists.begin(), explorePlaylists.end());
-        setMenuIndex(menuIndex);
-      }
+      spotifyGetPlaylistId[0] = '\0';
     }
   } else {
     log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");

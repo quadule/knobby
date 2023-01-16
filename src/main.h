@@ -157,7 +157,7 @@ enum SpotifyActions {
   ToggleShuffle,
   ToggleRepeat,
   TransferPlayback,
-  GetPlaylistDescription,
+  GetPlaylistInformation,
   GetPlaylists
 };
 
@@ -171,7 +171,7 @@ enum ExploreItemTypes { ExploreItemAlbum, ExploreItemArtist, ExploreItemPlaylist
 
 typedef struct {
   ExploreItemTypes type;
-  char id[SPOTIFY_ID_SIZE + 1];
+  char id[SPOTIFY_ID_SIZE + 1] = "";
   String name;
 } ExploreItem_t;
 
@@ -261,8 +261,8 @@ const int lineSpacing = 3;
   const int maxTextLines = 3;
 #endif
 const uint16_t spotifyPollInterval = 10000;
-const char *spotifyClientId = "55aee603baf641f899e5bfeba3fe05d0";
-const char *spotifyPlaylistContextPrefix = "spotify:playlist:";
+const char spotifyClientId[] = "55aee603baf641f899e5bfeba3fe05d0";
+const char spotifyPlaylistContextPrefix[] = "spotify:playlist:";
 
 // icomoon23.vlw
 const String ICON_VOLUME_UP = "\uE900";
@@ -397,6 +397,7 @@ uint32_t nextCurrentlyPlayingMillis = 0;
 bool spotifyGettingToken = false;
 SpotifyActions spotifyAction = Idle;
 SpotifyActions spotifyRetryAction = Idle;
+char spotifyGetPlaylistId[SPOTIFY_ID_SIZE + 1] = "";
 char spotifyPlayUri[100] = "";
 int spotifyPlayAtMillis = -1;
 int spotifySeekToMillis = -1;
@@ -485,7 +486,7 @@ void spotifyToggleLike();
 void spotifyToggleShuffle();
 void spotifyToggleRepeat();
 void spotifyTransferPlayback();
-void spotifyGetPlaylistDescription();
+void spotifyGetPlaylistInformation();
 void spotifyGetPlaylists();
 
 bool spotifyNeedsNewAccessToken();
