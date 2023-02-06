@@ -532,7 +532,7 @@ void backgroundApiLoop(void *params) {
   for (;;) {
     delayIfIdle();
     auto now = millis();
-    if (WiFi.status() != WL_CONNECTED) continue;
+    if (WiFi.status() != WL_CONNECTED || updateContentLength != 0) continue;
 
     if (!spotifyGettingToken && spotifyNeedsNewAccessToken()) {
       spotifyGettingToken = true;
