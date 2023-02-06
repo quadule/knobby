@@ -623,8 +623,7 @@ void addExploreMenuTrackInfo() {
 
   exploreMenuTrackId = spotifyState.trackId;
 
-  for (auto i = 0; i < (sizeof(spotifyState.artists) / sizeof(spotifyState.artists[0])); i++) {
-    SpotifyArtist_t artist = spotifyState.artists[i];
+  for (auto artist : spotifyState.artists) {
     if (artist.id[0] == '\0' || artist.name[0] == '\0') break;
 
     ExploreItem_t item;
@@ -658,17 +657,14 @@ void selectRootMenuItem(uint16_t index) {
     } else if (isGenreMenu(lastMenuMode)) {
       activeGenreIndex = genreIndex;
     }
-    if (exploreMenuItems.empty() || exploreMenuTrackId != spotifyState.trackId ||
-        activeGenreIndex != explorePlaylistsGenreIndex) {
-      exploreMenuItems.clear();
-      if (lastMenuMode == NowPlaying) addExploreMenuTrackInfo();
-      if (explorePlaylistsGenreIndex == activeGenreIndex && explorePlaylists.size() > 0) {
-        exploreMenuItems.insert(exploreMenuItems.end(), explorePlaylists.begin(), explorePlaylists.end());
-      } else if (activeGenreIndex >= 0) {
-        explorePlaylistsGenreIndex = activeGenreIndex;
-        strncpy(spotifyGetPlaylistId, genrePlaylists[activeGenreIndex], SPOTIFY_ID_SIZE);
-        spotifyQueueAction(GetPlaylistInformation);
-      }
+    exploreMenuItems.clear();
+    if (lastMenuMode == NowPlaying) addExploreMenuTrackInfo();
+    if (explorePlaylistsGenreIndex == activeGenreIndex && explorePlaylists.size() > 0) {
+      exploreMenuItems.insert(exploreMenuItems.end(), explorePlaylists.begin(), explorePlaylists.end());
+    } else if (activeGenreIndex >= 0) {
+      explorePlaylistsGenreIndex = activeGenreIndex;
+      strncpy(spotifyGetPlaylistId, genrePlaylists[activeGenreIndex], SPOTIFY_ID_SIZE);
+      spotifyQueueAction(GetPlaylistInformation);
     }
     setMenuMode(ExploreList, lastMenuMode == ExploreList ? lastMenuIndex : 0);
   } else if (index == rootMenuPlaylistsIndex) {
@@ -2901,6 +2897,7 @@ void spotifyGetPlaylistInformation() {
       if (contextUri.startsWith(spotifyPlaylistContextPrefix) && contextUri.endsWith(spotifyGetPlaylistId)) {
         strncpy(spotifyState.contextName, json["name"], sizeof(spotifyState.contextName) - 1);
       }
+      explorePlaylists.clear();
       if (explorePlaylistsGenreIndex >= 0) {
         const auto prefixLength = sizeof(spotifyPlaylistContextPrefix) - 1;
         const String description = json["description"];
