@@ -1973,8 +1973,6 @@ void startDeepSleep() {
   rtc_gpio_isolate(GPIO_NUM_0); // button 1
   rtc_gpio_isolate(GPIO_NUM_35); // button 2
   rtc_gpio_isolate(GPIO_NUM_39);
-  rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_A_PIN);
-  rtc_gpio_isolate((gpio_num_t)ROTARY_ENCODER_B_PIN);
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
   #if CORE_DEBUG_LEVEL < ARDUHAL_LOG_LEVEL_DEBUG
