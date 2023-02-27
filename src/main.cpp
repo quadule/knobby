@@ -170,7 +170,7 @@ void setup() {
       String html;
       html.reserve(2048);
       html.concat(index_html_start);
-      html.replace("{{firmwareURL}}", firmwareURL == KNOBBY_FIRMWARE_URL ? "" : firmwareURL);
+      html.replace("{{firmwareURL}}", firmwareURL == defaultFirmwareURL ? "" : firmwareURL);
       request->send(200, "text/html", html);
     }
   });
@@ -2087,7 +2087,7 @@ bool readDataJson() {
   }
 
   if (doc.containsKey("configPassword")) knobby.setPassword(doc["configPassword"]);
-  firmwareURL = doc["firmwareURL"] | KNOBBY_FIRMWARE_URL;
+  firmwareURL = doc["firmwareURL"] | defaultFirmwareURL;
   flipDisplay = doc["flipDisplay"];
   pulseCount = doc["pulseCount"];
   if (pulseCount <= 0 || pulseCount > 8) pulseCount = ROTARY_ENCODER_PULSE_COUNT;
@@ -2119,7 +2119,7 @@ bool writeDataJson() {
   File f = SPIFFS.open("/data.json", "w+");
   DynamicJsonDocument doc(5000);
 
-  if (!firmwareURL.equals(KNOBBY_FIRMWARE_URL)) doc["firmwareURL"] = firmwareURL;
+  if (!firmwareURL.equals(defaultFirmwareURL)) doc["firmwareURL"] = firmwareURL;
   if (flipDisplay) doc["flipDisplay"] = true;
   if (pulseCount != ROTARY_ENCODER_PULSE_COUNT) doc["pulseCount"] = pulseCount;
 
