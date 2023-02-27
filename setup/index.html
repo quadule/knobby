@@ -60,7 +60,14 @@
         To begin, connect and select your device from the list:
       </p>
 
-      <esp-web-install-button manifest="firmware/knobby/manifest.json">
+      <p>
+        <select onchange="document.getElementById('install-button').setAttribute('manifest', `firmware/${this.value}/manifest.json`)">
+          <option value="knobby">Original Knobby / Lilygo T-Display board</option>
+          <option value="twatch">Lilygo T-Watch encoder version</option>
+        </select>
+      </p>
+
+      <esp-web-install-button id="install-button" manifest="firmware/knobby/manifest.json">
         <i slot="unsupported">
           The tool is not available because your browser does not support <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Serial_API">Web Serial</a>.
           Open this page in Google Chrome or Microsoft Edge instead<span class="not-supported-i hidden"> (but not on your iOS device)</span>.
