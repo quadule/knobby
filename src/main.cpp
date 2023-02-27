@@ -488,17 +488,17 @@ void loop() {
     statusMessage[0] = '\0';
     tft.fillRect(0, 1, screenWidth, 31, TFT_BLACK);
     showingStatusMessage = false;
-    updateDisplay();
+    invalidateDisplay();
   } else if (clickEffectEndMillis > 0 && now > clickEffectEndMillis) {
     clickEffectEndMillis = 0;
-    updateDisplay();
+    invalidateDisplay();
   } else if ((randomizingMenuNextMillis > 0 && now >= randomizingMenuNextMillis) ||
-              lastInputMillis > lastDisplayMillis || (now - lastDisplayMillis > 950) ||
+              lastInputMillis > lastDisplayMillis || (now - lastDisplayMillis > extraLongPressMillis) ||
               (shouldShowRandom() && lastDisplayMillis < longPressStartedMillis + extraLongPressMillis * 2)) {
-    updateDisplay();
-  } else if (displayInvalidated && updateContentLength == 0) {
-    updateDisplay();
+    invalidateDisplay();
   }
+
+  if (displayInvalidated && updateContentLength == 0) updateDisplay();
 
   auto top = menuMode == NowPlaying ? lineDivider : 0;
   if (shouldShowProgressBar()) {
@@ -1221,6 +1221,9 @@ void drawRandomizing() {
 }
 
 void drawRootMenu() {
+  const int textPadding = 24;
+  const int textStartX = textPadding + 1;
+  const int textWidth = screenWidth - textPadding * 2;
   tft.setCursor(textStartX, lineTwo);
   img.setTextColor(TFT_WHITE, TFT_BLACK);
   if (shouldShowRandom()) {
@@ -1248,6 +1251,14 @@ void drawRootMenu() {
     }
   }
   tft.drawRoundRect(7, lineTwo - 15, screenWidth - 14, 49, 5, TFT_WHITE);
+
+  if (!displayInvalidatedPartial || knobRotatedWhileLongPressed || shouldShowRandom()) {
+    tft.setTextColor(shouldShowRandom() ? TFT_LIGHTBLACK : TFT_DARKERGREY, TFT_BLACK);
+    tft.setCursor(16, lineTwo - 2);
+    tft.print("\xE2\x80\xB9");
+    tft.setCursor(screenWidth - 24, lineTwo - 2);
+    tft.print("\xE2\x80\xBA");
+  }
 }
 
 void drawSettingsMenu() {
@@ -1523,11 +1534,7 @@ void invalidateDisplay(bool eraseDisplay) {
 }
 
 void updateDisplay() {
-  displayInvalidated = false;
-  if (!displayInvalidatedPartial) {
-    tft.fillScreen(TFT_BLACK);
-    displayInvalidatedPartial = true;
-  }
+  if (!displayInvalidatedPartial) tft.fillScreen(TFT_BLACK);
   img.setTextColor(TFT_DARKGREY, TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
   unsigned long now = millis();
@@ -1552,6 +1559,8 @@ void updateDisplay() {
     drawPlaylistsMenu();
   }
   drawStatusOverlay();
+  displayInvalidated = false;
+  displayInvalidatedPartial = true;
   lastDisplayMillis = millis();
 }
 
