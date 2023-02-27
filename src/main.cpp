@@ -658,7 +658,7 @@ void selectRootMenuItem(uint16_t index) {
       activeGenreIndex = genreIndex;
     }
     exploreMenuItems.clear();
-    if (lastMenuMode == NowPlaying) addExploreMenuTrackInfo();
+    if (lastMenuMode == NowPlaying || activeGenreIndex < 0) addExploreMenuTrackInfo();
     if (explorePlaylistsGenreIndex == activeGenreIndex && explorePlaylists.size() > 0) {
       exploreMenuItems.insert(exploreMenuItems.end(), explorePlaylists.begin(), explorePlaylists.end());
     } else if (activeGenreIndex >= 0) {
