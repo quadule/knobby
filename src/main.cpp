@@ -2365,13 +2365,13 @@ void spotifyCurrentlyPlaying() {
         playingCountryIndex = -1;
         playingGenreIndex = -1;
         spotifyState.contextName[0] = '\0';
-      } else if (contextUri != spotifyState.contextUri) {
+      } else {
         strncpy(spotifyState.contextUri, contextUri.c_str(), sizeof(spotifyState.contextUri) - 1);
         if (context["type"].as<String>() == "playlist") {
           const char *id = strrchr(spotifyState.contextUri, ':') + 1;
           playingGenreIndex = indexOfId(genrePlaylists, GENRE_COUNT, id);
           playingCountryIndex = indexOfId(countryPlaylists, COUNTRY_COUNT, id);
-          if (playingGenreIndex < 0 && playingCountryIndex < 0 && strcmp(spotifyGetPlaylistId, id) != 0) {
+          if (playingGenreIndex < 0 && playingCountryIndex < 0 && contextUri != spotifyState.contextUri && strcmp(spotifyGetPlaylistId, id) != 0) {
             strncpy(spotifyGetPlaylistId, id, SPOTIFY_ID_SIZE);
             spotifyQueueAction(GetPlaylistInformation);
           }
