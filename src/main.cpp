@@ -1383,7 +1383,7 @@ void drawNowPlayingOrSeek() {
     tft.setCursor(tft.getCursorX() + width + extraSpace + 1, iconTop);
     drawIcon(ICON_SKIP_PREVIOUS, menuIndex == BackButton, backClicked, spotifyState.disallowsSkippingPrev);
 
-    bool playingOrTrying = spotifyState.isPlaying || (spotifyPlayUri[0] != '\0' && now - spotifyPlayAtMillis < waitToShowProgressMillis);
+    bool playingOrTrying = spotifyState.isPlaying || (spotifyPlayUri[0] != '\0' && spotifyPlayAtMillis >= 0);
     const String& playPauseIcon = playingOrTrying ? ICON_PAUSE : ICON_PLAY_ARROW;
     bool playPauseClicked = menuIndex == PlayPauseButton && spotifyActionIsQueued(Toggle) && now <= clickEffectEndMillis;
     tft.setCursor(tft.getCursorX() + width, iconTop);
