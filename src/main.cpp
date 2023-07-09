@@ -941,6 +941,10 @@ void knobDoubleClicked() {
     }
   } else if (menuMode == SettingsMenu) {
     switch (menuIndex) {
+      case SettingsAbout:
+        showingNetworkInfo = !showingNetworkInfo;
+        invalidateDisplay();
+        break;
       case SettingsUpdate:
         updateFirmware();
         break;
@@ -1269,8 +1273,14 @@ void drawSettingsMenu() {
       drawCenteredText("knobby.net", textWidth, 1);
       tft.setCursor(textStartX, lineThree);
       char about[100];
-      sprintf(about, "by milo winningham %s", KNOBBY_VERSION);
-      drawCenteredText(about, textWidth, 2);
+      if (showingNetworkInfo) {
+        drawCenteredText(WiFi.localIP().toString().c_str(), textWidth, 1);
+        tft.setCursor(textStartX, lineFour);
+        drawCenteredText(knobby.password().c_str(), textWidth, 1);
+      } else {
+        sprintf(about, "by milo winningham %s", KNOBBY_VERSION);
+        drawCenteredText(about, textWidth, 2);
+      }
       break;
     case SettingsUpdate:
       drawCenteredText("double click to begin updating", textWidth, 3);

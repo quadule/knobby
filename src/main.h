@@ -352,6 +352,7 @@ std::array<float, 12> knobVelocity;
 int knobVelocityPosition = 0;
 bool randomizingMenuAutoplay = false;
 time_t secondsAsleep = 0;
+bool showingNetworkInfo = false;
 bool showingProgressBar = false;
 bool showingStatusMessage = false;
 char statusMessage[24] = "";
