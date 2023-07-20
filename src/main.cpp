@@ -283,13 +283,11 @@ void setup() {
           changed = true;
         }
         AsyncWebParameter *firmwareParam = request->getParam("firmwareURL", true);
-        if (firmwareParam && firmwareURL != firmwareParam->value()) {
-          changed = true;
+        if (firmwareParam && !firmwareParam->value().isEmpty() && firmwareURL != firmwareParam->value()) {
           firmwareURL = firmwareParam->value();
-          if (firmwareURL.isEmpty()) {
-            checkedForUpdateMillis = 0;
-            startFirmwareUpdateFromURL = true;
-          }
+          startFirmwareUpdateFromURL = true;
+          checkedForUpdateMillis = 0;
+          changed = true;
         }
         if (changed) {
           writeDataJson();
