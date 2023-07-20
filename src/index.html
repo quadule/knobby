@@ -8,8 +8,8 @@
 <body>
 <h1><a href="https://knobby.net">knobby</a></h1>
 <div>
-  <h2>update firmware</h2>
   <form id="update" method="post" action="/update" enctype="multipart/form-data">
+    <h2>update firmware or configure</h2>
     <p>
       <label for="password">
         device password:
@@ -24,7 +24,41 @@
       <br><i>- or -</i><br>
       <label for="update">
         set custom firmware url and update:
-        <input type="text" name="firmwareURL" size="72" value="{{firmwareURL}}">
+        <input type="text" name="firmwareURL" size="72" pattern="https?://.*" value="{{firmwareURL}}">
+      </label>
+    </p>
+    <hr>
+    <p>
+      <label for="flipDisplay">
+        display orientation:
+        <select name="flipDisplay">
+          <option value="0">default</option>
+          <option value="1"{{flipDisplaySelected}}>rotated</option>
+        </select>
+      </label>
+    </p>
+    <p>
+      <label for="rotaryAPin">
+        rotary encoder A pin:
+        <input type="number" name="rotaryAPin" min="0" max="39" size="2" value="{{rotaryAPin}}">
+      </label>
+    </p>
+    <p>
+      <label for="rotaryBPin">
+        rotary encoder B pin:
+        <input type="number" name="rotaryBPin" min="0" max="39" size="2" value="{{rotaryBPin}}">
+      </label>
+    </p>
+    <p>
+      <label for="buttonPin">
+        rotary encoder button pin:
+        <input type="number" name="buttonPin" min="0" max="39" size="2" value="{{buttonPin}}">
+      </label>
+    </p>
+    <p>
+      <label for="pulseCount">
+        rotary encoder pulse count:
+        <input type="number" name="pulseCount" min="1" max="8" size="2" value="{{pulseCount}}">
       </label>
     </p>
     <p>

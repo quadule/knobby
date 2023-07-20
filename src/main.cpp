@@ -67,18 +67,9 @@ void setup() {
   WiFi.begin();
   improvSerial.setup(hostname);
 
-  ESP32Encoder::useInternalWeakPullResistors = UP;
-  knob.attachFullQuad(ROTARY_ENCODER_A_PIN, ROTARY_ENCODER_B_PIN);
-  button.setDebounceTicks(debounceMillis);
-  button.setClickTicks(doubleClickMaxMillis);
-  button.setPressTicks(longPressMillis);
-  button.attachClick(knobClicked);
-  button.attachDoubleClick(knobDoubleClicked);
-  button.attachLongPressStart(knobLongPressStarted);
-  button.attachLongPressStop(knobLongPressStopped);
-  button.attachPressStart(knobPressStarted);
+  setupKnob();
 
-  tft.setRotation(flipDisplay ? 1 : 3);
+  tft.setRotation(knobby.flippedDisplay() ? 1 : 3);
   tft.loadFont(GillSans24_vlw_start);
   img.loadFont(GillSans24_vlw_start);
   ico.loadFont(icomoon24_vlw_start);
@@ -168,9 +159,14 @@ void setup() {
       request->redirect("http://knobby.local/authorize");
     } else {
       String html;
-      html.reserve(2048);
+      html.reserve(4096);
       html.concat(index_html_start);
       html.replace("{{firmwareURL}}", firmwareURL == defaultFirmwareURL ? "" : firmwareURL);
+      html.replace("{{flipDisplaySelected}}", knobby.flippedDisplay() ? " selected" : "");
+      html.replace("{{rotaryAPin}}", String(knobby.rotaryAPin()));
+      html.replace("{{rotaryBPin}}", String(knobby.rotaryBPin()));
+      html.replace("{{buttonPin}}", String(knobby.buttonPin()));
+      html.replace("{{pulseCount}}", String(knobby.pulseCount()));
       request->send(200, "text/html", html);
     }
   });
@@ -254,16 +250,52 @@ void setup() {
       if (!passwordParam || passwordParam->value() != knobby.password()) {
         request->send(403, "text/plain", "Incorrect password");
       } else {
-        AsyncWebParameter *firmwareParam = request->getParam("firmwareURL", true);
-        if (firmwareParam && !firmwareParam->value().isEmpty()) {
-          if (firmwareURL != firmwareParam->value()) {
-            firmwareURL = firmwareParam->value();
-            checkedForUpdateMillis = 0;
-            writeDataJson();
+        bool changed = false;
+        AsyncWebParameter *flippedParam = request->getParam("flipDisplay", true);
+        if (flippedParam) {
+          bool flip = flippedParam->value() == "1";
+          if (knobby.flippedDisplay() != flip) {
+            knobby.setFlippedDisplay(flip);
+            tft.setRotation(knobby.flippedDisplay() ? 1 : 3);
+            tft.fillScreen(TFT_BLACK);
+            invalidateDisplay(true);
+            changed = true;
           }
-          startFirmwareUpdateFromURL = true;
-          request->send(200, "text/plain", "OK, updating");
         }
+        AsyncWebParameter *aParam = request->getParam("rotaryAPin", true);
+        if (aParam && knobby.rotaryAPin() != aParam->value().toInt()) {
+          knobby.setRotaryAPin(aParam->value().toInt());
+          changed = true;
+        }
+        AsyncWebParameter *bParam = request->getParam("rotaryBPin", true);
+        if (bParam && knobby.rotaryBPin() != bParam->value().toInt()) {
+          knobby.setRotaryBPin(bParam->value().toInt());
+          changed = true;
+        }
+        AsyncWebParameter *buttonParam = request->getParam("buttonPin", true);
+        if (buttonParam && knobby.buttonPin() != buttonParam->value().toInt()) {
+          knobby.setButtonPin(buttonParam->value().toInt());
+          changed = true;
+        }
+        AsyncWebParameter *pulseCountParam = request->getParam("pulseCount", true);
+        if (pulseCountParam && knobby.pulseCount() != pulseCountParam->value().toInt()) {
+          knobby.setPulseCount(pulseCountParam->value().toInt());
+          changed = true;
+        }
+        AsyncWebParameter *firmwareParam = request->getParam("firmwareURL", true);
+        if (firmwareParam && firmwareURL != firmwareParam->value()) {
+          changed = true;
+          firmwareURL = firmwareParam->value();
+          if (firmwareURL.isEmpty()) {
+            checkedForUpdateMillis = 0;
+            startFirmwareUpdateFromURL = true;
+          }
+        }
+        if (changed) {
+          writeDataJson();
+          if (!startFirmwareUpdateFromURL) setupKnob();
+        }
+        request->send(200, "text/plain", "OK, changes saved");
       }
     },
     [](AsyncWebServerRequest *request, const String& filename, size_t index, uint8_t *data, size_t len, bool final) {
@@ -326,6 +358,21 @@ void setup() {
 
   if (knobby.powerStatus() != PowerStatusPowered) knobby.updateBattery();
   if (knobby.powerStatus() == PowerStatusPowered) knobby.printHeader();
+}
+
+void setupKnob() {
+  ESP32Encoder::useInternalWeakPullResistors = UP;
+  knob = ESP32Encoder();
+  knob.attachFullQuad(knobby.rotaryAPin(), knobby.rotaryBPin());
+  button = OneButton(knobby.buttonPin(), true, true);
+  button.setDebounceTicks(debounceMillis);
+  button.setClickTicks(doubleClickMaxMillis);
+  button.setPressTicks(longPressMillis);
+  button.attachClick(knobClicked);
+  button.attachDoubleClick(knobDoubleClicked);
+  button.attachLongPressStart(knobLongPressStarted);
+  button.attachLongPressStop(knobLongPressStopped);
+  button.attachPressStart(knobPressStarted);
 }
 
 void startWifiManager() {
@@ -739,8 +786,8 @@ void selectRootMenuItem(uint16_t index) {
 void knobRotated() {
   int newCount = knob.getCount();
   int knobDelta = newCount - lastKnobCount;
-  int reversingMultiplier = flipDisplay ? -1 : 1;
-  int positionDelta = knobDelta / pulseCount * reversingMultiplier;
+  int reversingMultiplier = knobby.flippedDisplay() ? -1 : 1;
+  int positionDelta = knobDelta / knobby.pulseCount() * reversingMultiplier;
   if (positionDelta == 0) return;
   lastKnobCount = newCount;
 
@@ -949,9 +996,8 @@ void knobDoubleClicked() {
         updateFirmware();
         break;
       case SettingsOrientation:
-        flipDisplay = !flipDisplay;
-        writeDataJson();
-        tft.setRotation(flipDisplay ? 1 : 3);
+        knobby.setFlippedDisplay(!knobby.flippedDisplay());
+        tft.setRotation(knobby.flippedDisplay() ? 1 : 3);
         invalidateDisplay(true);
         break;
       case SettingsAddUser:
@@ -2098,9 +2144,11 @@ bool readDataJson() {
 
   if (doc.containsKey("configPassword")) knobby.setPassword(doc["configPassword"]);
   firmwareURL = doc["firmwareURL"] | defaultFirmwareURL;
-  flipDisplay = doc["flipDisplay"];
-  pulseCount = doc["pulseCount"];
-  if (pulseCount <= 0 || pulseCount > 8) pulseCount = ROTARY_ENCODER_PULSE_COUNT;
+  if (doc.containsKey("flipDisplay")) knobby.setFlippedDisplay(doc["flipDisplay"]);
+  if (!doc["buttonPin"].isNull()) knobby.setButtonPin(doc["buttonPin"]);
+  if (!doc["rotaryAPin"].isNull()) knobby.setRotaryAPin(doc["rotaryAPin"]);
+  if (!doc["rotaryBPin"].isNull()) knobby.setRotaryBPin(doc["rotaryBPin"]);
+  if (!doc["pulseCount"].isNull()) knobby.setPulseCount(doc["pulseCount"]);
   wifiSSID = doc["wifiSSID"] | WiFi.SSID();
   wifiPassword = doc["wifiPassword"] | WiFi.psk();
 
@@ -2130,8 +2178,8 @@ bool writeDataJson() {
   DynamicJsonDocument doc(5000);
 
   if (!firmwareURL.equals(defaultFirmwareURL)) doc["firmwareURL"] = firmwareURL;
-  if (flipDisplay) doc["flipDisplay"] = true;
-  if (pulseCount != ROTARY_ENCODER_PULSE_COUNT) doc["pulseCount"] = pulseCount;
+  if (knobby.flippedDisplay()) doc["flipDisplay"] = true;
+  if (knobby.pulseCount() != ROTARY_ENCODER_PULSE_COUNT) doc["pulseCount"] = knobby.pulseCount();
 
   JsonArray usersArray = doc.createNestedArray("users");
 

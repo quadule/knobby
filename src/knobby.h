@@ -38,6 +38,17 @@ class Knobby {
     const String& password();
     void setPassword(const char *password);
 
+    bool flippedDisplay();
+    void setFlippedDisplay(bool flipped);
+    int buttonPin();
+    void setButtonPin(int pin);
+    int rotaryAPin();
+    void setRotaryAPin(int pin);
+    int rotaryBPin();
+    void setRotaryBPin(int pin);
+    int pulseCount();
+    void setPulseCount(int count);
+
     void printHeader();
     void resetSettings();
 
@@ -52,6 +63,12 @@ class Knobby {
     String _name;
     String _password;
     Preferences _preferences;
+
+    bool _flippedDisplay = false;
+    int _buttonPin  = ROTARY_ENCODER_BUTTON_PIN;
+    int _rotaryAPin = ROTARY_ENCODER_A_PIN;
+    int _rotaryBPin = ROTARY_ENCODER_B_PIN;
+    int _pulseCount = ROTARY_ENCODER_PULSE_COUNT;
 
     float _readSettledBatteryVoltage();
     uint8_t _batteryPercentage = 0;
@@ -84,6 +101,12 @@ Knobby::Knobby() {
 
 void Knobby::setup() {
   _preferences.begin("knobby");
+
+  _flippedDisplay = _preferences.getBool("flipDisplay", _flippedDisplay);
+  _buttonPin = _preferences.getChar("buttonPin", _buttonPin);
+  _rotaryAPin = _preferences.getChar("rotaryAPin", _rotaryAPin);
+  _rotaryBPin = _preferences.getChar("rotaryBPin", _rotaryBPin);
+  _pulseCount = _preferences.getChar("pulseCount", _pulseCount);
 
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     ttgo = TTGOClass::getWatch();
@@ -149,6 +172,49 @@ const String& Knobby::password() {
 void Knobby::setPassword(const char *password) {
   _password = password;
   _preferences.putString("password", _password);
+}
+
+bool Knobby::flippedDisplay() { return _flippedDisplay; }
+
+void Knobby::setFlippedDisplay(bool flip) {
+  _flippedDisplay = flip;
+  _preferences.putBool("flipDisplay", _flippedDisplay);
+}
+
+int Knobby::buttonPin() { return _buttonPin; }
+
+void Knobby::setButtonPin(int pin) {
+  if (pin >= 0 && pin <= 39) {
+    _buttonPin = pin;
+    _preferences.putInt("buttonPin", _buttonPin);
+  }
+}
+
+int Knobby::rotaryAPin() { return _rotaryAPin; }
+
+void Knobby::setRotaryAPin(int pin) {
+  if (pin >= 0 && pin <= 39) {
+    _rotaryAPin = pin;
+    _preferences.putInt("rotaryAPin", _rotaryAPin);
+  }
+}
+
+int Knobby::rotaryBPin() { return _rotaryBPin; }
+
+void Knobby::setRotaryBPin(int pin) {
+  if (pin >= 0 && pin <= 39) {
+    _rotaryBPin = pin;
+    _preferences.putInt("rotaryBPin", _rotaryBPin);
+  }
+}
+
+int Knobby::pulseCount() { return _pulseCount; }
+
+void Knobby::setPulseCount(int count) {
+  if (count > 0 && count <= 8) {
+    _pulseCount = count;
+    _preferences.putInt("pulseCount", _pulseCount);
+  }
 }
 
 void Knobby::printHeader() {
