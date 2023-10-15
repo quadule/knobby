@@ -34,6 +34,7 @@ jobs:
         pio run -e ${{ matrix.target }} -t buildfs
         mkdir upload
         zip -j upload/${{ matrix.target }}-firmware.zip .pio/build/${{ matrix.target }}/*.bin flash.bat flash.sh
+        zip -j upload/${{ matrix.target }}-elf.zip .pio/build/${{ matrix.target }}/*.elf
     - name: Archive firmware artifacts
       uses: actions/upload-artifact@v3
       with:
