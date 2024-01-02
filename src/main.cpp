@@ -666,8 +666,6 @@ void backgroundApiLoop(void *params) {
 void addExploreMenuTrackInfo() {
   if (spotifyState.trackId[0] == '\0') return;
 
-  exploreMenuTrackId = spotifyState.trackId;
-
   for (auto artist : spotifyState.artists) {
     if (artist.id[0] == '\0' || artist.name[0] == '\0') break;
 
@@ -697,18 +695,22 @@ void selectRootMenuItem(uint16_t index) {
   checkMenuSize(RootMenu);
   if (index == rootMenuExploreIndex) {
     auto activeGenreIndex = -1;
+    const String contextUri = spotifyState.contextUri;
     if (spotifyState.isPlaying || lastMenuMode == NowPlaying) {
       activeGenreIndex = playingGenreIndex;
     } else if (isGenreMenu(lastMenuMode)) {
       activeGenreIndex = genreIndex;
     }
     exploreMenuItems.clear();
-    if (lastMenuMode == NowPlaying || activeGenreIndex < 0) addExploreMenuTrackInfo();
+    addExploreMenuTrackInfo();
     if (explorePlaylistsGenreIndex == activeGenreIndex && explorePlaylists.size() > 0) {
       exploreMenuItems.insert(exploreMenuItems.end(), explorePlaylists.begin(), explorePlaylists.end());
     } else if (activeGenreIndex >= 0) {
       explorePlaylistsGenreIndex = activeGenreIndex;
       strncpy(spotifyGetPlaylistId, genrePlaylists[activeGenreIndex], SPOTIFY_ID_SIZE);
+      spotifyQueueAction(GetPlaylistInformation);
+    } else if (contextUri.startsWith(spotifyPlaylistContextPrefix) && !contextUri.endsWith(spotifyGetPlaylistId)) {
+      strncpy(spotifyGetPlaylistId, contextUri.c_str() + strlen(spotifyPlaylistContextPrefix), SPOTIFY_ID_SIZE);
       spotifyQueueAction(GetPlaylistInformation);
     }
     setMenuMode(ExploreList, lastMenuMode == ExploreList ? lastMenuIndex : 0);
@@ -1926,9 +1928,18 @@ void getContextName(char *name, const char *contextUri) {
       genreSort = AlphabeticSort;
       getMenuText(name, GenreList, playlistGenreIndex);
       genreSort = oldGenreSort;
-    } else if (spotifyPlaylistsLoaded) {
+    }
+    if (name[0] == '\0' && spotifyPlaylistsLoaded) {
       auto playlistIndex = getMenuIndexForPlaylist(contextUri);
       if (playlistIndex >= 0) getMenuText(name, PlaylistList, playlistIndex);
+    }
+    if (name[0] == '\0' && !explorePlaylists.empty()) {
+      auto playlist = std::find_if(explorePlaylists.begin(), explorePlaylists.end(), [id](const ExploreItem_t &item) {
+        return strcmp(item.id, id) == 0;
+      });
+      if (playlist != explorePlaylists.end()) {
+        getMenuText(name, ExploreList, playlist - explorePlaylists.begin());
+      }
     }
   } else if (uri.startsWith("spotify:artist:")) {
     for (auto artist : spotifyState.artists) {
@@ -2427,7 +2438,7 @@ void spotifyCurrentlyPlaying() {
           const char *id = strrchr(spotifyState.contextUri, ':') + 1;
           playingGenreIndex = indexOfId(genrePlaylists, GENRE_COUNT, id);
           playingCountryIndex = indexOfId(countryPlaylists, COUNTRY_COUNT, id);
-          if (playingGenreIndex < 0 && playingCountryIndex < 0 && contextUri != spotifyState.contextUri && strcmp(spotifyGetPlaylistId, id) != 0) {
+          if (playingGenreIndex < 0 && playingCountryIndex < 0 && strcmp(spotifyGetPlaylistId, id) != 0) {
             strncpy(spotifyGetPlaylistId, id, SPOTIFY_ID_SIZE);
             spotifyQueueAction(GetPlaylistInformation);
           }
@@ -2448,7 +2459,7 @@ void spotifyCurrentlyPlaying() {
           uint16_t newMenuIndex = spotifyState.progressMillis / 1000;
           if (newMenuIndex != menuIndex) setMenuIndex(newMenuIndex);
         }
-        
+
         const char *id = item["linked_from"]["id"] | item["id"];
         if (strcmp(id, spotifyState.trackId) != 0) {
           strncpy(spotifyState.trackId, id, SPOTIFY_ID_SIZE);
@@ -2482,7 +2493,7 @@ void spotifyCurrentlyPlaying() {
               }
             }
           }
-        
+
           JsonObject album = item["album"];
           if (!album.isNull()) {
             strncpy(spotifyState.albumId, album["id"], SPOTIFY_ID_SIZE);
@@ -2961,48 +2972,49 @@ void spotifyGetPlaylistInformation() {
         strncpy(spotifyState.contextName, json["name"], sizeof(spotifyState.contextName) - 1);
       }
       explorePlaylists.clear();
-      if (explorePlaylistsGenreIndex >= 0) {
-        const auto prefixLength = sizeof(spotifyPlaylistContextPrefix) - 1;
-        const String description = json["description"];
-        int urlPosition = description.indexOf(spotifyPlaylistContextPrefix);
-        while (urlPosition > 0) {
-          ExploreItem_t item;
-          item.type = ExploreItemPlaylist;
-          int idStart = urlPosition + prefixLength;
-          int idEnd = idStart + SPOTIFY_ID_SIZE;
-          strlcpy(item.id, description.c_str() + idStart, sizeof(item.id));
-
-          int nameStart = description.indexOf(">", idEnd) + 1;
-          int nameEnd = description.indexOf("<", nameStart);
-          if (nameStart > 0 && nameEnd > 0) {
-            String name = description.substring(nameStart, nameEnd);
-            int matchingGenreIndex = indexOfId(genrePlaylists, GENRE_COUNT, item.id);
+      const auto prefixLength = sizeof(spotifyPlaylistContextPrefix) - 1;
+      const String description = json["description"];
+      int urlPosition = description.indexOf(spotifyPlaylistContextPrefix);
+      while (urlPosition > 0) {
+        ExploreItem_t item;
+        item.type = ExploreItemPlaylist;
+        int idStart = urlPosition + prefixLength;
+        int idEnd = idStart + SPOTIFY_ID_SIZE;
+        strlcpy(item.id, description.c_str() + idStart, sizeof(item.id));
+        int nameStart = description.indexOf(">", idEnd) + 1;
+        int nameEnd = description.indexOf("<", nameStart);
+        if (nameStart > 0 && nameEnd > 0) {
+          String name = description.substring(nameStart, nameEnd);
+          int matchingGenreIndex = indexOfId(genrePlaylists, GENRE_COUNT, item.id);
+          if (explorePlaylistsGenreIndex >= 0) {
             if (name == "Intro") {
               item.name.concat("an intro to ");
               item.name.concat(genres[explorePlaylistsGenreIndex]);
-              explorePlaylists.push_back(item);
             } else if (name == "Pulse" || name == "Edge") {
               name.toLowerCase();
               item.name.concat("the ");
               item.name.concat(name);
               item.name.concat(" of ");
               item.name.concat(genres[explorePlaylistsGenreIndex]);
-              explorePlaylists.push_back(item);
-            } else if (matchingGenreIndex >= 0) {
-              explorePlaylists.push_back(item);
+            } else if (name == "2023") {
+              item.name.concat("2023 in ");
+              item.name.concat(genres[explorePlaylistsGenreIndex]);
+            } else if (name == "\xE2\x99\x80Filter") {
+              item.name.concat("fem filter for ");
+              item.name.concat(genres[explorePlaylistsGenreIndex]);
             }
-
-            urlPosition = description.indexOf(spotifyPlaylistContextPrefix, nameEnd);
-          } else {
-            urlPosition = description.indexOf(spotifyPlaylistContextPrefix, urlPosition + prefixLength);
           }
-        }
-        if (menuMode == ExploreList) {
-          exploreMenuItems.insert(exploreMenuItems.end(), explorePlaylists.begin(), explorePlaylists.end());
-          setMenuIndex(menuIndex);
+          if (matchingGenreIndex < 0 && item.name.isEmpty()) item.name = name;
+          explorePlaylists.push_back(item);
+          urlPosition = description.indexOf(spotifyPlaylistContextPrefix, nameEnd);
+        } else {
+          urlPosition = description.indexOf(spotifyPlaylistContextPrefix, urlPosition + prefixLength);
         }
       }
-      spotifyGetPlaylistId[0] = '\0';
+      if (menuMode == ExploreList) {
+        exploreMenuItems.insert(exploreMenuItems.end(), explorePlaylists.begin(), explorePlaylists.end());
+        setMenuIndex(menuIndex);
+      }
     }
   } else {
     log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");

@@ -361,7 +361,6 @@ int rootMenuExploreIndex = -1;
 int rootMenuPlaylistsIndex = -1;
 int rootMenuUsersIndex = -1;
 int rootMenuDevicesIndex = -1;
-String exploreMenuTrackId;
 std::vector<ExploreItem_t> exploreMenuItems;
 int explorePlaylistsGenreIndex = -1;
 std::vector<ExploreItem_t> explorePlaylists;
