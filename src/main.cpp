@@ -2410,6 +2410,7 @@ void spotifyCurrentlyPlaying() {
   if (statusCode == 200) {
     DynamicJsonDocument json(24576);
     DeserializationError error = deserializeJson(json, spotifyHttp.getStream());
+    auto now = millis();
 
     if (!error) {
       spotifyStateLoaded = true;
@@ -2454,14 +2455,14 @@ void spotifyCurrentlyPlaying() {
         emptyCurrentlyPlayingResponses = 0;
         spotifyState.durationMillis = item["duration_ms"];
 
-        if (menuMode == SeekControl) {
-          menuSize = checkMenuSize(SeekControl);
-          uint16_t newMenuIndex = spotifyState.progressMillis / 1000;
-          if (newMenuIndex != menuIndex) setMenuIndex(newMenuIndex);
-        }
-
         const char *id = item["linked_from"]["id"] | item["id"];
-        if (strcmp(id, spotifyState.trackId) != 0) {
+        if (spotifyState.lastUpdateMillis == 0 || strcmp(id, spotifyState.trackId) != 0) {
+          if (menuMode == SeekControl) {
+            menuSize = checkMenuSize(SeekControl);
+            uint16_t newMenuIndex = spotifyState.progressMillis / 1000;
+            if (newMenuIndex != menuIndex) setMenuIndex(newMenuIndex);
+          }
+
           strncpy(spotifyState.trackId, id, SPOTIFY_ID_SIZE);
           strncpy(spotifyState.name, item["name"], sizeof(spotifyState.name) - 1);
 
@@ -2553,7 +2554,6 @@ void spotifyCurrentlyPlaying() {
         }
       }
 
-      auto now = millis();
       if (spotifyState.isPlaying && spotifyState.durationMillis > 0) {
         // Check if current song is about to end
         uint32_t remainingMillis = spotifyState.durationMillis - spotifyState.progressMillis;
