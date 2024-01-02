@@ -9,6 +9,7 @@
 #include <list>
 #include <OneButton.h>
 #include <TFT_eSPI.h>
+#include <TJpg_Decoder.h>
 #include <WiFiClientSecure.h>
 
 #include "knobby.h"
@@ -158,7 +159,8 @@ enum SpotifyActions {
   ToggleRepeat,
   TransferPlayback,
   GetPlaylistInformation,
-  GetPlaylists
+  GetPlaylists,
+  GetImage
 };
 
 enum SpotifyRepeatModes {
@@ -207,6 +209,7 @@ typedef struct {
   char trackId[SPOTIFY_ID_SIZE + 1] = "";
   char contextName[256] = "";
   char contextUri[100] = "";
+  char imageUrl[100] = "";
   bool isLiked = false;
   bool isPlaying = false;
   bool isShuffled = false;
@@ -255,6 +258,9 @@ const int lineTwo = lineOne + LINE_HEIGHT + 12;
 const int lineThree = lineTwo + LINE_HEIGHT;
 const int lineFour = lineThree + LINE_HEIGHT;
 const int lineSpacing = 3;
+const int albumSize = 64;
+const int albumX = screenWidth - albumSize - 6;
+const int albumY = lineTwo;
 #ifdef LILYGO_WATCH_2019_WITH_TOUCH
   const int maxTextLines = 5;
 #else
@@ -337,6 +343,12 @@ ESPAsync_WiFiManager *wifiManager;
 WiFiClientSecure spotifyWifiClient;
 HTTPClient spotifyHttp;
 
+TaskHandle_t jpgDecodeTask;
+bool jpgDecodeReady = false;
+bool jpgRenderReady = false;
+uint16_t jpgBlockBuffer[16 * 16];
+int32_t jpgBlockX, jpgBlockY, jpgBlockW, jpgBlockH;
+
 bool displayInvalidated = true;
 bool displayInvalidatedPartial = false;
 const String defaultFirmwareURL = (KNOBBY_FIRMWARE_BUCKET KNOBBY_FIRMWARE_PATH);
@@ -391,6 +403,8 @@ long spotifyApiRequestStartedMillis = -1;
 String spotifyAuthCode;
 char spotifyCodeVerifier[44] = "";
 char spotifyCodeChallenge[44] = "";
+StreamString spotifyImage;
+bool spotifyImageDrawn = false;
 unsigned short emptyCurrentlyPlayingResponses = 0;
 uint32_t nextCurrentlyPlayingMillis = 0;
 bool spotifyGettingToken = false;
@@ -419,6 +433,7 @@ std::vector<SpotifyPlaylist_t> spotifyLinkedPlaylists;
 void setup();
 void loop();
 void backgroundApiLoop(void *params);
+void jpgDecodeLoop(void *params);
 void knobRotated();
 void knobClicked();
 void knobDoubleClicked();
@@ -429,6 +444,7 @@ void knobPressStarted();
 // Actions
 bool readDataJson();
 bool writeDataJson();
+bool onJpgBlockDecoded(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap);
 void onOTAProgress(unsigned int progress, unsigned int total);
 uint16_t checkMenuSize(MenuModes mode);
 void drawBattery(unsigned int percent, unsigned int y, bool charging = false);
@@ -455,6 +471,7 @@ void updateFirmware();
 
 // Getters
 int formatMillis(char *output, unsigned long millis);
+void getContextName(char *name, const char *contextUri);
 uint16_t getMenuIndexForGenreIndex(uint16_t index);
 int getMenuIndexForPlaylist(const char *contextUri);
 int getGenreIndexForMenuIndex(uint16_t index, MenuModes mode);
@@ -488,6 +505,7 @@ void spotifyToggleRepeat();
 void spotifyTransferPlayback();
 void spotifyGetPlaylistInformation();
 void spotifyGetPlaylists();
+void spotifyGetImage();
 
 bool spotifyNeedsNewAccessToken();
 void spotifyResetProgress(bool keepContext = false);

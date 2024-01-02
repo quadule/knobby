@@ -19,6 +19,7 @@
 #include "genres.h"
 
 void setup() {
+  spotifyImage.reserve(8192);
   exploreMenuItems.reserve(20);
   spotifyDevices.reserve(10);
   spotifyUsers.reserve(10);
@@ -59,6 +60,7 @@ void setup() {
     ledcAttachPin(TFT_BL, TFT_BL);
     ledcWrite(TFT_BL, 255);
     tft.init();
+    tft.fillScreen(TFT_BLACK);
   #endif
 
   SPIFFS.begin(true);
@@ -74,6 +76,10 @@ void setup() {
   img.loadFont(GillSans24_vlw_start);
   ico.loadFont(icomoon24_vlw_start);
   batterySprite.loadFont(icomoon31_vlw_start);
+
+  TJpgDec.setJpgScale(1);
+  TJpgDec.setSwapBytes(true);
+  TJpgDec.setCallback(onJpgBlockDecoded);
 
   if (bootCount == 0) {
     log_d("Boot #%d", bootCount);
@@ -93,6 +99,7 @@ void setup() {
       spotifyResetProgress();
       spotifyStateLoaded = false;
     } else if (spotifyState.isPlaying) {
+      spotifyState.imageUrl[0] = '\0';
       spotifyState.progressMillis = spotifyState.estimatedProgressMillis =
           spotifyState.estimatedProgressMillis + millisPassed;
     }
@@ -352,7 +359,8 @@ void setup() {
     spotifyActionQueue.push_front(GetToken);
   }
 
-  xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApiLoop", 10000, NULL, 1, &backgroundApiTask, 1);
+  xTaskCreatePinnedToCore(backgroundApiLoop, "backgroundApi", 10000, NULL, 1, &backgroundApiTask, 1);
+  xTaskCreatePinnedToCore(jpgDecodeLoop, "jpgDecode", 10000, NULL, 0, &jpgDecodeTask, 0);
 
   if (knobby.powerStatus() != PowerStatusPowered) knobby.updateBattery();
   if (knobby.powerStatus() == PowerStatusPowered) knobby.printHeader();
@@ -395,10 +403,10 @@ void delayIfIdle() {
   auto now = millis();
   if (!displayInvalidated && knobby.powerStatus() == PowerStatusOnBattery &&
       (isIdle() || now - lastDelayMillis > 2000)) {
-    delay(10);
+    delay(1);
     lastDelayMillis = now;
   } else if (randomizingMenuEndMillis == 0 && updateContentLength == 0) {
-    delay(5);
+    delay(1);
   }
 }
 
@@ -648,6 +656,9 @@ void backgroundApiLoop(void *params) {
           break;
         case GetPlaylists:
           spotifyGetPlaylists();
+          break;
+        case GetImage:
+          spotifyGetImage();
           break;
       }
       now = millis();
@@ -1413,6 +1424,21 @@ void drawVolumeControl() {
   drawCenteredText(label, textWidth, 1);
 }
 
+void drawAlbumImage() {
+  if (spotifyImage.isEmpty() || (spotifyImageDrawn && displayInvalidatedPartial)) return;
+
+  jpgRenderReady = false;
+  jpgDecodeReady = true;
+  while(jpgDecodeReady || jpgRenderReady) {
+    if (jpgRenderReady) {
+      tft.pushImage(albumX + jpgBlockX, albumY + jpgBlockY, jpgBlockW, jpgBlockH, jpgBlockBuffer);
+      jpgRenderReady = false;
+    }
+    yield();
+  }
+  spotifyImageDrawn = true;
+}
+
 void drawNowPlayingOrSeek() {
   const auto now = millis();
   tft.setCursor(0, lineOne);
@@ -1496,24 +1522,47 @@ void drawNowPlayingOrSeek() {
   }
 
   if (millis() - nowPlayingDisplayMillis >= 50) {
-    tft.setCursor(textStartX, lineTwo);
-
     const bool isGenrePlaylist = playingGenreIndex >= 0;
     if (isGenrePlaylist) {
       img.setTextColor(genreColors[playingGenreIndex], TFT_BLACK);
     } else {
       img.setTextColor(TFT_DARKGREY, TFT_BLACK);
     }
-    const bool showContextName = menuMode == NowPlaying && (spotifyState.durationMillis == 0 ||
-                                                            spotifyState.estimatedProgressMillis % 6000 > 3000);
-    if (showContextName && spotifyState.contextName[0] != '\0' &&
-        (spotifyState.isPlaying || spotifyPlayUri[0] != '\0' || spotifyActionIsQueued(Previous) ||
-         spotifyActionIsQueued(Next))) {
-      drawCenteredText(spotifyState.contextName, textWidth, maxTextLines);
-    } else if (spotifyState.artistsName[0] != '\0' && spotifyState.name[0] != '\0') {
-      char playing[205];
-      snprintf(playing, sizeof(playing) - 1, "%s – %s", spotifyState.artistsName, spotifyState.name);
-      drawCenteredText(playing, textWidth, maxTextLines);
+    tft.setCursor(textStartX, lineTwo);
+
+    if (spotifyState.name[0] != '\0' || spotifyState.albumName[0] != '\0' || spotifyState.contextName[0] != '\0') {
+      std::vector<String> texts;
+      texts.reserve(3);
+      String name;
+      name.reserve(sizeof(SpotifyState_t::contextName));
+      if (spotifyState.artistsName[0] != '\0') {
+        name.concat(spotifyState.artistsName);
+        name.concat(" — ");
+      }
+      if (spotifyState.name[0] != '\0') {
+        name.concat(spotifyState.name);
+        texts.push_back(name);
+      }
+      if (spotifyState.albumName[0] != '\0') texts.push_back(spotifyState.albumName);
+      if (spotifyState.contextName[0] != '\0') texts.push_back(spotifyState.contextName);
+
+      auto textIndex = spotifyState.estimatedProgressMillis / 4000 % texts.size();
+      if (spotifyState.albumName[0] != 0 && texts[textIndex] == spotifyState.albumName) {
+        if (!spotifyImageDrawn) tft.fillRect(textStartX, albumY, textWidth, screenHeight - albumY, TFT_BLACK);
+        drawAlbumImage();
+        if (spotifyImageDrawn) {
+          tft.setCursor(textStartX, lineTwo);
+          drawCenteredText(texts[textIndex].c_str(), textWidth - albumSize - textPadding, maxTextLines);
+        } else {
+          drawCenteredText(texts[textIndex].c_str(), textWidth, maxTextLines);
+        }
+      } else {
+        if (spotifyImageDrawn) {
+          if (displayInvalidatedPartial) tft.fillRect(albumX, albumY, albumSize, albumSize, TFT_BLACK);
+          spotifyImageDrawn = false;
+        }
+        drawCenteredText(texts[textIndex].c_str(), textWidth, maxTextLines);
+      }
     } else {
       img.setTextColor(TFT_LIGHTBLACK, TFT_BLACK);
       const char *text = nullptr;
@@ -1590,10 +1639,10 @@ void invalidateDisplay(bool eraseDisplay) {
 }
 
 void updateDisplay() {
+  unsigned long now = millis();
   if (!displayInvalidatedPartial) tft.fillScreen(TFT_BLACK);
   img.setTextColor(TFT_DARKGREY, TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
-  unsigned long now = millis();
   menuSize = checkMenuSize(menuMode);
   if (menuMode == InitialSetup) {
     drawSetup();
@@ -1713,6 +1762,34 @@ void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines) {
     tft.fillRect(tft.getCursorX(), tft.getCursorY(), maxWidth, lineHeight, TFT_BLACK);
     tft.setCursor(tft.getCursorX(), tft.getCursorY() + lineHeight);
     lineNumber++;
+  }
+}
+
+bool onJpgBlockDecoded(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) {
+  if (y >= tft.height()) return 0;
+  while(jpgRenderReady) yield();
+  memcpy(jpgBlockBuffer, bitmap, 16 * 16 * 2);
+  jpgBlockX = x;
+  jpgBlockY = y;
+  jpgBlockW = w;
+  jpgBlockH = h;
+  jpgRenderReady = true;
+  return 1;
+}
+
+void jpgDecodeLoop(void *params) {
+  for(;;) {
+    if (jpgDecodeReady) {
+      auto start = millis();
+      JRESULT result = TJpgDec.drawJpg(0, 0, (uint8_t *)spotifyImage.c_str(), spotifyImage.length());
+      jpgDecodeReady = false;
+      if (result == JDR_OK) {
+        log_i("decoded jpg in %dms", millis() - start);
+      } else {
+        log_e("error %d decoding jpg", result);
+      }
+    }
+    yield();
   }
 }
 
@@ -2035,6 +2112,7 @@ void startDeepSleep() {
   if (isTransientMenu(menuMode)) setMenuMode(GenreList, getMenuIndexForGenreIndex(genreIndex));
   if (isTransientMenu(lastMenuMode)) lastMenuMode = GenreList;
   if (isTransientMenu(lastPlaylistMenuMode)) lastPlaylistMenuMode = GenreList;
+  spotifyState.lastUpdateMillis = 0;
   tft.fillScreen(TFT_BLACK);
   WiFi.disconnect(true);
   digitalWrite(ADC_EN, LOW);
@@ -2413,8 +2491,6 @@ void spotifyCurrentlyPlaying() {
     auto now = millis();
 
     if (!error) {
-      spotifyStateLoaded = true;
-      spotifyState.lastUpdateMillis = millis();
       spotifyState.isShuffled = json["shuffle_state"];
       spotifyState.progressMillis = spotifyState.estimatedProgressMillis = json["progress_ms"];
 
@@ -2499,9 +2575,23 @@ void spotifyCurrentlyPlaying() {
           if (!album.isNull()) {
             strncpy(spotifyState.albumId, album["id"], SPOTIFY_ID_SIZE);
             strncpy(spotifyState.albumName, album["name"], sizeof(spotifyState.albumName) - 1);
+
+            JsonArray images = album["images"];
+            for (JsonObject image : images) {
+              if (image["height"] == albumSize && image["width"] == albumSize &&
+                  (spotifyImage.isEmpty() || image["url"] != spotifyState.imageUrl)) {
+                strncpy(spotifyState.imageUrl, image["url"], sizeof(spotifyState.imageUrl) - 1);
+                spotifyImage.clear();
+                spotifyImageDrawn = false;
+                spotifyQueueAction(GetImage);
+                invalidateDisplay(true);
+                break;
+              }
+            }
           } else {
             spotifyState.albumId[0] = '\0';
             spotifyState.albumName[0] = '\0';
+            spotifyState.imageUrl[0] = '\0';
           }
         }
       }
@@ -2572,6 +2662,8 @@ void spotifyCurrentlyPlaying() {
           setMenuMode(NowPlaying, PlayPauseButton);
         }
       }
+      spotifyStateLoaded = true;
+      spotifyState.lastUpdateMillis = millis();
       invalidateDisplay();
     } else {
       log_e("Heap free: %d", ESP.getFreeHeap());
@@ -2763,12 +2855,15 @@ void spotifyResetProgress(bool keepContext) {
   spotifyState.albumId[0] = '\0';
   spotifyState.albumName[0] = '\0';
   spotifyState.trackId[0] = '\0';
+  spotifyState.imageUrl[0] = '\0';
   spotifyState.durationMillis = 0;
   spotifyState.progressMillis = 0;
   spotifyState.estimatedProgressMillis = 0;
   spotifyState.lastUpdateMillis = millis();
   spotifyState.isLiked = false;
   spotifyState.checkedLike = false;
+  spotifyImage.clear();
+  spotifyImageDrawn = false;
   nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   if (!spotifyState.isPrivateSession) spotifyState.isPlaying = false;
   if (!keepContext) {
@@ -2999,7 +3094,7 @@ void spotifyGetPlaylistInformation() {
             } else if (name == "2023") {
               item.name.concat("2023 in ");
               item.name.concat(genres[explorePlaylistsGenreIndex]);
-            } else if (name == "\xE2\x99\x80Filter") {
+            } else if (name == "\xE2\x99\x80""Filter") {
               item.name.concat("fem filter for ");
               item.name.concat(genres[explorePlaylistsGenreIndex]);
             }
@@ -3076,6 +3171,33 @@ void spotifyGetPlaylists() {
     }
   }
   spotifyApiRequestEnded();
+}
+
+void spotifyGetImage() {
+  if (spotifyState.imageUrl[0] == '\0') return;
+
+  log_i("GET %s", spotifyState.imageUrl);
+  spotifyWifiClient.stop();
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setUserAgent("Knobby/1.0");
+  http.setConnectTimeout(4000);
+  http.setTimeout(4000);
+  http.setReuse(false);
+  http.begin(client, spotifyState.imageUrl);
+  int code = http.GET();
+  int contentLength = http.getSize();
+
+  if (code != 200) {
+    log_e("HTTP code %d", code);
+  } else if (!spotifyImage.reserve(contentLength)) {
+    log_e("out of memory, need %d bytes", contentLength);
+  } else {
+    http.writeToStream(&spotifyImage);
+  }
+  http.end();
 }
 
 void updateFirmware() {
