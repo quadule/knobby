@@ -9,21 +9,21 @@ jobs:
         target: [knobby, tdisplay-s3, twatch]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Cache pip
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
         restore-keys: |
           ${{ runner.os }}-pip-
     - name: Cache PlatformIO
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.platformio
         key: ${{ runner.os }}-${{ hashFiles('**/lockfiles') }}
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
     - name: Install PlatformIO
       run: |
         python -m pip install --upgrade pip
@@ -35,19 +35,24 @@ jobs:
         mkdir upload
         zip -j upload/${{ matrix.target }}-firmware.zip .pio/build/${{ matrix.target }}/*.bin flash.bat flash.sh
         zip -j upload/${{ matrix.target }}-elf.zip .pio/build/${{ matrix.target }}/*.elf
-    - name: Archive firmware artifacts
-      uses: actions/upload-artifact@v3
+    - name: Archive firmware zip
+      uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.target }}-firmware
         path: upload/${{ matrix.target }}-firmware.zip
+    - name: Archive firmware elf
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.target }}-elf
+        path: upload/${{ matrix.target }}-elf.zip
   upload:
     if: github.repository_owner == 'quadule'
     needs: build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Download artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         path: ~/artifacts
     - name: Merge artifacts
@@ -59,7 +64,7 @@ jobs:
         unzip -p tdisplay-s3-firmware.zip firmware.bin > tdisplay-s3.bin
         unzip -p twatch-firmware.zip firmware.bin > twatch.bin
     - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
+      uses: aws-actions/configure-aws-credentials@v4
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
