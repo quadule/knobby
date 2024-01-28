@@ -1261,7 +1261,9 @@ void drawSetup() {
   } else {
     drawMenuHeader(true, "setup knobby");
     tft.setCursor(textStartX, lineTwo);
-    drawCenteredText("log in with spotify at http://knobby.local", textWidth, maxTextLines);
+    drawCenteredText("log in with spotify at", textWidth, 1);
+    tft.setCursor(textStartX, lineThree);
+    drawCenteredText("http://knobby.local", textWidth, 1);
   }
 }
 
@@ -1337,8 +1339,9 @@ void drawSettingsMenu() {
         tft.setCursor(textStartX, lineFour);
         drawCenteredText(knobby.password().c_str(), textWidth, 1);
       } else {
-        sprintf(about, "by milo winningham %s", KNOBBY_VERSION);
-        drawCenteredText(about, textWidth, 2);
+        drawCenteredText("by milo winningham", textWidth, 1);
+        tft.setCursor(textStartX, lineFour);
+        drawCenteredText(KNOBBY_VERSION, textWidth, 1);
       }
       break;
     case SettingsUpdate:
@@ -1351,7 +1354,9 @@ void drawSettingsMenu() {
       if (strcmp(WiFi.getHostname(), "knobby") != 0) {
         drawCenteredText("double click to add a spotify account", textWidth, 3);
       } else {
-        drawCenteredText("log in with spotify at http://knobby.local", textWidth, 3);
+        drawCenteredText("log in with spotify at", textWidth, 1);
+        tft.setCursor(textStartX, lineThree);
+        drawCenteredText("http://knobby.local", textWidth, 1);
       }
       break;
     case SettingsRemoveUser:
