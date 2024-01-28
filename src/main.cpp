@@ -26,7 +26,11 @@ void setup() {
   spotifyLinkedPlaylists.reserve(10);
   spotifyPlaylists.reserve(100);
 
-  Serial.begin(115200);
+  #ifdef CONFIG_IDF_TARGET_ESP32S3
+    Serial.begin();
+  #else
+    Serial.begin(115200);
+  #endif
 
   knobby.setup();
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN);

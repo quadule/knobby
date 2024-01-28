@@ -5,6 +5,7 @@
 #include <ESPAsync_WiFiManager.h>
 #include <ESPAsyncDNSServer.h>
 #include <ESPAsyncWebServer.h>
+#include <HardwareSerial.h>
 #include <HTTPClient.h>
 #include <list>
 #include <OneButton.h>
