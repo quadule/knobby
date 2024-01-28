@@ -30,12 +30,7 @@ void setup() {
 
   knobby.setup();
   rtc_gpio_hold_dis((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN);
-  esp_pm_config_esp32_t pm_config_ls_enable = {
-    .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-    .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-    .light_sleep_enable = true
-  };
-  ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
+  setLightSleepEnabled(true);
   ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MAX_MODEM));
 
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
@@ -56,9 +51,9 @@ void setup() {
     ttgo->power->setPowerOutPut(AXP202_LDO3, AXP202_OFF);
     ttgo->power->setPowerOutPut(AXP202_LDO4, AXP202_OFF);
   #else
-    ledcSetup(TFT_BL, 12000, 8);
-    ledcAttachPin(TFT_BL, TFT_BL);
-    ledcWrite(TFT_BL, 255);
+    ledcSetup(backlightChannel, 12000, 8);
+    ledcAttachPin(TFT_BL, backlightChannel);
+    ledcWrite(backlightChannel, 255);
     tft.init();
     tft.fillScreen(TFT_BLACK);
   #endif
@@ -366,6 +361,23 @@ void setup() {
   if (knobby.powerStatus() == PowerStatusPowered) knobby.printHeader();
 }
 
+void setLightSleepEnabled(bool enabled) {
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+  esp_pm_config_esp32s3_t pm_config_ls_enable = {
+    .max_freq_mhz = CONFIG_ESP32S3_DEFAULT_CPU_FREQ_MHZ,
+    .min_freq_mhz = CONFIG_ESP32S3_DEFAULT_CPU_FREQ_MHZ,
+    .light_sleep_enable = enabled
+  };
+#else
+  esp_pm_config_esp32_t pm_config_ls_enable = {
+    .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+    .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
+    .light_sleep_enable = enabled
+  };
+#endif
+  ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
+}
+
 void setupKnob() {
   ESP32Encoder::useInternalWeakPullResistors = UP;
   knob = ESP32Encoder();
@@ -434,12 +446,7 @@ void loop() {
     #else
       ledcDetachPin(TFT_BL);
       digitalWrite(TFT_BL, HIGH);
-      esp_pm_config_esp32_t pm_config_ls_enable = {
-        .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-        .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-        .light_sleep_enable = true
-      };
-      ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
+      setLightSleepEnabled(true);
     #endif
   } else if (inputDelta > inactivityMillis + 2 * inactivityFadeOutMillis) {
     startDeepSleep();
@@ -452,18 +459,13 @@ void loop() {
     #endif
     uint32_t duty = min(max((int)round(fadeProgress * 255.0), minimumDuty), 255);
     if (duty >= 250) {
-      esp_pm_config_esp32_t pm_config_ls_enable = {
-        .max_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-        .min_freq_mhz = CONFIG_ESP32_DEFAULT_CPU_FREQ_MHZ,
-        .light_sleep_enable = false
-      };
-      ESP_ERROR_CHECK(esp_pm_configure(&pm_config_ls_enable));
+      setLightSleepEnabled(false);
     }
     #ifdef LILYGO_WATCH_2019_WITH_TOUCH
       ttgo->setBrightness(duty);
     #else
-      if (duty >= 250) ledcAttachPin(TFT_BL, TFT_BL);
-      ledcWrite(TFT_BL, duty);
+      if (duty >= 250) ledcAttachPin(TFT_BL, backlightChannel);
+      ledcWrite(backlightChannel, duty);
     #endif
   } else if (menuMode == VolumeControl && inputDelta > menuTimeoutMillis) {
     setMenuMode(NowPlaying, VolumeButton);
@@ -1407,13 +1409,19 @@ void drawDeviceMenu() {
 }
 
 void drawVolumeControl() {
-  const uint8_t x = 10;
-  const uint8_t y = 30;
-  const uint8_t width = 220;
-  img.createSprite(width, 40);
+  const auto x = 10;
+  const auto y = 30;
+  const auto padding = 4;
+  const auto outerRadius = 5;
+  const auto outerWidth = screenWidth - x * 2;
+  const auto outerHeight = 32;
+  const auto innerRadius = 3;
+  const auto innerWidth = outerWidth - padding * 2;
+  const auto innerHeight = outerHeight - padding * 2;
+  img.createSprite(outerWidth, 40);
   img.fillSprite(TFT_BLACK);
-  img.drawRoundRect(0, 0, width, 32, 5, TFT_WHITE);
-  img.fillRoundRect(4, 4, round(2.12 * menuIndex), 24, 3, TFT_DARKGREY);
+  img.drawRoundRect(0, 0, outerWidth, outerHeight, outerRadius, TFT_WHITE);
+  img.fillRoundRect(padding, padding, round(0.01 * menuIndex * innerWidth), innerHeight, innerRadius, TFT_DARKGREY);
   img.pushSprite(x, y);
   img.deleteSprite();
 
@@ -2122,9 +2130,11 @@ void startDeepSleep() {
   struct timeval tod;
   gettimeofday(&tod, NULL);
   lastSleepSeconds = tod.tv_sec;
+#ifndef CONFIG_IDF_TARGET_ESP32S3
   rtc_gpio_isolate(GPIO_NUM_0); // button 1
   rtc_gpio_isolate(GPIO_NUM_35); // button 2
   rtc_gpio_isolate(GPIO_NUM_39);
+#endif
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
   #if CORE_DEBUG_LEVEL < ARDUHAL_LOG_LEVEL_DEBUG

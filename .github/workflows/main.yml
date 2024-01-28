@@ -6,7 +6,7 @@ jobs:
   build:
     strategy:
       matrix:
-        target: [knobby, twatch]
+        target: [knobby, tdisplay-s3, twatch]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -56,6 +56,7 @@ jobs:
         cd upload
         mv ~/artifacts/*/* .
         unzip -p knobby-firmware.zip firmware.bin > knobby.bin
+        unzip -p tdisplay-s3-firmware.zip firmware.bin > tdisplay-s3.bin
         unzip -p twatch-firmware.zip firmware.bin > twatch.bin
     - name: Configure AWS credentials
       uses: aws-actions/configure-aws-credentials@v1
@@ -75,6 +76,7 @@ jobs:
       if: github.ref_type == 'tag'
       run:
         mv upload/knobby-firmware.zip upload/knobby-firmware-${{ github.ref_name }}.zip;
+        mv upload/tdisplay-s3-firmware.zip upload/tdisplay-s3-firmware-${{ github.ref_name }}.zip;
         mv upload/twatch-firmware.zip upload/twatch-firmware-${{ github.ref_name }}.zip;
         aws s3 cp
           --metadata "{\"git-version\":\"$(git describe --match="" --dirty --always)\"}"
@@ -82,6 +84,7 @@ jobs:
           upload
           s3://knobby/firmware/;
         unzip -d setup/firmware/knobby upload/knobby-firmware-${{ github.ref_name }}.zip;
+        unzip -d setup/firmware/tdisplay-s3 upload/tdisplay-s3-firmware-${{ github.ref_name }}.zip;
         unzip -d setup/firmware/twatch upload/twatch-firmware-${{ github.ref_name }}.zip;
         aws s3 cp
           --metadata "{\"git-version\":\"$(git describe --match="" --dirty --always)\"}"

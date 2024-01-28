@@ -235,6 +235,7 @@ bool contains(C&& c, T e) {
 const char *hostname = "knobby";
 const char *rootMenuItems[] = {"settings", "countries", "genres", "explore", "playlists", "now playing", "users", "devices"};
 const char *settingsMenuItems[] = {"about", "update", "orientation", "add user", "log out", "reset settings"};
+const uint8_t backlightChannel = 4;
 const int screenWidth = TFT_HEIGHT;
 const int screenHeight = TFT_WIDTH;
 const int centerX = screenWidth / 2;
@@ -458,6 +459,7 @@ void playMenuPlaylist(MenuModes mode, uint16_t index);
 void playUri(const char *uri, const char *name);
 void setActiveDevice(SpotifyDevice_t *device);
 void setActiveUser(SpotifyUser_t *user);
+void setLightSleepEnabled(bool enabled);
 void setMenuIndex(uint16_t newMenuIndex);
 void setMenuMode(MenuModes newMode, uint16_t newMenuIndex);
 void setStatusMessage(const char *message, unsigned long durationMs = statusMessageMillis);

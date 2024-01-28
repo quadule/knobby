@@ -2,6 +2,7 @@
 .piolibdeps
 .vscode/.browse.c_cpp.db*
 .vscode/*.json
+build/
 setup/firmware/*/*.bin
-sdkconfig.knobby
-sdkconfig.twatch
+!sdkconfig.defaults
+sdkconfig.*
