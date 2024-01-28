@@ -26,6 +26,11 @@ void setup() {
   spotifyLinkedPlaylists.reserve(10);
   spotifyPlaylists.reserve(100);
 
+  #ifdef POWER_ON_PIN
+    pinMode(POWER_ON_PIN, OUTPUT);
+    digitalWrite(POWER_ON_PIN, HIGH);
+  #endif
+
   #ifdef CONFIG_IDF_TARGET_ESP32S3
     Serial.begin();
   #else
@@ -367,6 +372,7 @@ void setup() {
 
 void setLightSleepEnabled(bool enabled) {
 #ifdef CONFIG_IDF_TARGET_ESP32S3
+  esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, enabled ? ESP_PD_OPTION_ON : ESP_PD_OPTION_OFF);
   esp_pm_config_esp32s3_t pm_config_ls_enable = {
     .max_freq_mhz = CONFIG_ESP32S3_DEFAULT_CPU_FREQ_MHZ,
     .min_freq_mhz = CONFIG_ESP32S3_DEFAULT_CPU_FREQ_MHZ,
@@ -1151,7 +1157,7 @@ void shutdownIfLowBattery() {
   if (knobby.shouldUpdateBattery() || knobby.powerStatus() != PowerStatusOnBattery) return;
   float batteryVoltage = knobby.batteryVoltage();
   if (batteryVoltage >= 3.1 || batteryVoltage < 0.01) return;
-  digitalWrite(ADC_EN, LOW);
+  if (ADC_EN >= 0) digitalWrite(ADC_EN, LOW);
   log_i("Battery voltage is %.3f V, shutting down!", knobby.batteryVoltage());
   tft.fillScreen(TFT_BLACK);
   drawBattery(0, 50);
@@ -1337,7 +1343,6 @@ void drawSettingsMenu() {
     case SettingsAbout:
       drawCenteredText("knobby.net", textWidth, 1);
       tft.setCursor(textStartX, lineThree);
-      char about[100];
       if (showingNetworkInfo) {
         drawCenteredText(WiFi.localIP().toString().c_str(), textWidth, 1);
         tft.setCursor(textStartX, lineFour);
@@ -2132,18 +2137,22 @@ void startDeepSleep() {
   spotifyState.lastUpdateMillis = 0;
   tft.fillScreen(TFT_BLACK);
   WiFi.disconnect(true);
-  digitalWrite(ADC_EN, LOW);
+  if (ADC_EN >= 0) digitalWrite(ADC_EN, LOW);
   digitalWrite(TFT_BL, LOW);
+  #ifdef POWER_ON_PIN
+    digitalWrite(POWER_ON_PIN, LOW);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+  #endif
   tft.writecommand(TFT_DISPOFF);
   tft.writecommand(TFT_SLPIN);
   struct timeval tod;
   gettimeofday(&tod, NULL);
   lastSleepSeconds = tod.tv_sec;
-#ifndef CONFIG_IDF_TARGET_ESP32S3
-  rtc_gpio_isolate(GPIO_NUM_0); // button 1
-  rtc_gpio_isolate(GPIO_NUM_35); // button 2
-  rtc_gpio_isolate(GPIO_NUM_39);
-#endif
+  #ifndef CONFIG_IDF_TARGET_ESP32S3
+    rtc_gpio_isolate(GPIO_NUM_0); // button 1
+    rtc_gpio_isolate(GPIO_NUM_35); // button 2
+    rtc_gpio_isolate(GPIO_NUM_39);
+  #endif
   esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
   esp_sleep_enable_ext0_wakeup((gpio_num_t)ROTARY_ENCODER_BUTTON_PIN, LOW);
   #if CORE_DEBUG_LEVEL < ARDUHAL_LOG_LEVEL_DEBUG

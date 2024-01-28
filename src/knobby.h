@@ -92,7 +92,6 @@ class Knobby {
     float _batteryVoltageThreshold = 4.3;
     unsigned int _batteryUpdatedMillis = 0;
     PowerStatus _powerStatus = PowerStatusUnknown;
-    int _vref = 1100;
 };
 
 Knobby::Knobby() {
@@ -111,17 +110,7 @@ void Knobby::setup() {
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     ttgo = TTGOClass::getWatch();
   #else
-    esp_adc_cal_characteristics_t adc_chars;
-    esp_adc_cal_value_t val_type = esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
-    if (val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
-      log_d("eFuse Vref: %u mV", adc_chars.vref);
-      _vref = adc_chars.vref;
-    } else if (val_type == ESP_ADC_CAL_VAL_EFUSE_TP) {
-      log_d("Two Point --> coeff_a:%umV coeff_b:%umV", adc_chars.coeff_a, adc_chars.coeff_b);
-    } else {
-      log_d("Default Vref: 1100mV");
-    }
-    pinMode(ADC_EN, OUTPUT);
+    if (ADC_EN >= 0) pinMode(ADC_EN, OUTPUT);
   #endif
 
   loop();
@@ -297,8 +286,10 @@ float Knobby::_readSettledBatteryVoltage() {
   const float voltageSettlingThreshold = 0.015;
   float previousVoltage = _batteryVoltage;
   float voltage = 0.0;
+  esp_adc_cal_characteristics_t adc_chars;
+  esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
   for (auto i = 0; i < 10; i++) {
-    voltage = (analogRead(ADC_PIN) / 4095.0) * 2.0 * 3.3 * (_vref / 1000.0);
+    voltage = esp_adc_cal_raw_to_voltage(analogRead(ADC_PIN), &adc_chars) * 2.0 / 1000.0;
     if (abs(voltage - previousVoltage) < voltageSettlingThreshold) break;
     previousVoltage = voltage;
     delayMicroseconds(100 + random(100));
@@ -310,13 +301,13 @@ void Knobby::updateBattery() {
   float newVoltage = 0.0;
   switch (_batteryReadingRate) {
     case BatteryReadingOff:
-      digitalWrite(ADC_EN, HIGH);
+      if (ADC_EN >= 0) digitalWrite(ADC_EN, HIGH);
       _batteryReadingRate = BatteryReadingFast;
       break;
     case BatteryReadingSlow:
-      digitalWrite(ADC_EN, HIGH);
+      if (ADC_EN >= 0) digitalWrite(ADC_EN, HIGH);
       newVoltage = _readSettledBatteryVoltage();
-      digitalWrite(ADC_EN, LOW);
+      if (ADC_EN >= 0) digitalWrite(ADC_EN, LOW);
       break;
     case BatteryReadingFast:
       newVoltage = _readSettledBatteryVoltage();
@@ -329,11 +320,11 @@ void Knobby::updateBattery() {
     bool powerStatusChanged = _powerStatus != oldPowerStatus && oldPowerStatus != PowerStatusUnknown;
     float voltageChange = abs(newVoltage - _batteryVoltage);
     if (powerStatusChanged || voltageChange > 0.1) {
-      digitalWrite(ADC_EN, HIGH);
+      if (ADC_EN >= 0) digitalWrite(ADC_EN, HIGH);
       _batteryReadings.clear();
       _batteryReadingRate = BatteryReadingFast;
     } else if (_batteryReadings.size() == _batteryReadingsMax) {
-      digitalWrite(ADC_EN, LOW);
+      if (ADC_EN >= 0) digitalWrite(ADC_EN, LOW);
       _batteryReadingRate = BatteryReadingSlow;
     }
 
