@@ -353,7 +353,7 @@ void setup() {
 
   server.begin();
 
-  spotifyWifiClient.setCACert(spotifyCACertificate);
+  spotifyWifiClient.setCACertBundle(x509_crt_bundle_start);
   spotifyHttp.setUserAgent("Knobby/1.0");
   spotifyHttp.setConnectTimeout(4000);
   spotifyHttp.setTimeout(4000);
@@ -3244,12 +3244,7 @@ void updateFirmware() {
 
   spotifyWifiClient.stop();
   WiFiClientSecure client;
-  if (firmwareURL.startsWith(KNOBBY_FIRMWARE_BUCKET)) {
-    client.setCACert(s3CACertificates);
-  } else {
-    log_w("Using unknown firmware from URL: %s", firmwareURL.c_str());
-    client.setInsecure();
-  }
+  client.setCACertBundle(x509_crt_bundle_start);
   HTTPClient http;
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.setUserAgent("Knobby/1.0");
