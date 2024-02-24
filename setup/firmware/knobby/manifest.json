@@ -1,6 +1,6 @@
 {
   "name": "knobby",
-  "version": "2024.02.14",
+  "version": "2024.02.24",
   "builds": [
     {
       "chipFamily": "ESP32",
