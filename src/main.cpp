@@ -767,7 +767,7 @@ void selectRootMenuItem(uint16_t index) {
           break;
         }
       }
-      if (spotifyUsers[newMenuIndex].name[0] == '\0') spotifyQueueAction(CurrentProfile);
+      if (spotifyUsers[newMenuIndex].displayName[0] == '\0') spotifyQueueAction(CurrentProfile);
       setMenuMode(UserList, newMenuIndex);
     }
   } else if (index == rootMenuDevicesIndex) {
@@ -1387,11 +1387,11 @@ void drawUserMenu() {
 
   if (user != nullptr) {
     tft.setCursor(textStartX, lineTwo);
-    if (user->name[0] == '\0') {
+    if (user->displayName[0] == '\0') {
       drawCenteredText("loading...", textWidth);
     } else {
       if (strcmp(user->refreshToken, spotifyRefreshToken) == 0) img.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-      drawCenteredText(user->name, textWidth, 3);
+      drawCenteredText(user->displayName, textWidth, 3);
     }
   }
 }
@@ -2065,7 +2065,7 @@ void getContextUri(char *uri, MenuModes mode, uint16_t index) {
       break;
     case PlaylistList:
       if (index == 0) {
-        snprintf(uri, uriSize, "spotify:user:%s:collection", activeSpotifyUser->name);
+        snprintf(uri, uriSize, "spotify:user:%s:collection", activeSpotifyUser->id);
       } else {
         snprintf(uri, uriSize, playlistUri, spotifyPlaylists[index - 1].id);
       }
@@ -2222,6 +2222,9 @@ void setActiveUser(SpotifyUser_t *user) {
   if (user->selectedDeviceId[0] != '\0')
     strncpy(activeSpotifyDeviceId, user->selectedDeviceId, sizeof(activeSpotifyDeviceId) - 1);
 
+  if (user->id[0] == '\0')
+    spotifyQueueAction(CurrentProfile);
+
   SpotifyDevice_t *activeDevice = nullptr;
   for (SpotifyDevice_t device : spotifyDevices) {
     if (strcmp(device.id, activeSpotifyDeviceId) == 0) {
@@ -2270,12 +2273,16 @@ bool readDataJson() {
   JsonArray usersArray = doc["users"];
   spotifyUsers.clear();
   for (JsonObject jsonUser : usersArray) {
-    const char *name = jsonUser["name"];
+    const char *displayName = jsonUser["name"];
     const char *token = jsonUser["token"];
     const char *selectedDeviceId = jsonUser["selectedDeviceId"];
 
     SpotifyUser_t user;
-    strncpy(user.name, name, sizeof(user.name) - 1);
+    strncpy(user.displayName, displayName, sizeof(user.displayName) - 1);
+    if (jsonUser.containsKey("id")){
+        const char *userId = jsonUser["id"];
+        strncpy(user.id, userId, sizeof(user.id) - 1);
+    }
     strncpy(user.refreshToken, token, sizeof(user.refreshToken) - 1);
     strncpy(user.selectedDeviceId, selectedDeviceId, sizeof(user.selectedDeviceId) - 1);
     spotifyUsers.push_back(user);
@@ -2300,7 +2307,8 @@ bool writeDataJson() {
 
   for (SpotifyUser_t user : spotifyUsers) {
     JsonObject obj = usersArray.createNestedObject();
-    obj["name"] = user.name;
+    obj["name"] = user.displayName;
+    obj["id"] = user.id;
     obj["token"] = user.refreshToken;
     obj["selectedDeviceId"] = user.selectedDeviceId;
     obj["selected"] = (bool)(strcmp(user.refreshToken, spotifyRefreshToken) == 0);
@@ -2737,7 +2745,9 @@ void spotifyCurrentProfile() {
 
     if (!error) {
       const char *displayName = json["display_name"];
-      strncpy(activeSpotifyUser->name, displayName, sizeof(activeSpotifyUser->name) - 1);
+      const char *userId = json["id"];
+      strncpy(activeSpotifyUser->displayName, displayName, sizeof(activeSpotifyUser->displayName) - 1);
+      strncpy(activeSpotifyUser->id, userId, sizeof(activeSpotifyUser->id) - 1);
       writeDataJson();
       if (menuMode == UserList || (menuMode == SettingsMenu && menuIndex == SettingsAddUser)) {
         setMenuMode(UserList, spotifyUsers.size() - 1);
