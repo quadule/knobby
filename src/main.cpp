@@ -1569,18 +1569,13 @@ void drawNowPlayingOrSeek() {
       if (spotifyState.contextName[0] != '\0') texts.push_back(spotifyState.contextName);
 
       auto textIndex = spotifyState.estimatedProgressMillis / 4000 % texts.size();
-      if (spotifyState.albumName[0] != 0 && texts[textIndex] == spotifyState.albumName) {
-        if (!spotifyImageDrawn) tft.fillRect(textStartX, albumY, textWidth, screenHeight - albumY, TFT_BLACK);
+      if (spotifyState.albumName[0] != '\0' && texts[textIndex] == spotifyState.albumName && !spotifyImage.isEmpty()) {
+        if (displayInvalidatedPartial && !spotifyImageDrawn) tft.fillRect(textStartX, albumY, textWidth, screenHeight - albumY, TFT_BLACK);
         drawAlbumImage();
-        if (spotifyImageDrawn) {
-          tft.setCursor(textStartX, lineTwo);
-          drawCenteredText(texts[textIndex].c_str(), textWidth - albumSize - textPadding, maxTextLines);
-        } else {
-          drawCenteredText(texts[textIndex].c_str(), textWidth, maxTextLines);
-        }
+        drawCenteredText(texts[textIndex].c_str(), textWidth - albumSize - textPadding, maxTextLines);
       } else {
-        if (spotifyImageDrawn) {
-          if (displayInvalidatedPartial) tft.fillRect(albumX, albumY, albumSize, albumSize, TFT_BLACK);
+        if (displayInvalidatedPartial && spotifyImageDrawn) {
+          tft.fillRect(albumX, albumY, albumSize, albumSize, TFT_BLACK);
           spotifyImageDrawn = false;
         }
         drawCenteredText(texts[textIndex].c_str(), textWidth, maxTextLines);
@@ -1594,6 +1589,10 @@ void drawNowPlayingOrSeek() {
         text = "loading...";
       } else if (spotifyApiRequestStartedMillis < 0 && !spotifyState.isPlaying) {
         text = "- nothing playing -";
+      }
+      if (spotifyImageDrawn) {
+        if (displayInvalidatedPartial) tft.fillRect(albumX, albumY, albumSize, albumSize, TFT_BLACK);
+        spotifyImageDrawn = false;
       }
       if (text) drawCenteredText(text, textWidth, maxTextLines);
     }
@@ -2618,7 +2617,6 @@ void spotifyCurrentlyPlaying() {
                   (spotifyImage.isEmpty() || image["url"] != spotifyState.imageUrl)) {
                 strncpy(spotifyState.imageUrl, image["url"], sizeof(spotifyState.imageUrl) - 1);
                 spotifyImage.clear();
-                spotifyImageDrawn = false;
                 spotifyQueueAction(GetImage);
                 invalidateDisplay(true);
                 break;
@@ -2901,7 +2899,6 @@ void spotifyResetProgress(bool keepContext) {
   spotifyState.isLiked = false;
   spotifyState.checkedLike = false;
   spotifyImage.clear();
-  spotifyImageDrawn = false;
   nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   if (!spotifyState.isPrivateSession) spotifyState.isPlaying = false;
   if (!keepContext) {
