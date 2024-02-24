@@ -108,7 +108,8 @@ typedef struct {
 } ExploreItem_t;
 
 typedef struct {
-  char name[64] = "";
+  char displayName[64] = "";
+  char id[64]           = "";
   char refreshToken[150] = "";
   bool selected = false;
   char selectedDeviceId[64] = "";
