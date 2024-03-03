@@ -139,9 +139,10 @@ bool ImprovSerial::parsePayload(improv::ImprovCommand &command) {
       delay(100);
       int32_t networkCount = WiFi.scanNetworks();
       for (int32_t i = 0; i < networkCount; i++) {
+        bool authRequired = WiFi.encryptionType(i) != WIFI_AUTH_OPEN;
         std::vector<uint8_t> data = improv::build_rpc_response(
             improv::GET_WIFI_NETWORKS,
-            {std::string(WiFi.SSID(i).c_str()), std::string(String(WiFi.RSSI(i)).c_str()), WiFi.encryptionType(i) == WIFI_AUTH_OPEN ? "YES" : "NO"}, false);
+            {std::string(WiFi.SSID(i).c_str()), std::string(String(WiFi.RSSI(i)).c_str()), authRequired ? "YES" : "NO"}, false);
         sendResponse(data);
       }
       std::vector<uint8_t> data =
