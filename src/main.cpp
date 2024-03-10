@@ -1119,11 +1119,7 @@ void knobLongPressStopped() {
   }
   if (!knobHeldForRandom && shouldShowRandom()) startRandomizingMenu();
   longPressStartedMillis = 0;
-  #ifdef LILYGO_WATCH_2019_WITH_TOUCH
-    if (menuMode == RootMenu && knobRotatedWhileLongPressed && randomizingMenuEndMillis == 0) selectRootMenuItem(menuIndex);
-  #else
-    if (menuMode == RootMenu && randomizingMenuEndMillis == 0) selectRootMenuItem(menuIndex);
-  #endif
+  if (menuMode == RootMenu && knobReleaseWillCloseRootMenu && randomizingMenuEndMillis == 0) selectRootMenuItem(menuIndex);
 }
 
 void drawBattery(unsigned int percent, unsigned int y, bool charging) {

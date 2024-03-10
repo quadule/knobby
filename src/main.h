@@ -193,11 +193,6 @@ const int lineSpacing = 3;
 const int albumSize = 64;
 const int albumX = screenWidth - albumSize - 6;
 const int albumY = lineTwo;
-#ifdef LILYGO_WATCH_2019_WITH_TOUCH
-  const int maxTextLines = 5;
-#else
-  const int maxTextLines = 3;
-#endif
 const uint16_t spotifyPollInterval = 10000;
 const char spotifyClientId[] = "55aee603baf641f899e5bfeba3fe05d0";
 const char spotifyPlaylistContextPrefix[] = "spotify:playlist:";
@@ -360,6 +355,20 @@ std::vector<SpotifyPlaylist_t> spotifyPlaylists;
 unsigned int spotifyPlaylistsCount = 0;
 bool spotifyPlaylistsLoaded = false;
 std::vector<SpotifyPlaylist_t> spotifyLinkedPlaylists;
+
+// Model-specific changes
+#ifdef LILYGO_WATCH_2019_WITH_TOUCH
+  bool knobReleaseWillCloseRootMenu = false;
+  const int maxTextLines = 5;
+#else
+#ifdef LILYGO_TEMBED_S3
+  bool knobReleaseWillCloseRootMenu = false;
+  const int maxTextLines = 3;
+#else
+  bool knobReleaseWillCloseRootMenu = true;
+  const int maxTextLines = 3;
+#endif
+#endif
 
 // Events
 void setup();
