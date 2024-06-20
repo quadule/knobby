@@ -367,7 +367,7 @@ void setup() {
   xTaskCreatePinnedToCore(jpgDecodeLoop, "jpgDecode", 10000, NULL, 0, &jpgDecodeTask, 0);
 
   if (knobby.powerStatus() != PowerStatusPowered) knobby.updateBattery();
-  if (knobby.powerStatus() == PowerStatusPowered) knobby.printHeader();
+  if (knobby.powerStatus() == PowerStatusPowered) knobby.printHeader(wifiProvisioned);
 }
 
 void setLightSleepEnabled(bool enabled) {
@@ -2265,8 +2265,6 @@ bool readDataJson() {
   if (!doc["rotaryAPin"].isNull()) knobby.setRotaryAPin(doc["rotaryAPin"]);
   if (!doc["rotaryBPin"].isNull()) knobby.setRotaryBPin(doc["rotaryBPin"]);
   if (!doc["pulseCount"].isNull()) knobby.setPulseCount(doc["pulseCount"]);
-  wifiSSID = doc["wifiSSID"] | WiFi.SSID();
-  wifiPassword = doc["wifiPassword"] | WiFi.psk();
 
   JsonArray usersArray = doc["users"];
   spotifyUsers.clear();
@@ -2298,8 +2296,6 @@ bool writeDataJson() {
   DynamicJsonDocument doc(5000);
 
   if (!firmwareURL.equals(defaultFirmwareURL)) doc["firmwareURL"] = firmwareURL;
-  if (knobby.flippedDisplay()) doc["flipDisplay"] = true;
-  if (knobby.pulseCount() != ROTARY_ENCODER_PULSE_COUNT) doc["pulseCount"] = knobby.pulseCount();
 
   JsonArray usersArray = doc.createNestedArray("users");
 

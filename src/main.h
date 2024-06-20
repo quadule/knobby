@@ -322,8 +322,6 @@ unsigned long menuClickedMillis = 0;
 unsigned long menuTimeoutMillis = 15000;
 unsigned long wifiConnectTimeoutMillis = 45000;
 bool wifiConnectWarning = false;
-String wifiSSID;
-String wifiPassword;
 size_t updateContentLength = 0;
 
 long spotifyApiRequestStartedMillis = -1;

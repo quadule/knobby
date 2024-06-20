@@ -5,7 +5,5 @@
   "buttonPin": 15,
   "rotaryAPin": 12,
   "rotaryBPin": 13,
-  "pulseCount": 4,
-  "wifiSSID": "",
-  "wifiPassword": ""
+  "pulseCount": 4
 }

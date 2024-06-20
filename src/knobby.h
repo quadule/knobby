@@ -49,7 +49,7 @@ class Knobby {
     int pulseCount();
     void setPulseCount(int count);
 
-    void printHeader();
+    void printHeader(bool wifiProvisioned = false);
     void resetSettings();
 
     uint8_t batteryPercentage();
@@ -159,6 +159,8 @@ const String& Knobby::password() {
 }
 
 void Knobby::setPassword(const char *password) {
+  if (_password == password) return;
+
   _password = password;
   _preferences.putString("password", _password);
 }
@@ -166,6 +168,8 @@ void Knobby::setPassword(const char *password) {
 bool Knobby::flippedDisplay() { return _flippedDisplay; }
 
 void Knobby::setFlippedDisplay(bool flip) {
+  if (_flippedDisplay == flip) return;
+
   _flippedDisplay = flip;
   _preferences.putBool("flipDisplay", _flippedDisplay);
 }
@@ -173,7 +177,7 @@ void Knobby::setFlippedDisplay(bool flip) {
 int Knobby::buttonPin() { return _buttonPin; }
 
 void Knobby::setButtonPin(int pin) {
-  if (pin >= 0 && pin <= 39) {
+  if (pin >= 0 && pin <= 39 && pin != _buttonPin) {
     _buttonPin = pin;
     _preferences.putInt("buttonPin", _buttonPin);
   }
@@ -182,7 +186,7 @@ void Knobby::setButtonPin(int pin) {
 int Knobby::rotaryAPin() { return _rotaryAPin; }
 
 void Knobby::setRotaryAPin(int pin) {
-  if (pin >= 0 && pin <= 39) {
+  if (pin >= 0 && pin <= 39 && pin != _rotaryAPin) {
     _rotaryAPin = pin;
     _preferences.putInt("rotaryAPin", _rotaryAPin);
   }
@@ -191,7 +195,7 @@ void Knobby::setRotaryAPin(int pin) {
 int Knobby::rotaryBPin() { return _rotaryBPin; }
 
 void Knobby::setRotaryBPin(int pin) {
-  if (pin >= 0 && pin <= 39) {
+  if (pin >= 0 && pin <= 39 && pin != _rotaryBPin) {
     _rotaryBPin = pin;
     _preferences.putInt("rotaryBPin", _rotaryBPin);
   }
@@ -200,13 +204,13 @@ void Knobby::setRotaryBPin(int pin) {
 int Knobby::pulseCount() { return _pulseCount; }
 
 void Knobby::setPulseCount(int count) {
-  if (count > 0 && count <= 8) {
+  if (count > 0 && count <= 8 && count != _pulseCount) {
     _pulseCount = count;
     _preferences.putInt("pulseCount", _pulseCount);
   }
 }
 
-void Knobby::printHeader() {
+void Knobby::printHeader(bool wifiProvisioned) {
   const esp_app_desc_t *desc = esp_ota_get_app_description();
   log_printf("\n    _                 _     _              |\n");
   log_printf("   | |               | |   | |             |\n");
@@ -218,13 +222,12 @@ void Knobby::printHeader() {
   log_printf("    https://knobby.net                     |\n");
   log_printf("___________________________________________|____________________________________\n");
   log_printf("\n");
-  if (WiFi.SSID().isEmpty()) {
+  if (wifiProvisioned) {
+    log_printf("    for configuration and more: http://knobby.local?pass=%s\n", password());
+  } else {
     log_printf("    setup this device via usb or wifi:\n");
     log_printf("      * (re)connect and visit https://setup.knobby.net to configure\n");
     log_printf("      * or join the wifi network %s with password %s\n", name(), password());
-  } else {
-    log_printf("    connecting to wifi network: %s\n", WiFi.SSID());
-    log_printf("    for configuration and more: http://knobby.local?pass=%s\n", password());
   }
   log_printf("\n");
 }

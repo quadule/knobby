@@ -67,12 +67,9 @@ https://user-images.githubusercontent.com/15299/221440478-d7a543d5-4e82-4146-b03
 * [MakerFocus 1100mAh LiPo battery](https://www.makerfocus.com/products/makerfocus-3-7v-1100mah-lithium-rechargeable-battery-1s-3c-lipo-battery-with-protection-board-pack-of-4)
 * [3D printed case and knob](https://www.printables.com/model/156363)
 
-#### Other rotary encoders
+Or, install the firmware on another supported ESP32 development board:
 
-If you use a different rotary encoder in your build and find that the knob must be turned two clicks to move one item through the menu, you can configure the encoder’s pulse count.
-
-1. Edit `data/data.json` and replace `null` with `2` for `pulseCount`.
-2. Run `pio run --target uploadfs` to upload the configuration file.
+* [LilyGO T-Embed](https://www.lilygo.cc/products/t-embed)
 
 ### Wire it up
 
@@ -94,9 +91,21 @@ Alternatively, you can download [the latest release](https://github.com/quadule/
   - on Linux or Mac: `./flash.sh`
   - on Windows: `flash.bat`
 
+### Web configuration
+
+Additional configuration is available at http://knobby.local after knobby is connected to your network. From this page, you can change hardware settings or apply a manual firmware update.
+
+You'll need the device password for this, which is randomly generated on first boot if not configured in `data.json`. You can see the configured password in the serial console output over USB, or by double-clicking the knob on the settings > about screen.
+
+#### Custom builds and other rotary encoders
+
+You may need to adjust the pin assignments or pulse count to work with different hardware. If you find that the knob must be turned two clicks to move one item through the menu, try changing the pulse count from `4` to `2`. The scroll direction can be also reversed by swapping the A and B pins.
+
+These settings can be changed from the web configuration page, or also by editing `data/data.json` when setting up a device for the first time (see below).
+
 ### Compile from source
 
-1. Edit `data/data.json` and enter your wifi network information (if you want; it can also be configured later)
+1. Edit `data/data.json` and update the configuration if necessary.
 2. Build and upload with [PlatformIO](https://platformio.org/): `pio run && pio run --target upload && pio run --target uploadfs`
 
 If data.json is not configured or there is a problem connecting to your network, knobby will enter configuration mode. Join the temporary wifi network displayed on screen and wait for the configuration portal to appear or visit http://192.168.4.1. Enter your wifi network information, then switch back to your normal wifi network and visit http://knobby.local to continue.
