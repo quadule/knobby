@@ -392,7 +392,7 @@ void drawBattery(unsigned int percent, unsigned int y, bool charging = false);
 void drawCenteredText(const char *text, uint16_t maxWidth, uint16_t maxLines = 1);
 void drawDivider(bool selected);
 void drawIcon(const String& icon, bool selected = false, bool clicked = false, bool disabled = false, bool filled = false);
-void drawMenuHeader(bool selected, const char *text = "");
+void drawMenuHeader(bool selected, const char *text = "", int totalSize = -1);
 void drawSetup();
 void invalidateDisplay(bool eraseDisplay = false);
 void playMenuPlaylist(MenuModes mode, uint16_t index);

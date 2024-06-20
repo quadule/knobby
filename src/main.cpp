@@ -1221,7 +1221,8 @@ void drawStatusMessage() {
   drawCenteredText(statusMessage, textWidth - textPadding * 2);
 }
 
-void drawMenuHeader(bool selected, const char *text) {
+void drawMenuHeader(bool selected, const char *text, int totalSize) {
+  if (totalSize < 0) totalSize = menuSize;
   if (statusMessage[0] != '\0') {
     drawStatusMessage();
   } else {
@@ -1229,20 +1230,20 @@ void drawMenuHeader(bool selected, const char *text) {
     img.setTextColor(selected ? TFT_LIGHTGREY : TFT_DARKGREY, TFT_BLACK);
     if (text[0] != '\0') {
       drawCenteredText(text, textWidth - textPadding * 2);
-    } else if (menuSize > 0) {
-      char label[14];
-      sprintf(label, "%d / %d", menuIndex + 1, menuSize);
+    } else if (totalSize > 0) {
+      char label[32];
+      sprintf(label, "%d / %d", menuIndex + 1, totalSize);
       drawCenteredText(label, textWidth - textPadding * 2);
     }
   }
-  if (menuSize > 0) {
-    tft.setTextColor(menuSize == 1 ? TFT_LIGHTBLACK : TFT_DARKERGREY, TFT_BLACK);
+  if (totalSize > 0) {
+    tft.setTextColor(totalSize == 1 ? TFT_LIGHTBLACK : TFT_DARKERGREY, TFT_BLACK);
     tft.setCursor(8, lineOne - 2);
     tft.print("\xE2\x80\xB9");
     tft.setCursor(screenWidth - 15, lineOne - 2);
     tft.print("\xE2\x80\xBA");
   }
-  if (!showingProgressBar && (text[0] != '\0' || menuMode == SeekControl || menuSize > 0)) drawDivider(selected);
+  if (!showingProgressBar && (text[0] != '\0' || menuMode == SeekControl || totalSize > 0)) drawDivider(selected);
 }
 
 void drawSetup() {
@@ -1627,6 +1628,8 @@ void drawPlaylistsMenu() {
 
   if (statusMessage[0] != '\0') {
     drawStatusMessage();
+  } else if (menuMode == PlaylistList) {
+    drawMenuHeader(selected, "", spotifyPlaylistsCount + 1);
   } else {
     drawMenuHeader(selected);
   }
@@ -1889,7 +1892,7 @@ uint16_t checkMenuSize(MenuModes mode) {
     case DeviceList:
       return spotifyDevices.size();
     case PlaylistList:
-      return spotifyPlaylistsCount + 1; // for virtual liked songs playlist
+      return spotifyPlaylists.size() + 1; // for virtual liked songs playlist
     case CountryList:
       return COUNTRY_COUNT;
     case GenreList:
@@ -2696,8 +2699,13 @@ void spotifyCurrentlyPlaying() {
       spotifyState.lastUpdateMillis = millis();
       invalidateDisplay();
     } else {
-      log_e("Heap free: %d", ESP.getFreeHeap());
+      log_e("Heap free: %d, response size: %d", ESP.getFreeHeap(), spotifyHttp.getSize());
       log_e("Error %s parsing response", error.c_str());
+      if (menuMode != PlaylistList) {
+        spotifyPlaylists.clear();
+        spotifyPlaylistsCount = 0;
+        spotifyPlaylistsLoaded = false;
+      }
     }
   } else if (statusCode == 204) {
     bool trackWasLoaded = spotifyState.name[0] != '\0';
@@ -3154,21 +3162,22 @@ void spotifyGetPlaylists() {
   int16_t nextOffset = 0;
   uint16_t limit = 50;
   uint16_t offset = 0;
-  char url[64];
+  char url[90];
+  DynamicJsonDocument json(6000);
+  DeserializationError error;
 
   spotifyPlaylists.clear();
   spotifyPlaylistsCount = 0;
 
   while (nextOffset >= 0) {
-    snprintf(url, sizeof(url), "me/playlists/?fields=items(id,name)&limit=%d&offset=%d", limit, nextOffset);
+    snprintf(url, sizeof(url), "me/playlists/?fields=items(id,name),limit,offset,total&limit=%d&offset=%d", limit, nextOffset);
     statusCode = spotifyApiRequest("GET", url);
     if (statusCode == 200) {
-      DynamicJsonDocument json(6000);
-      DeserializationError error = deserializeJson(json, spotifyHttp.getStream());
+      error = deserializeJson(json, spotifyHttp.getStream());
       if (!error) {
         spotifyPlaylistsCount = json["total"];
-        limit = json["limit"];
-        offset = json["offset"];
+        limit = json["limit"] | limit;
+        offset = json["offset"] | offset;
 
         JsonArray items = json["items"];
         for (auto item : items) {
@@ -3182,6 +3191,7 @@ void spotifyGetPlaylists() {
 
         uint32_t heap = ESP.getFreeHeap();
         bool heapTooSmall = heap < 80000;
+        bool allPlaylistsLoaded = spotifyPlaylists.size() >= spotifyPlaylistsCount;
 
         spotifyPlaylistsLoaded = true;
         if (menuMode == PlaylistList) {
@@ -3189,11 +3199,11 @@ void spotifyGetPlaylists() {
           invalidateDisplay();
         }
 
-        if (json["next"].isNull() || heapTooSmall) {
+        if (heapTooSmall || allPlaylistsLoaded) {
           nextOffset = -1;
-          if (heapTooSmall) log_e("Skipping remaining playlists, only %d bytes heap left", heap);
+          if (heapTooSmall && !allPlaylistsLoaded) log_e("Skipping remaining playlists, only %d bytes heap left", heap);
         } else {
-          nextOffset = offset + limit;
+          nextOffset = offset + items.size();
         }
       }
     } else {
