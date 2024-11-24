@@ -999,15 +999,6 @@ void knobDoubleClicked() {
       case AlphabeticSuffixSort:
         setStatusMessage("sort by suffix");
         break;
-      case AmbienceSort:
-        setStatusMessage("sort by ambience");
-        break;
-      case ModernitySort:
-        setStatusMessage("sort by modernity");
-        break;
-      case PopularitySort:
-        setStatusMessage("sort by popularity");
-        break;
     }
   } else if (menuMode == SettingsMenu) {
     switch (menuIndex) {
@@ -1920,12 +1911,6 @@ int getGenreIndexForMenuIndex(uint16_t index, MenuModes mode) {
           return index;
         case AlphabeticSuffixSort:
           return genreIndexes_suffix[index];
-        case AmbienceSort:
-          return genreIndexes_background[index];
-        case ModernitySort:
-          return genreIndexes_modernity[index];
-        case PopularitySort:
-          return genreIndexes_popularity[index];
         default:
           return index;
       }
@@ -1957,12 +1942,6 @@ uint16_t getMenuIndexForGenreIndex(uint16_t index) {
       return index;
     case AlphabeticSuffixSort:
       return getIndexOfGenreIndex(genreIndexes_suffix, index);
-    case AmbienceSort:
-      return getIndexOfGenreIndex(genreIndexes_background, index);
-    case ModernitySort:
-      return getIndexOfGenreIndex(genreIndexes_modernity, index);
-    case PopularitySort:
-      return getIndexOfGenreIndex(genreIndexes_popularity, index);
     default:
       return index;
   }

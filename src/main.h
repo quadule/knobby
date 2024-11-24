@@ -44,12 +44,9 @@ enum MenuModes {
 };
 enum GenreSortModes {
   AlphabeticSort = 0,
-  AlphabeticSuffixSort = 1,
-  AmbienceSort = 2,
-  ModernitySort = 3,
-  PopularitySort = 4
+  AlphabeticSuffixSort = 1
 };
-const int genreSortModesCount = 5;
+const int genreSortModesCount = 2;
 enum NowPlayingItems {
   LikeButton = 0,
   ShuffleButton = 1,

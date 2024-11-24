@@ -50,7 +50,7 @@ https://user-images.githubusercontent.com/15299/221440478-d7a543d5-4e82-4146-b03
 * Hold the knob for couple seconds for a random genre, country, or playlist from the last open menu.
   - Keep holding the knob until the progress bar reaches the end to play immediately.
   - Release the knob before the progress bar reaches the end to keep browsing.
-* When browsing genres, double click the knob to switch sort modes: _name_ (the default alphabetical order), _suffix_, _ambience_, _modernity_, and _popularity_.
+* When browsing genres, double click the knob to switch between the default alphabetical order and sorting by suffix.
 * When playing something, double click the knob to skip to the next track.
 
 ### Requirements
