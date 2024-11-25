@@ -192,6 +192,7 @@ const int albumX = screenWidth - albumSize - 6;
 const int albumY = lineTwo;
 const uint16_t spotifyPollInterval = 10000;
 const char spotifyClientId[] = "55aee603baf641f899e5bfeba3fe05d0";
+const char spotifyDJPlaylistId[] = "37i9dQZF1EYkqdzj48dyYq";
 const char spotifyPlaylistContextPrefix[] = "spotify:playlist:";
 
 // icomoon23.vlw

@@ -3151,7 +3151,7 @@ void spotifyGetPlaylists() {
     if (statusCode == 200) {
       error = deserializeJson(json, spotifyHttp.getStream());
       if (!error) {
-        spotifyPlaylistsCount = json["total"];
+        if (spotifyPlaylistsCount == 0) spotifyPlaylistsCount = json["total"];
         limit = json["limit"] | limit;
         offset = json["offset"] | offset;
 
@@ -3160,6 +3160,12 @@ void spotifyGetPlaylists() {
         for (auto item : items) {
           const char *id = item["id"];
           const char *name = item["name"];
+
+          if (strcmp(id, spotifyDJPlaylistId) == 0) {
+            spotifyPlaylistsCount--;
+            continue;
+          }
+
           SpotifyPlaylist_t playlist;
           strncpy(playlist.id, id, SPOTIFY_ID_SIZE);
           playlist.name = name;
