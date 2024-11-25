@@ -24,7 +24,7 @@ void setup() {
   spotifyDevices.reserve(10);
   spotifyUsers.reserve(10);
   spotifyLinkedPlaylists.reserve(10);
-  spotifyPlaylists.reserve(100);
+  spotifyPlaylists.reserve(200);
 
   #ifdef POWER_ON_PIN
     pinMode(POWER_ON_PIN, OUTPUT);
@@ -742,9 +742,8 @@ void selectRootMenuItem(uint16_t index) {
     if (spotifyPlaylistsLoaded) {
       auto playingIndex = getMenuIndexForPlaylist(spotifyState.contextUri);
       if (playingIndex >= 0) playlistIndex = playingIndex;
-    } else {
-      spotifyQueueAction(GetPlaylists);
     }
+    if (spotifyPlaylistsCount == 0 || spotifyPlaylists.size() < spotifyPlaylistsCount) spotifyQueueAction(GetPlaylists);
     setMenuMode(PlaylistList, playlistIndex);
   } else if (index == rootMenuNowPlayingIndex) {
     nextCurrentlyPlayingMillis = lastInputMillis;
@@ -2495,7 +2494,7 @@ void spotifyCurrentlyPlaying() {
   int statusCode = spotifyApiRequest("GET", "me/player?market=from_token");
 
   if (statusCode == 200) {
-    DynamicJsonDocument json(24576);
+    DynamicJsonDocument json(8192);
     DeserializationError error = deserializeJson(json, spotifyHttp.getStream());
     auto now = millis();
 
@@ -2591,8 +2590,10 @@ void spotifyCurrentlyPlaying() {
                   (spotifyImage.isEmpty() || image["url"] != spotifyState.imageUrl)) {
                 strncpy(spotifyState.imageUrl, image["url"], sizeof(spotifyState.imageUrl) - 1);
                 spotifyImage.clear();
-                spotifyQueueAction(GetImage);
-                invalidateDisplay(true);
+                if (menuMode == NowPlaying) {
+                  spotifyQueueAction(GetImage);
+                  invalidateDisplay(true);
+                }
                 break;
               }
             }
@@ -3138,7 +3139,7 @@ void spotifyGetPlaylists() {
   uint16_t limit = 50;
   uint16_t offset = 0;
   char url[90];
-  DynamicJsonDocument json(6000);
+  DynamicJsonDocument json(8192);
   DeserializationError error;
 
   spotifyPlaylists.clear();
@@ -3155,6 +3156,7 @@ void spotifyGetPlaylists() {
         offset = json["offset"] | offset;
 
         JsonArray items = json["items"];
+        uint16_t itemsCount = items.size();
         for (auto item : items) {
           const char *id = item["id"];
           const char *name = item["name"];
@@ -3164,26 +3166,29 @@ void spotifyGetPlaylists() {
           spotifyPlaylists.push_back(playlist);
         }
 
-        uint32_t heap = ESP.getFreeHeap();
-        bool heapTooSmall = heap < 80000;
-        bool allPlaylistsLoaded = spotifyPlaylists.size() >= spotifyPlaylistsCount;
-
+        items.clear();
+        json.clear();
         spotifyPlaylistsLoaded = true;
         if (menuMode == PlaylistList) {
           menuSize = checkMenuSize(PlaylistList);
           invalidateDisplay();
+          yield();
         }
+
+        uint32_t heap = ESP.getFreeHeap();
+        bool heapTooSmall = heap < 60000;
+        bool allPlaylistsLoaded = spotifyPlaylists.size() >= spotifyPlaylistsCount;
 
         if (heapTooSmall || allPlaylistsLoaded) {
           nextOffset = -1;
           if (heapTooSmall && !allPlaylistsLoaded) log_e("Skipping remaining playlists, only %d bytes heap left", heap);
         } else {
-          nextOffset = offset + items.size();
+          nextOffset = offset + itemsCount;
         }
       }
     } else {
       nextOffset = -1;
-      log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
+      log_e("%d", statusCode);
     }
   }
   spotifyApiRequestEnded();
