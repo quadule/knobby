@@ -2683,7 +2683,7 @@ void spotifyCurrentlyPlaying() {
         spotifyPlaylistsLoaded = false;
       }
     }
-  } else if (statusCode == 204) {
+  } else if (statusCode >= 200 && statusCode < 300) {
     bool trackWasLoaded = spotifyState.name[0] != '\0';
     spotifyStateLoaded = true;
     spotifyState.isShuffled = false;
@@ -2767,7 +2767,7 @@ bool spotifyRetryError(int statusCode) {
 void spotifyNext() {
   int statusCode = spotifyApiRequest("POST", "me/player/next");
   spotifyResetProgress(true);
-  if (statusCode == 204) {
+  if (statusCode >= 200 && statusCode < 300) {
     spotifyState.isPlaying = true;
     spotifyState.disallowsSkippingPrev = false;
   } else {
@@ -2779,7 +2779,7 @@ void spotifyNext() {
 void spotifyPrevious() {
   int statusCode = spotifyApiRequest("POST", "me/player/previous");
   spotifyResetProgress(true);
-  if (statusCode == 204) {
+  if (statusCode >= 200 && statusCode < 300) {
     spotifyState.isPlaying = true;
     spotifyState.disallowsSkippingNext = false;
   } else {
@@ -2794,7 +2794,7 @@ void spotifySeek() {
   char path[40];
   snprintf(path, sizeof(path), "me/player/seek?position_ms=%d", spotifySeekToMillis);
   int statusCode = spotifyApiRequest("PUT", path);
-  if (statusCode == 204) {
+  if (statusCode >= 200 && statusCode < 300) {
     spotifyState.lastUpdateMillis = millis();
     spotifyState.progressMillis = spotifyState.estimatedProgressMillis = spotifySeekToMillis;
     nextCurrentlyPlayingMillis = spotifyState.lastUpdateMillis + SPOTIFY_WAIT_MILLIS;
@@ -2825,7 +2825,7 @@ void spotifyToggle() {
   }
   spotifyRetryError(statusCode);
 
-  if (statusCode == 204) {
+  if (statusCode >= 200 && statusCode < 300) {
     spotifyState.lastUpdateMillis = millis();
     nextCurrentlyPlayingMillis = spotifyState.lastUpdateMillis + SPOTIFY_WAIT_MILLIS;
     invalidateDisplay();
@@ -2850,7 +2850,7 @@ void spotifyPlayPlaylist() {
   } else {
     statusCode = spotifyApiRequest("PUT", "me/player/play", requestContent);
   }
-  bool success = statusCode == 204;
+  bool success = statusCode >= 200 && statusCode < 300;
   bool retry = spotifyRetryError(statusCode);
 
   spotifyResetProgress(true);
@@ -3012,7 +3012,7 @@ void spotifyToggleShuffle() {
   snprintf(path, sizeof(path), "me/player/shuffle?state=%s", spotifyState.isShuffled ? "true" : "false");
   statusCode = spotifyApiRequest("PUT", path);
 
-  if (statusCode == 204) {
+  if (statusCode >= 200 && statusCode < 300) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
     log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
@@ -3042,7 +3042,7 @@ void spotifyToggleRepeat() {
   invalidateDisplay();
   statusCode = spotifyApiRequest("PUT", path);
 
-  if (statusCode == 204) {
+  if (statusCode >= 200 && statusCode < 300) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
     log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
@@ -3058,7 +3058,7 @@ void spotifyTransferPlayback() {
   snprintf(requestContent, sizeof(requestContent), "{\"device_ids\":[\"%s\"]}", activeSpotifyDeviceId);
   int statusCode;
   statusCode = spotifyApiRequest("PUT", "me/player", requestContent);
-  if (statusCode == 204) {
+  if (statusCode >= 200 && statusCode < 300) {
     nextCurrentlyPlayingMillis = millis() + SPOTIFY_WAIT_MILLIS;
   } else {
     log_e("%d - %s", statusCode, spotifyHttp.getSize() > 0 ? spotifyHttp.getString() : "");
