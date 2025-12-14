@@ -1012,6 +1012,7 @@ void knobDoubleClicked() {
         knobby.setFlippedDisplay(!knobby.flippedDisplay());
         tft.setRotation(knobby.flippedDisplay() ? 1 : 3);
         invalidateDisplay(true);
+        writeDataJson();
         break;
       case SettingsAddUser:
         if (strcmp(WiFi.getHostname(), "knobby") != 0) {
