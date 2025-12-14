@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>knobby setup</title>
+    <meta name="viewport" content="width=device-width">
+    <meta name="color-scheme" content="dark light">
+    <style>
+      body {
+        font-family: GillSansRegular, "Gill Sans MT", "Gill Sans", sans-serif;
+        font-size: 18px;
+        padding: 0;
+        margin: 0;
+        line-height: 1.4;
+      }
+      .content {
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 12px;
+      }
+      a {
+        color: #03a9f4;
+      }
+      .hidden {
+        display: none;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          background-color: #333;
+          color: #fff;
+        }
+        a {
+          color: #58a6ff;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="content">
+      <h1>knobby setup</h1>
+
+      <p id="message">Redirecting...</p>
+
+      <script>
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const error = params.get('error');
+        const state = params.get('state');
+        const messageEl = document.getElementById('message');
+
+        if (error) {
+          messageEl.textContent = `Error: ${error}`;
+        } else if (code) {
+          const redirectUrl = new URL('http://knobby.local/callback');
+          redirectUrl.searchParams.set('code', code);
+          if (state) redirectUrl.searchParams.set('state', state);
+          window.location.href = redirectUrl.toString();
+        } else {
+          messageEl.textContent = 'Error: Missing required code parameter';
+        }
+      </script>
+    </div>
+  </body>
+</html>

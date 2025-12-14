@@ -215,7 +215,7 @@ void setup() {
         "user-library-read+user-library-modify+user-follow-read+user-follow-modify"
         "&code_challenge_method=S256&code_challenge=");
     authUrl.concat(spotifyCodeChallenge);
-    authUrl.concat("&show_dialog=true&redirect_uri=http%3A%2F%2Fknobby.local%2Fcallback&client_id=");
+    authUrl.concat("&show_dialog=true&redirect_uri=https%3A%2F%2Fsetup.knobby.net%2Fcallback.html&client_id=");
     authUrl.concat(spotifyClientId);
     request->redirect(authUrl);
   });
@@ -2384,7 +2384,7 @@ void spotifyGetToken(const char *code, GrantTypes grant_type) {
 
   if (grant_type == gt_authorization_code) {
     snprintf(requestContent, sizeof(requestContent),
-             "client_id=%s&grant_type=authorization_code&redirect_uri=http%%3A%%2F%%2Fknobby.local%%2Fcallback&code=%s&code_verifier=%s",
+             "client_id=%s&grant_type=authorization_code&redirect_uri=https%%3A%%2F%%2Fsetup.knobby.net%%2Fcallback.html&code=%s&code_verifier=%s",
              spotifyClientId, code, spotifyCodeVerifier);
   } else {
     snprintf(requestContent, sizeof(requestContent),
