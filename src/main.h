@@ -245,7 +245,7 @@ RTC_DATA_ATTR MenuModes lastPlaylistMenuMode = GenreList;
 RTC_DATA_ATTR int playingCountryIndex = -1;
 RTC_DATA_ATTR int playingGenreIndex = -1;
 
-RTC_DATA_ATTR char spotifyAccessToken[300] = "";
+RTC_DATA_ATTR char spotifyAccessToken[350] = "";
 RTC_DATA_ATTR char spotifyRefreshToken[150] = "";
 RTC_DATA_ATTR time_t spotifyTokenLifetime = 0;
 RTC_DATA_ATTR time_t spotifyTokenSeconds = 0;
