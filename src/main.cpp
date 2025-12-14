@@ -2273,7 +2273,13 @@ bool writeDataJson() {
   File f = SPIFFS.open("/data.json", "w+");
   DynamicJsonDocument doc(5000);
 
+  doc["configPassword"] = knobby.password();
   if (!firmwareURL.equals(defaultFirmwareURL)) doc["firmwareURL"] = firmwareURL;
+  if (knobby.flippedDisplay()) doc["flipDisplay"] = knobby.flippedDisplay();
+  if (knobby.buttonPin() != ROTARY_ENCODER_BUTTON_PIN) doc["buttonPin"] = knobby.buttonPin();
+  if (knobby.rotaryAPin() != ROTARY_ENCODER_A_PIN) doc["rotaryAPin"] = knobby.rotaryAPin();
+  if (knobby.rotaryBPin() != ROTARY_ENCODER_B_PIN) doc["rotaryBPin"] = knobby.rotaryBPin();
+  if (knobby.pulseCount() != ROTARY_ENCODER_PULSE_COUNT) doc["pulseCount"] = knobby.pulseCount();
 
   JsonArray usersArray = doc.createNestedArray("users");
 

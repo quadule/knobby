@@ -5,7 +5,6 @@
 #include <base64.h>
 #include <esp_adc_cal.h>
 #include <esp_ota_ops.h>
-#include <Preferences.h>
 #include <Wire.h>
 
 #ifdef LILYGO_WATCH_2019_WITH_TOUCH
@@ -62,7 +61,6 @@ class Knobby {
   private:
     String _name;
     String _password;
-    Preferences _preferences;
 
     bool _flippedDisplay = false;
     int _buttonPin  = ROTARY_ENCODER_BUTTON_PIN;
@@ -99,14 +97,6 @@ Knobby::Knobby() {
 }
 
 void Knobby::setup() {
-  _preferences.begin("knobby");
-
-  _flippedDisplay = _preferences.getBool("flipDisplay", _flippedDisplay);
-  _buttonPin = _preferences.getChar("buttonPin", _buttonPin);
-  _rotaryAPin = _preferences.getChar("rotaryAPin", _rotaryAPin);
-  _rotaryBPin = _preferences.getChar("rotaryBPin", _rotaryBPin);
-  _pulseCount = _preferences.getChar("pulseCount", _pulseCount);
-
   #ifdef LILYGO_WATCH_2019_WITH_TOUCH
     ttgo = TTGOClass::getWatch();
   #else
@@ -121,29 +111,21 @@ void Knobby::loop() {
 }
 
 const String& Knobby::name() {
-  if (_name.isEmpty() && _preferences.getType("name") == PT_STR) {
-    _name = _preferences.getString("name");
-  }
   if (_name.isEmpty()) {
     _name = "knobby-";
     String suffix = WiFi.macAddress().substring(12, 17);
     suffix.replace(":", "");
     suffix.toLowerCase();
     _name.concat(suffix);
-    setName(_name.c_str());
   }
   return _name;
 }
 
 void Knobby::setName(const char *name) {
   _name = name;
-  _preferences.putString("name", _name);
 }
 
 const String& Knobby::password() {
-  if (_password.isEmpty() && _preferences.getType("password") == PT_STR) {
-    _password = _preferences.getString("password");
-  }
   if (_password.isEmpty()) {
     unsigned char randomBytes[10];
     for (auto i=0; i<10; i++) randomBytes[i] = random(256);
@@ -153,7 +135,6 @@ const String& Knobby::password() {
     _password.replace('l', '-');
     _password.replace('+', '@');
     _password.replace('/', '&');
-    setPassword(_password.c_str());
   }
   return _password;
 }
@@ -162,7 +143,6 @@ void Knobby::setPassword(const char *password) {
   if (_password == password) return;
 
   _password = password;
-  _preferences.putString("password", _password);
 }
 
 bool Knobby::flippedDisplay() { return _flippedDisplay; }
@@ -171,7 +151,6 @@ void Knobby::setFlippedDisplay(bool flip) {
   if (_flippedDisplay == flip) return;
 
   _flippedDisplay = flip;
-  _preferences.putBool("flipDisplay", _flippedDisplay);
 }
 
 int Knobby::buttonPin() { return _buttonPin; }
@@ -179,7 +158,6 @@ int Knobby::buttonPin() { return _buttonPin; }
 void Knobby::setButtonPin(int pin) {
   if (pin >= 0 && pin <= 39 && pin != _buttonPin) {
     _buttonPin = pin;
-    _preferences.putInt("buttonPin", _buttonPin);
   }
 }
 
@@ -188,7 +166,6 @@ int Knobby::rotaryAPin() { return _rotaryAPin; }
 void Knobby::setRotaryAPin(int pin) {
   if (pin >= 0 && pin <= 39 && pin != _rotaryAPin) {
     _rotaryAPin = pin;
-    _preferences.putInt("rotaryAPin", _rotaryAPin);
   }
 }
 
@@ -197,7 +174,6 @@ int Knobby::rotaryBPin() { return _rotaryBPin; }
 void Knobby::setRotaryBPin(int pin) {
   if (pin >= 0 && pin <= 39 && pin != _rotaryBPin) {
     _rotaryBPin = pin;
-    _preferences.putInt("rotaryBPin", _rotaryBPin);
   }
 }
 
@@ -206,7 +182,6 @@ int Knobby::pulseCount() { return _pulseCount; }
 void Knobby::setPulseCount(int count) {
   if (count > 0 && count <= 8 && count != _pulseCount) {
     _pulseCount = count;
-    _preferences.putInt("pulseCount", _pulseCount);
   }
 }
 
