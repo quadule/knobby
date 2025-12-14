@@ -2275,7 +2275,7 @@ bool writeDataJson() {
   DynamicJsonDocument doc(5000);
 
   doc["configPassword"] = knobby.password();
-  if (!firmwareURL.equals(defaultFirmwareURL)) doc["firmwareURL"] = firmwareURL;
+  if (!firmwareURL.isEmpty() && defaultFirmwareURL != firmwareURL) doc["firmwareURL"] = firmwareURL;
   if (knobby.flippedDisplay()) doc["flipDisplay"] = knobby.flippedDisplay();
   if (knobby.buttonPin() != ROTARY_ENCODER_BUTTON_PIN) doc["buttonPin"] = knobby.buttonPin();
   if (knobby.rotaryAPin() != ROTARY_ENCODER_A_PIN) doc["rotaryAPin"] = knobby.rotaryAPin();
@@ -3257,7 +3257,8 @@ void updateFirmware() {
   http.setConnectTimeout(4000);
   http.setTimeout(4000);
   http.setReuse(false);
-  http.begin(client, firmwareURL);
+  const String& url = firmwareURL.isEmpty() ? defaultFirmwareURL : firmwareURL;
+  http.begin(client, url);
   const char * headerKeys[] = { "x-amz-meta-git-version" };
   http.collectHeaders(headerKeys, (sizeof(headerKeys) / sizeof(headerKeys[0])));
   int code = http.GET();
